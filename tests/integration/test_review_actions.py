@@ -1,13 +1,13 @@
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 from sqlalchemy import select
-from tests.integration.test_statement_extraction import SyntheticStatementAdapter, valid_candidate
 from uuid6 import uuid7
 
 from billzebub.api import create_app
@@ -46,9 +46,65 @@ from billzebub.reviews import (
 from billzebub.statement_extraction import (
     ExtractionOutcome,
     ExtractionStatus,
+    SourceLocator,
     StatementAdapterRegistry,
+    StatementCandidate,
     StatementExtraction,
+    StatementRowCandidate,
 )
+
+
+class SyntheticStatementAdapter:
+    key = "synthetic-credit"
+    version = "1.0.0"
+    institution = "synthetic-bank"
+
+    def __init__(self, candidate: StatementCandidate) -> None:
+        self.candidate = candidate
+
+    def extract(
+        self,
+        path: Path,
+        passwords: tuple[SecretStr, ...],
+        expected_account_identifier: str | None = None,
+    ) -> StatementCandidate:
+        del passwords, expected_account_identifier
+        assert path.is_file()
+        return self.candidate
+
+
+def valid_candidate() -> StatementCandidate:
+    return StatementCandidate(
+        statement_identity="synthetic-2026-01",
+        account_identifier="SYNTHETIC-001",
+        statement_date=date(2026, 1, 31),
+        period_start=date(2026, 1, 1),
+        period_end=date(2026, 1, 31),
+        currency="SGD",
+        opening_balance_text="100.00",
+        closing_balance_text="105.00",
+        candidate_row_count=2,
+        rows=(
+            StatementRowCandidate(
+                raw_description="SYNTHETIC PURCHASE",
+                posted_amount_text="-10.00",
+                provider_transaction_date=date(2026, 1, 10),
+                posting_date=date(2026, 1, 11),
+                transaction_kind_hint="expense",
+                locator=SourceLocator(page_number=1, line_number=20, text_start=0, text_end=36),
+                original_amount_text="-9.00",
+                original_currency="USD",
+            ),
+            StatementRowCandidate(
+                raw_description="SYNTHETIC CARD PAYMENT",
+                posted_amount_text="5.00",
+                provider_transaction_date=date(2026, 1, 20),
+                posting_date=date(2026, 1, 21),
+                transaction_kind_hint="transfer",
+                locator=SourceLocator(page_number=1, line_number=28, text_start=0, text_end=40),
+            ),
+        ),
+    )
 
 
 def _statement_source(
