@@ -1,0 +1,2551 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>Billzebub · Quiet Rail (synthesis)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      /* --- tokens (extract as design-system primitives) --- */
+      :root {
+        --bz-bg: #100f0f;
+        --bz-surface: #1c1b1a;
+        --bz-surface-hover: color-mix(in srgb, #282726 60%, #1c1b1a);
+        --bz-border: #282726;
+        --bz-border-strong: #343331;
+        --bz-text: #cecdc3;
+        --bz-muted: #878580;
+        --bz-accent: #3aa99f;
+        --bz-accent-dim: color-mix(in srgb, #3aa99f 16%, #1c1b1a);
+        --bz-positive: #879a39;
+        --bz-provisional: #d0a215;
+        --bz-danger: #d14d41;
+        --bz-cat-groceries: #3aa99f;
+        --bz-cat-dining: color-mix(in srgb, #d0a215 70%, #3aa99f);
+        --bz-cat-transport: #d0a215;
+        --bz-cat-utilities: #878580;
+        --bz-cat-health: #879a39;
+        --bz-cat-shopping: color-mix(in srgb, #3aa99f 55%, #cecdc3);
+        --bz-cat-uncat: #343331;
+        --bz-radius-sm: 6px;
+        --bz-radius-md: 8px;
+        --bz-radius-lg: 12px;
+        --bz-space-1: 4px;
+        --bz-space-2: 8px;
+        --bz-space-3: 12px;
+        --bz-space-4: 16px;
+        --bz-space-5: 20px;
+        --bz-space-6: 24px;
+        --bz-space-8: 32px;
+        --bz-font: Inter, ui-sans-serif, system-ui, sans-serif;
+        --bz-text-xs: 0.6875rem;
+        --bz-text-sm: 0.8125rem;
+        --bz-text-md: 0.875rem;
+        --bz-text-lg: 1.25rem;
+        --bz-text-hero: 2.25rem;
+        --bz-rail: 15.5rem;
+        --bz-control-h: 2.25rem;
+        --bz-row-h: 2.75rem;
+        --bz-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+        --bz-t-press: 90ms;
+        --bz-t-ui: 180ms;
+        --bz-t-enter: 220ms;
+        --bz-t-drawer: 240ms;
+        --bz-press: 0.97;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        height: 100%;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bz-bg);
+        color: var(--bz-text);
+        font-family: var(--bz-font);
+        font-size: var(--bz-text-md);
+        line-height: 1.45;
+        font-synthesis: none;
+        text-rendering: optimizeLegibility;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      button,
+      input,
+      select {
+        font: inherit;
+        color: inherit;
+      }
+
+      button {
+        cursor: pointer;
+      }
+
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.45;
+      }
+
+      a {
+        color: var(--bz-accent);
+        text-decoration: none;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      /* --- motion --- */
+      .btn,
+      .icon-btn,
+      .rail-item,
+      .chip,
+      .step-dot,
+      .account-toggle,
+      .statement-cell,
+      .queue-item {
+        transition:
+          transform var(--bz-t-press) var(--bz-ease-out),
+          background-color var(--bz-t-ui) var(--bz-ease-out),
+          border-color var(--bz-t-ui) var(--bz-ease-out),
+          color var(--bz-t-ui) var(--bz-ease-out);
+      }
+
+      .btn:active,
+      .icon-btn:active,
+      .rail-item:active,
+      .chip:active,
+      .account-toggle:active,
+      .statement-cell[data-action]:active,
+      .queue-item:active {
+        transform: scale(var(--bz-press));
+      }
+
+      .stage-enter {
+        animation: stage-enter var(--bz-t-enter) var(--bz-ease-out) both;
+      }
+
+      .bars.is-fresh i {
+        animation: bar-rise var(--bz-t-ui) var(--bz-ease-out) both;
+        transform-origin: bottom;
+      }
+
+      .drawer {
+        transition:
+          transform var(--bz-t-drawer) var(--bz-ease-out),
+          opacity var(--bz-t-drawer) var(--bz-ease-out);
+      }
+
+      .drawer-backdrop {
+        transition: opacity var(--bz-t-drawer) var(--bz-ease-out);
+      }
+
+      @keyframes stage-enter {
+        from {
+          opacity: 0;
+          transform: translateY(8px);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+
+      @keyframes bar-rise {
+        from {
+          opacity: 0;
+          transform: scaleY(0.42);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      /* --- primitives --- */
+      .btn,
+      .icon-btn,
+      .field,
+      .select {
+        min-height: var(--bz-control-h);
+        border-radius: var(--bz-radius-md);
+        border: 1px solid var(--bz-border-strong);
+        background: var(--bz-surface);
+      }
+
+      .btn,
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: var(--bz-space-2);
+        padding: 0 var(--bz-space-3);
+        color: var(--bz-text);
+      }
+
+      .btn-ghost {
+        background: transparent;
+        border-color: transparent;
+        color: var(--bz-muted);
+      }
+
+      .btn-ghost:hover,
+      .icon-btn:hover,
+      .btn-outline:hover,
+      .field:hover,
+      .select:hover {
+        border-color: var(--bz-border-strong);
+        background: var(--bz-surface-hover);
+        color: var(--bz-text);
+      }
+
+      .btn-outline {
+        background: var(--bz-bg);
+      }
+
+      .btn-primary {
+        border-color: var(--bz-accent);
+        background: var(--bz-accent);
+        color: #100f0f;
+        font-weight: 600;
+      }
+
+      .btn-primary:hover {
+        background: color-mix(in srgb, #3aa99f 86%, #cecdc3);
+      }
+
+      .btn-danger {
+        border-color: color-mix(in srgb, #d14d41 50%, #282726);
+        color: var(--bz-danger);
+        background: color-mix(in srgb, #d14d41 10%, #1c1b1a);
+      }
+
+      .icon-btn {
+        width: var(--bz-control-h);
+        padding: 0;
+        display: inline-grid;
+        place-items: center;
+        color: var(--bz-muted);
+        background: transparent;
+      }
+
+      .field,
+      .select {
+        width: 100%;
+        padding: 0 var(--bz-space-3);
+        outline: none;
+      }
+
+      .field:focus-visible,
+      .select:focus-visible,
+      .btn:focus-visible,
+      .icon-btn:focus-visible,
+      .rail-item:focus-visible,
+      .chip:focus-visible,
+      .row:focus-visible,
+      .account-toggle:focus-visible {
+        outline: 2px solid var(--bz-accent);
+        outline-offset: 2px;
+      }
+
+      .select {
+        appearance: none;
+        background-image: linear-gradient(45deg, transparent 50%, #878580 50%),
+          linear-gradient(135deg, #878580 50%, transparent 50%);
+        background-position:
+          calc(100% - 14px) 16px,
+          calc(100% - 9px) 16px;
+        background-size: 5px 5px;
+        background-repeat: no-repeat;
+        padding-right: 1.75rem;
+      }
+
+      .chip {
+        min-height: 1.75rem;
+        border-radius: 999px;
+        border: 1px solid var(--bz-border);
+        background: transparent;
+        color: var(--bz-muted);
+        font-size: var(--bz-text-sm);
+      }
+
+      .chip[aria-pressed="true"] {
+        border-color: var(--bz-accent);
+        background: var(--bz-accent-dim);
+        color: var(--bz-text);
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        min-height: 1.25rem;
+        padding: 0 0.45rem;
+        border-radius: 999px;
+        font-size: var(--bz-text-xs);
+        font-weight: 600;
+        letter-spacing: 0.02em;
+      }
+
+      .badge-count {
+        background: var(--bz-border);
+        color: var(--bz-text);
+      }
+
+      .badge-attention {
+        background: color-mix(in srgb, #d0a215 16%, #1c1b1a);
+        color: var(--bz-provisional);
+      }
+
+      .badge-blocking {
+        background: color-mix(in srgb, #d14d41 16%, #1c1b1a);
+        color: var(--bz-danger);
+      }
+
+      .badge-confirmed {
+        background: color-mix(in srgb, #879a39 14%, #1c1b1a);
+        color: var(--bz-positive);
+      }
+
+      .badge-provisional {
+        background: color-mix(in srgb, #d0a215 14%, #1c1b1a);
+        color: var(--bz-provisional);
+      }
+
+      .card {
+        border: 1px solid var(--bz-border);
+        border-radius: var(--bz-radius-lg);
+        background: var(--bz-surface);
+      }
+
+      .eyebrow {
+        color: var(--bz-muted);
+        font-size: var(--bz-text-xs);
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .amount {
+        font-variant-numeric: tabular-nums;
+        font-feature-settings: "tnum" 1;
+        letter-spacing: -0.02em;
+      }
+
+      .muted {
+        color: var(--bz-muted);
+      }
+
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+      }
+
+      /* --- shell --- */
+      .app {
+        display: grid;
+        grid-template-columns: var(--bz-rail) minmax(0, 1fr);
+        min-height: 100%;
+      }
+
+      .app.is-onboarding {
+        grid-template-columns: 1fr;
+      }
+
+      .rail {
+        display: flex;
+        flex-direction: column;
+        gap: var(--bz-space-6);
+        padding: var(--bz-space-5) var(--bz-space-3);
+        border-right: 1px solid var(--bz-border);
+        background: var(--bz-bg);
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: var(--bz-space-3);
+        padding: 0 var(--bz-space-2);
+      }
+
+      .mark {
+        display: grid;
+        place-items: center;
+        width: 1.75rem;
+        height: 1.75rem;
+        border-radius: 0.45rem;
+        background: var(--bz-accent-dim);
+        color: var(--bz-accent);
+        font-size: 0.8rem;
+        font-weight: 700;
+      }
+
+      .brand strong {
+        display: block;
+        font-size: var(--bz-text-md);
+        font-weight: 600;
+      }
+
+      .brand span {
+        color: var(--bz-muted);
+        font-size: var(--bz-text-xs);
+      }
+
+      .rail-group {
+        display: grid;
+        gap: 2px;
+      }
+
+      .rail-label {
+        padding: 0 var(--bz-space-3) var(--bz-space-2);
+        color: var(--bz-muted);
+        font-size: var(--bz-text-xs);
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .rail-item {
+        display: flex;
+        align-items: center;
+        gap: var(--bz-space-3);
+        min-height: 2.35rem;
+        padding: 0 var(--bz-space-3);
+        border: 0;
+        border-radius: var(--bz-radius-md);
+        background: transparent;
+        color: var(--bz-muted);
+        text-align: left;
+      }
+
+      .rail-item svg {
+        flex: 0 0 1rem;
+      }
+
+      .rail-item span:first-of-type {
+        flex: 1;
+      }
+
+      .rail-item:hover {
+        background: var(--bz-surface);
+        color: var(--bz-text);
+      }
+
+      .rail-item[aria-current="page"] {
+        background: var(--bz-surface);
+        color: var(--bz-text);
+        box-shadow: inset 2px 0 0 var(--bz-accent);
+      }
+
+      .rail-foot {
+        margin-top: auto;
+        display: grid;
+        gap: var(--bz-space-2);
+        padding: var(--bz-space-2);
+      }
+
+      .main {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        min-height: 100vh;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--bz-space-4);
+        padding: var(--bz-space-5) var(--bz-space-8) var(--bz-space-4);
+      }
+
+      .topbar h1 {
+        font-size: var(--bz-text-lg);
+        font-weight: 600;
+        letter-spacing: -0.03em;
+      }
+
+      .top-meta {
+        color: var(--bz-muted);
+        font-size: var(--bz-text-sm);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .mobile-nav {
+        display: none;
+      }
+
+      .stage {
+        flex: 1;
+        padding: 0 var(--bz-space-8) var(--bz-space-8);
+      }
+
+      .toast {
+        position: fixed;
+        right: var(--bz-space-6);
+        bottom: var(--bz-space-6);
+        z-index: 40;
+        padding: 0.65rem 0.85rem;
+        border: 1px solid var(--bz-border-strong);
+        border-radius: var(--bz-radius-md);
+        background: var(--bz-surface);
+        color: var(--bz-text);
+        font-size: var(--bz-text-sm);
+        animation: stage-enter var(--bz-t-enter) var(--bz-ease-out);
+      }
+
+      /* --- overview: one continuous monthly statement --- */
+      .statement {
+        display: grid;
+        grid-template-columns: minmax(18rem, 1.4fr) repeat(3, minmax(9.5rem, 0.7fr));
+        margin-bottom: var(--bz-space-6);
+        overflow: hidden;
+      }
+
+      .statement-cell {
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-start;
+        gap: var(--bz-space-3);
+        min-width: 0;
+        padding: var(--bz-space-5);
+        border: 0;
+        border-left: 1px solid var(--bz-border);
+        border-radius: 0;
+        background: transparent;
+        color: inherit;
+        text-align: left;
+      }
+
+      .statement-cell:first-child {
+        border-left: 0;
+      }
+
+      button.statement-cell:hover {
+        background: var(--bz-surface-hover);
+      }
+
+      .cell-label {
+        display: flex;
+        align-items: center;
+        gap: var(--bz-space-2);
+        color: var(--bz-muted);
+        font-size: var(--bz-text-sm);
+      }
+
+      .cell-dot {
+        width: 0.4rem;
+        height: 0.4rem;
+        border-radius: 99px;
+      }
+
+      .cell-dot.confirmed {
+        background: var(--bz-positive);
+        box-shadow: 0 0 0 3px color-mix(in srgb, #879a39 22%, transparent);
+      }
+
+      .cell-dot.provisional {
+        background: var(--bz-provisional);
+        box-shadow: 0 0 0 3px color-mix(in srgb, #d0a215 22%, transparent);
+      }
+
+      .cell-dot.review {
+        background: var(--bz-accent);
+        box-shadow: 0 0 0 3px color-mix(in srgb, #3aa99f 22%, transparent);
+      }
+
+      .cell-dot.blocking {
+        background: var(--bz-danger);
+        box-shadow: 0 0 0 3px color-mix(in srgb, #d14d41 22%, transparent);
+      }
+
+      .cell-value {
+        font-size: 1.35rem;
+        font-weight: 600;
+        letter-spacing: -0.03em;
+      }
+
+      .cell-foot {
+        margin-top: auto;
+        color: var(--bz-muted);
+        font-size: var(--bz-text-xs);
+      }
+
+      .cell-foot strong {
+        color: var(--bz-text);
+        font-weight: 600;
+      }
+
+      .hero-value {
+        font-size: var(--bz-text-hero);
+        font-weight: 600;
+        letter-spacing: -0.045em;
+        line-height: 1;
+      }
+
+      .hero-sub {
+        margin-top: var(--bz-space-3);
+        color: var(--bz-muted);
+        font-size: var(--bz-text-sm);
+      }
+
+      .tone-yellow .cell-value {
+        color: var(--bz-provisional);
+      }
+
+      .tone-red .cell-value {
+        color: var(--bz-danger);
+      }
+
+      .split {
+        display: grid;
+        grid-template-columns: 17rem minmax(0, 1fr);
+        gap: var(--bz-space-6);
+        padding: var(--bz-space-5);
+      }
+
+      .ring-wrap {
+        display: grid;
+        justify-items: center;
+        align-content: center;
+        gap: var(--bz-space-3);
+      }
+
+      .ring-wrap svg {
+        width: 9.5rem;
+        height: 9.5rem;
+      }
+
+      .cat-list {
+        display: grid;
+        align-content: start;
+      }
+
+      .cat-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: var(--bz-space-3);
+        align-items: center;
+        width: 100%;
+        min-height: 2.4rem;
+        padding: 0;
+        border: 0;
+        border-bottom: 1px solid var(--bz-border);
+        border-radius: 0;
+        background: transparent;
+        color: inherit;
+        text-align: left;
+      }
+
+      .cat-row:last-child {
+        border-bottom: 0;
+      }
+
+      .cat-row:hover {
+        color: var(--bz-accent);
+      }
+
+      .swatch {
+        display: inline-block;
+        width: 0.5rem;
+        height: 0.5rem;
+        margin-right: 0.5rem;
+        border-radius: 99px;
+      }
+
+      .bars {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 0.45rem;
+        align-items: end;
+        height: 4.5rem;
+        margin-top: var(--bz-space-4);
+      }
+
+      .bars i {
+        display: block;
+        border-radius: 3px 3px 0 0;
+        background: color-mix(in srgb, #3aa99f 55%, #282726);
+      }
+
+      .bar-labels {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 0.45rem;
+        margin-top: 0.35rem;
+        color: var(--bz-muted);
+        font-size: var(--bz-text-xs);
+        text-align: center;
+      }
+
+      .recent {
+        margin-top: var(--bz-space-6);
+        overflow: hidden;
+      }
+
+      .recent-head,
+      .panel-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: var(--bz-space-4) var(--bz-space-5);
+        border-bottom: 1px solid var(--bz-border);
+      }
+
+      /* --- rows --- */
+      .row {
+        display: grid;
+        grid-template-columns: 5.4rem minmax(0, 1fr) auto auto;
+        align-items: center;
+        gap: var(--bz-space-3);
+        width: 100%;
+        min-height: var(--bz-row-h);
+        padding: 0.55rem var(--bz-space-5);
+        border: 0;
+        border-bottom: 1px solid var(--bz-border);
+        border-radius: 0;
+        background: transparent;
+        color: inherit;
+        text-align: left;
+      }
+
+      .row:last-child {
+        border-bottom: 0;
+      }
+
+      .row:hover {
+        background: var(--bz-surface-hover);
+      }
+
+      .row .when,
+      .row .meta {
+        color: var(--bz-muted);
+        font-size: var(--bz-text-sm);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .row strong {
+        display: block;
+        overflow: hidden;
+        font-weight: 500;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .group-label {
+        padding: 0.7rem var(--bz-space-5) 0.25rem;
+        color: var(--bz-muted);
+        font-size: var(--bz-text-xs);
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        background: transparent;
+      }
+
+      .filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--bz-space-2);
+        align-items: center;
+        margin-bottom: var(--bz-space-4);
+      }
+
+      .filters .field {
+        max-width: 16rem;
+      }
+
+      .filters .select {
+        width: auto;
+        min-width: 10.5rem;
+      }
+
+      /* --- review desk: queue left, evidence and permitted actions right --- */
+      .desk {
+        display: grid;
+        grid-template-columns: minmax(17rem, 0.8fr) minmax(24rem, 1.2fr);
+        align-items: start;
+        gap: var(--bz-space-4);
+      }
+
+      .queue-pane {
+        overflow: hidden;
+      }
+
+      .queue-list {
+        display: grid;
+        gap: 2px;
+        padding: var(--bz-space-2);
+      }
+
+      .queue-item {
+        position: relative;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: var(--bz-space-3);
+        width: 100%;
+        padding: var(--bz-space-3);
+        border: 1px solid transparent;
+        border-radius: var(--bz-radius-md);
+        background: transparent;
+        color: inherit;
+        text-align: left;
+      }
+
+      .queue-item:hover {
+        background: var(--bz-surface-hover);
+      }
+
+      .queue-item[aria-current="true"] {
+        border-color: var(--bz-border-strong);
+        background: var(--bz-surface-hover);
+        box-shadow: inset 2px 0 0 var(--bz-accent);
+      }
+
+      .queue-item.is-blocking {
+        box-shadow: inset 2px 0 0 var(--bz-danger);
+      }
+
+      .queue-title {
+        display: block;
+        overflow: hidden;
+        font-weight: 500;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .queue-reason,
+      .queue-age {
+        display: block;
+        overflow: hidden;
+        color: var(--bz-muted);
+        font-size: var(--bz-text-xs);
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .queue-right {
+        text-align: right;
+        font-size: var(--bz-text-sm);
+      }
+
+      .evidence-pane {
+        position: sticky;
+        top: var(--bz-space-4);
+        overflow: hidden;
+      }
+
+      .evidence-body {
+        display: grid;
+        gap: var(--bz-space-5);
+        padding: var(--bz-space-5);
+      }
+
+      .prompt {
+        padding: var(--bz-space-3) var(--bz-space-4);
+        border: 1px solid var(--bz-border);
+        border-left: 2px solid var(--bz-provisional);
+        border-radius: var(--bz-radius-md);
+        background: var(--bz-bg);
+        font-size: var(--bz-text-sm);
+      }
+
+      .prompt.is-blocking {
+        border-left-color: var(--bz-danger);
+      }
+
+      .review-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--bz-space-2);
+        align-items: center;
+      }
+
+      .review-actions .select {
+        width: auto;
+        min-width: 11rem;
+      }
+
+      /* --- drawer --- */
+      .drawer-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 20;
+        border: 0;
+        background: color-mix(in srgb, #100f0f 62%, transparent);
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .drawer-backdrop.open {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      .drawer {
+        position: fixed;
+        top: 0;
+        right: 0;
+        z-index: 30;
+        display: flex;
+        flex-direction: column;
+        width: min(26rem, 100%);
+        height: 100%;
+        border-left: 1px solid var(--bz-border);
+        background: var(--bz-surface);
+        transform: translateX(12px);
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .drawer.open {
+        transform: none;
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      .drawer-head,
+      .drawer-body {
+        padding: var(--bz-space-5);
+      }
+
+      .drawer-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: var(--bz-space-3);
+        border-bottom: 1px solid var(--bz-border);
+      }
+
+      .drawer-body {
+        overflow: auto;
+        display: grid;
+        gap: var(--bz-space-5);
+      }
+
+      .drawer-body > .btn {
+        justify-self: start;
+      }
+
+      .kv {
+        display: grid;
+        grid-template-columns: 8.5rem minmax(0, 1fr);
+        gap: var(--bz-space-2) var(--bz-space-3);
+        font-size: var(--bz-text-sm);
+      }
+
+      .kv dt {
+        color: var(--bz-muted);
+      }
+
+      .claim {
+        padding: var(--bz-space-3) 0;
+        border-top: 1px solid var(--bz-border);
+        font-size: var(--bz-text-sm);
+      }
+
+      /* --- onboarding --- */
+      .onboard {
+        display: grid;
+        place-items: center;
+        min-height: 100vh;
+        padding: var(--bz-space-8) var(--bz-space-5);
+      }
+
+      .onboard-card {
+        width: min(36rem, 100%);
+        padding: var(--bz-space-8);
+      }
+
+      .steps {
+        display: flex;
+        gap: var(--bz-space-2);
+        margin: var(--bz-space-5) 0 var(--bz-space-6);
+      }
+
+      .step-dot {
+        flex: 1;
+        height: 4px;
+        padding: 0;
+        border: 0;
+        border-radius: 99px;
+        background: var(--bz-border-strong);
+      }
+
+      .step-dot[aria-current="step"],
+      .step-dot.is-done {
+        background: var(--bz-accent);
+      }
+
+      .onboard h1 {
+        font-size: 1.5rem;
+        letter-spacing: -0.03em;
+      }
+
+      .onboard .lede {
+        margin: var(--bz-space-3) 0 var(--bz-space-6);
+        color: var(--bz-muted);
+      }
+
+      .stack {
+        display: grid;
+        gap: var(--bz-space-3);
+      }
+
+      .field-label {
+        display: grid;
+        gap: 0.35rem;
+        font-size: var(--bz-text-sm);
+      }
+
+      .account-toggle {
+        display: flex;
+        align-items: center;
+        gap: var(--bz-space-3);
+        width: 100%;
+        padding: var(--bz-space-3) var(--bz-space-4);
+        text-align: left;
+      }
+
+      .account-toggle[aria-pressed="true"] {
+        border-color: var(--bz-accent);
+        background: var(--bz-accent-dim);
+      }
+
+      .onboard-nav {
+        display: flex;
+        justify-content: space-between;
+        gap: var(--bz-space-3);
+        margin-top: var(--bz-space-6);
+      }
+
+      .path {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.75rem;
+        color: var(--bz-muted);
+      }
+
+      .probe {
+        display: grid;
+        gap: var(--bz-space-2);
+        padding: var(--bz-space-3) var(--bz-space-4);
+        border: 1px solid var(--bz-border);
+        border-radius: var(--bz-radius-md);
+        background: var(--bz-bg);
+        font-size: var(--bz-text-sm);
+      }
+
+      .probe-line {
+        display: flex;
+        align-items: center;
+        gap: var(--bz-space-2);
+        color: var(--bz-muted);
+      }
+
+      .probe-line b {
+        color: var(--bz-text);
+        font-weight: 500;
+      }
+
+      .spinner {
+        flex: 0 0 auto;
+        width: 0.75rem;
+        height: 0.75rem;
+        border: 2px solid var(--bz-border-strong);
+        border-top-color: var(--bz-accent);
+        border-radius: 99px;
+        animation: spin 640ms linear infinite;
+      }
+
+      .gate-hint {
+        max-width: 18rem;
+        color: var(--bz-muted);
+        font-size: var(--bz-text-xs);
+        text-align: right;
+      }
+
+      .empty {
+        padding: var(--bz-space-6);
+        color: var(--bz-muted);
+      }
+
+      @media (max-width: 64rem) {
+        .split,
+        .desk {
+          grid-template-columns: 1fr;
+        }
+
+        .statement {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .statement-cell:nth-child(3) {
+          border-left: 0;
+        }
+
+        .statement-cell:nth-child(n + 3) {
+          border-top: 1px solid var(--bz-border);
+        }
+
+        .evidence-pane {
+          position: static;
+        }
+      }
+
+      @media (max-width: 52rem) {
+        .app {
+          grid-template-columns: 1fr;
+        }
+
+        .rail {
+          display: none;
+        }
+
+        .mobile-nav {
+          display: flex;
+          gap: 2px;
+          padding: var(--bz-space-2);
+          border-bottom: 1px solid var(--bz-border);
+        }
+
+        .mobile-nav .rail-item {
+          flex: 1;
+          justify-content: center;
+          min-height: 2.5rem;
+          font-size: var(--bz-text-sm);
+        }
+
+        .topbar,
+        .stage {
+          padding-left: var(--bz-space-4);
+          padding-right: var(--bz-space-4);
+        }
+
+        .statement {
+          grid-template-columns: 1fr;
+        }
+
+        .statement-cell {
+          border-left: 0;
+        }
+
+        .statement-cell + .statement-cell {
+          border-top: 1px solid var(--bz-border);
+        }
+
+        .row {
+          grid-template-columns: 1fr auto;
+        }
+
+        .row .when {
+          display: none;
+        }
+
+        .hero-value {
+          font-size: 1.85rem;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation: none !important;
+          transition: none !important;
+        }
+
+        .btn:active,
+        .icon-btn:active,
+        .rail-item:active,
+        .chip:active,
+        .account-toggle:active,
+        .statement-cell[data-action]:active,
+        .queue-item:active {
+          transform: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script>
+      const KEY = "bz.quietRail.synthesis.v1";
+      const CAT_COLOR = {
+        Groceries: "var(--bz-cat-groceries)",
+        Dining: "var(--bz-cat-dining)",
+        Transport: "var(--bz-cat-transport)",
+        Utilities: "var(--bz-cat-utilities)",
+        Health: "var(--bz-cat-health)",
+        Shopping: "var(--bz-cat-shopping)",
+        Uncategorized: "var(--bz-cat-uncat)",
+      };
+
+      const ACCOUNTS = [
+        {
+          id: "dbs",
+          name: "DBS Live Fresh",
+          kind: "Credit card",
+          inbox: "/volume1/Billzebub-Inbox/dbs-live-fresh",
+          artifacts: [
+            { file: "dbs-live-fresh-2026-09.pdf", parser: "dbs_credit_card v3", ok: true },
+            { file: "dbs-live-fresh-2026-08.pdf", parser: "parser matched, totals unverified", ok: false },
+          ],
+        },
+        {
+          id: "citi",
+          name: "Citi Cash Back+",
+          kind: "Credit card",
+          inbox: "/volume1/Billzebub-Inbox/citi-cash-back",
+          artifacts: [{ file: "citi-cash-back-2026-09.pdf", parser: "citi_credit_card v2", ok: true }],
+        },
+        {
+          id: "uob",
+          name: "UOB Lady's Card",
+          kind: "Credit card",
+          inbox: "/volume1/Billzebub-Inbox/uob-ladys",
+          artifacts: [{ file: "uob-ladys-2026-09.pdf", parser: "uob_credit_card v2", ok: true }],
+        },
+        {
+          id: "paylah",
+          name: "DBS PayLah",
+          kind: "Wallet",
+          inbox: "/volume1/Billzebub-Inbox/paylah",
+          artifacts: [{ file: "paylah-2026-09.eml", parser: "paylah_wallet v1", ok: true }],
+        },
+      ];
+
+      const CATEGORIES = [
+        "Groceries",
+        "Dining",
+        "Transport",
+        "Utilities",
+        "Health",
+        "Shopping",
+      ];
+
+      const TXNS = [
+        txn("t1", "2026-09-13", "Toast Box Raffles Place", "paylah", -680, "Dining", "expense", "provisional", {
+          raw: "TOAST BOX RAFFLES PL",
+          claims: [
+            "Real-time Claim · Apple Pay · 13 Sep 2026, 8:41 AM · Authorized S$ 6.80",
+          ],
+        }),
+        txn("t2", "2026-09-13", "Grab", "uob", -1420, "Transport", "expense", "provisional", {
+          raw: "GRAB *TRIP 8C21",
+          claims: [
+            "Real-time Claim · Apple Pay · 13 Sep 2026, 9:06 AM · Authorized S$ 14.20",
+          ],
+        }),
+        txn("t3", "2026-09-12", "Cold Storage Holland V", "dbs", -8435, "Groceries", "expense", "confirmed", {
+          raw: "COLD STORAGE HOLLAND V",
+          claims: [
+            "Statement Claim · DBS Live Fresh Aug/Sep cycle · Posted S$ 84.35",
+            "Real-time Claim · Apple Pay · 12 Sep 2026, 6:18 PM · Authorized S$ 84.35",
+          ],
+        }),
+        txn("t4", "2026-09-12", "SimplyGo", "dbs", -240, "Transport", "expense", "confirmed", {
+          raw: "SIMPLYGO TRANSIT",
+          claims: ["Statement Claim · DBS Live Fresh · Posted S$ 2.40"],
+        }),
+        txn("t5", "2026-09-11", "Singtel", "citi", -6890, "Utilities", "expense", "confirmed", {
+          raw: "SINGTEL MOBILE",
+          claims: ["Statement Claim · Citi Cash Back+ · Posted S$ 68.90"],
+        }),
+        txn("t6", "2026-09-11", "FairPrice Finest Ang Mo Kio", "citi", -5210, "Groceries", "expense", "confirmed", {
+          raw: "NTUC FP FINEST AMK HUB",
+          claims: ["Statement Claim · Citi Cash Back+ · Posted S$ 52.10"],
+        }),
+        txn("t7", "2026-09-10", "Uniqlo Orchard", "uob", -7990, "Shopping", "expense", "confirmed", {
+          raw: "UNIQLO ION ORCHARD",
+          claims: [
+            "Statement Claim · UOB Lady's Card · Posted S$ 79.90",
+            "Real-time Claim · Apple Pay · 10 Sep 2026, 3:02 PM · Authorized S$ 79.90",
+          ],
+        }),
+        txn("t8", "2026-09-10", "PayLah top-up", "citi", -10000, "Uncategorized", "transfer", "confirmed", {
+          raw: "DBS PAYLAH FUNDING",
+          claims: [
+            "Statement Claim · Citi Cash Back+ · Posted S$ 100.00 · Transfer to DBS PayLah",
+          ],
+        }),
+        txn("t9", "2026-09-09", "Din Tai Fung ION", "uob", -12840, "Dining", "expense", "confirmed", {
+          raw: "DIN TAI FUNG ION",
+          claims: ["Statement Claim · UOB Lady's Card · Posted S$ 128.40"],
+        }),
+        txn("t10", "2026-09-08", "SP Services", "dbs", -9417, "Utilities", "expense", "confirmed", {
+          raw: "SP SERVICES LTD",
+          claims: ["Statement Claim · DBS Live Fresh · Posted S$ 94.17"],
+        }),
+        txn("t11", "2026-09-08", "Guardian Junction 8", "citi", -2350, "Health", "expense", "confirmed", {
+          raw: "GUARDIAN J8",
+          claims: ["Statement Claim · Citi Cash Back+ · Posted S$ 23.50"],
+        }),
+        txn("t12", "2026-09-07", "Shopee", "uob", -4560, "Uncategorized", "expense", "confirmed", {
+          raw: "SHOPEE SINGAPORE",
+          review: "r1",
+          claims: ["Statement Claim · UOB Lady's Card · Posted S$ 45.60"],
+        }),
+        txn("t13", "2026-09-06", "Koufu Bedok Mall", "paylah", -820, "Dining", "expense", "confirmed", {
+          raw: "KOUFU BEDOK MALL",
+          claims: ["Statement Claim · PayLah mailbox · Posted S$ 8.20"],
+        }),
+        txn("t14", "2026-09-05", "ActiveSG Swim", "citi", -250, "Health", "expense", "confirmed", {
+          raw: "ACTIVESG SWIM",
+          claims: ["Statement Claim · Citi Cash Back+ · Posted S$ 2.50"],
+        }),
+        txn("t15", "2026-09-04", "Shell Alexandra", "dbs", -6800, "Transport", "expense", "confirmed", {
+          raw: "SHELL 228 ALEXANDRA",
+          claims: ["Statement Claim · DBS Live Fresh · Posted S$ 68.00"],
+        }),
+        txn("t16", "2026-09-03", "YouTube Premium", "citi", -1898, "Utilities", "expense", "confirmed", {
+          raw: "GOOGLE YOUTUBEPREMIUM",
+          claims: ["Statement Claim · Citi Cash Back+ · Posted S$ 18.98"],
+        }),
+        txn("t17", "2026-09-03", "Carousell", "paylah", -3200, "Uncategorized", "expense", "confirmed", {
+          raw: "CAROUSELL PTE LTD",
+          review: "r2",
+          claims: ["Statement Claim · PayLah mailbox · Posted S$ 32.00"],
+        }),
+        txn("t18", "2026-09-02", "Watsons NEX", "uob", -1870, "Health", "expense", "confirmed", {
+          raw: "WATSONS NEX",
+          claims: ["Statement Claim · UOB Lady's Card · Posted S$ 18.70"],
+        }),
+        txn("t19", "2026-09-01", "IncomeShield", "dbs", -18640, "Health", "expense", "confirmed", {
+          raw: "NTUC INCOME SHIELD",
+          claims: ["Statement Claim · DBS Live Fresh · Posted S$ 186.40"],
+        }),
+        txn("t20", "2026-09-01", "FairPrice Xtra Jurong", "citi", -6120, "Groceries", "expense", "confirmed", {
+          raw: "NTUC FP XTRA JEM",
+          claims: ["Statement Claim · Citi Cash Back+ · Posted S$ 61.20"],
+        }),
+        txn("t21", "2026-09-09", "Starbucks ION", "uob", -720, "Dining", "expense", "confirmed", {
+          raw: "STARBUCKS ION",
+          claims: ["Statement Claim · UOB Lady's Card · Posted S$ 7.20"],
+        }),
+        txn("t22", "2026-09-12", "Deliveroo", "uob", -3480, "Dining", "expense", "confirmed", {
+          raw: "DELIVEROO SINGAPORE",
+          claims: ["Statement Claim · UOB Lady's Card · Posted S$ 34.80"],
+        }),
+        txn("t23", "2026-09-11", "IKEA Alexandra", "dbs", -21460, "Shopping", "expense", "confirmed", {
+          raw: "IKEA ALEXANDRA",
+          claims: [
+            "Statement Claim · DBS Live Fresh · Posted S$ 214.60",
+            "Real-time Claim · Apple Pay · 11 Sep 2026, 2:11 PM · Authorized S$ 214.60",
+          ],
+        }),
+        txn("t24", "2026-09-10", "Golden Village ION", "uob", -2890, "Dining", "expense", "confirmed", {
+          raw: "GV ION ORCHARD",
+          claims: ["Statement Claim · UOB Lady's Card · Posted S$ 28.90"],
+        }),
+        txn("t25", "2026-09-08", "Don Don Donki Orchard", "citi", -6720, "Groceries", "expense", "confirmed", {
+          raw: "DON DON DONKI ORCHARD",
+          claims: ["Statement Claim · Citi Cash Back+ · Posted S$ 67.20"],
+        }),
+        txn("t26", "2026-09-06", "Decathlon City Square", "citi", -8990, "Shopping", "expense", "confirmed", {
+          raw: "DECATHLON CITY SQUARE",
+          claims: ["Statement Claim · Citi Cash Back+ · Posted S$ 89.90"],
+        }),
+        txn("t27", "2026-09-05", "Parkway Shenton", "dbs", -8500, "Health", "expense", "confirmed", {
+          raw: "PARKWAY SHENTON",
+          claims: ["Statement Claim · DBS Live Fresh · Posted S$ 85.00"],
+        }),
+        txn("t28", "2026-09-03", "Lazada", "uob", -5420, "Shopping", "expense", "confirmed", {
+          raw: "LAZADA SOUTH EAST ASIA",
+          claims: ["Statement Claim · UOB Lady's Card · Posted S$ 54.20"],
+        }),
+        txn("t29", "2026-09-02", "Giant Tampines", "citi", -7430, "Groceries", "expense", "confirmed", {
+          raw: "GIANT TAMPINES MALL",
+          claims: ["Statement Claim · Citi Cash Back+ · Posted S$ 74.30"],
+        }),
+        txn("t30", "2026-09-09", "Peach Garden OCBC Centre", "uob", -15680, "Dining", "expense", "confirmed", {
+          raw: "PEACH GARDEN OCBC CTR",
+          claims: ["Statement Claim · UOB Lady's Card · Posted S$ 156.80"],
+        }),
+        txn("t31", "2026-09-04", "SPC Alexandra", "dbs", -7200, "Transport", "expense", "confirmed", {
+          raw: "SPC ALEXANDRA",
+          claims: ["Statement Claim · DBS Live Fresh · Posted S$ 72.00"],
+        }),
+        txn("t32", "2026-09-07", "foodpanda", "paylah", -2210, "Dining", "expense", "confirmed", {
+          raw: "FOODPANDA SINGAPORE",
+          claims: ["Statement Claim · PayLah mailbox · Posted S$ 22.10"],
+        }),
+        txn("t33", "2026-09-01", "Apple Orchard", "dbs", -18900, "Shopping", "expense", "confirmed", {
+          raw: "APPLE ORCHARD ROAD",
+          claims: ["Statement Claim · DBS Live Fresh · Posted S$ 189.00"],
+        }),
+        txn("t34", "2026-09-11", "GrabFood", "uob", -3120, "Dining", "expense", "confirmed", {
+          raw: "GRABFOOD PTE LTD",
+          claims: ["Statement Claim · UOB Lady's Card · Posted S$ 31.20"],
+        }),
+        txn("t35", "2026-09-05", "Cotton On ION", "uob", -6780, "Shopping", "expense", "confirmed", {
+          raw: "COTTON ON ION",
+          claims: ["Statement Claim · UOB Lady's Card · Posted S$ 67.80"],
+        }),
+      ];
+
+      const SEED_REVIEWS = [
+        {
+          id: "r1",
+          severity: "attention",
+          condition: "categorization_needed",
+          title: "Category needed",
+          subject: "Shopee · UOB Lady's Card",
+          account: "UOB Lady's Card",
+          raw: "SHOPEE SINGAPORE",
+          openedDays: 6,
+          amountCents: 4560,
+          body: "Shopee on 7 Sep is a confirmed Transaction on UOB Lady's Card. Posted Amount is S$ 45.60. The statement text does not map to a Category.",
+          txnId: "t12",
+          decisions: [],
+        },
+        {
+          id: "r2",
+          severity: "attention",
+          condition: "categorization_needed",
+          title: "Category needed",
+          subject: "Carousell · DBS PayLah",
+          account: "DBS PayLah",
+          raw: "CAROUSELL PTE LTD",
+          openedDays: 10,
+          amountCents: 3200,
+          body: "Carousell on 3 Sep is a confirmed Transaction on DBS PayLah. Posted Amount is S$ 32.00. Assign a Category or leave the decision for later.",
+          txnId: "t17",
+          decisions: [],
+        },
+        {
+          id: "r3",
+          severity: "attention",
+          condition: "unmatched_realtime_claim",
+          title: "Unmatched Real-time Claim",
+          subject: "Ya Kun Kaya Toast · DBS PayLah",
+          account: "DBS PayLah",
+          raw: "YA KUN KAYA TOAST",
+          openedDays: 16,
+          amountCents: 540,
+          body: "Ya Kun Kaya Toast on 28 Aug still has only a Real-time Claim for S$ 5.40 on DBS PayLah. Later PayLah mailbox history has already been processed.",
+          txnId: null,
+          claims: ["Real-time Claim · Apple Pay · 28 Aug 2026, 8:12 AM · Authorized S$ 5.40"],
+          decisions: [
+            ["mark_unconfirmed", "Mark Unconfirmed"],
+            ["keep_waiting", "Keep waiting"],
+            ["exclude", "Exclude Claim"],
+          ],
+        },
+        {
+          id: "r4",
+          severity: "attention",
+          condition: "reconciliation_ambiguous",
+          title: "Reconciliation is ambiguous",
+          subject: "Grab and GrabFood · UOB Lady's Card",
+          account: "UOB Lady's Card",
+          raw: "GRAB *TRIP 4F09 · GRABFOOD PTE LTD",
+          openedDays: 15,
+          amountCents: 1840,
+          body: "Grab *TRIP 4F09 (Real-time, 29 Aug, S$ 18.40) and GRABFOOD PTE LTD (Statement, 29 Aug, S$ 18.40) both sit on UOB Lady's Card. Confirm they are one Transaction, keep them separate, or exclude the Real-time Claim.",
+          txnId: null,
+          claims: [
+            "Real-time Claim · Apple Pay · 29 Aug 2026, 12:41 PM · Authorized S$ 18.40",
+            "Statement Claim · UOB Lady's Card · Posted S$ 18.40 · 29 Aug 2026",
+          ],
+          decisions: [
+            ["confirm_match", "Confirm match"],
+            ["keep_separate", "Keep separate"],
+            ["exclude_realtime", "Exclude Real-time Claim"],
+          ],
+        },
+        {
+          id: "r5",
+          severity: "blocking",
+          condition: "extraction_failed",
+          title: "Failed Extraction",
+          subject: "dbs-live-fresh-2026-08.pdf · quarantined",
+          account: "DBS Live Fresh",
+          raw: "dbs-live-fresh-2026-08.pdf",
+          openedDays: 3,
+          amountCents: null,
+          body: "Source Artifact dbs-live-fresh-2026-08.pdf failed validation. Page totals did not match the statement summary. No Claims were created. The file stays quarantined.",
+          txnId: null,
+          claims: ["No Claims created. The Source Artifact stays in /volume1/Billzebub-Inbox/dbs-live-fresh/quarantine"],
+          decisions: [
+            ["retry", "Retry Extraction"],
+            ["keep_quarantine", "Keep quarantined"],
+          ],
+        },
+      ];
+
+      function txn(id, date, counterparty, account, cents, category, kind, state, extra) {
+        return {
+          id,
+          date,
+          counterparty,
+          account,
+          cents,
+          category,
+          kind,
+          state,
+          raw: extra.raw,
+          claims: extra.claims,
+          review: extra.review || null,
+          corrections: extra.corrections || [],
+        };
+      }
+
+      const ICONS = {
+        overview:
+          '<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg>',
+        review:
+          '<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3.5h10v10H3z"/><path d="M6 8h4M6 10.5h3"/></svg>',
+        transactions:
+          '<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4.5h10M3 8h10M3 11.5h7"/></svg>',
+        setup:
+          '<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="2.2"/><path d="M8 2.5v1.4M8 12.1v1.4M2.5 8h1.4M12.1 8h1.4M4.1 4.1l1 1M10.9 10.9l1 1M11.9 4.1l-1 1M5.1 10.9l-1 1"/></svg>',
+        close:
+          '<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg>',
+      };
+
+      /* Each step owns its own gate, so Continue cannot advance a half-finished
+         setup and no step-order branching leaks into the click handler. */
+      const STEPS = [
+        {
+          id: "workspace",
+          title: "This machine keeps the history",
+          lede: "Billzebub builds a local financial history from statements, PayLah mail, and Apple Pay. Reporting Currency is SGD. Nothing on this screen talks to a NAS wizard or a compose file.",
+          body: () => renderStepWorkspace(),
+          valid: () => true,
+          hint: "",
+        },
+        {
+          id: "accounts",
+          title: "Watch these Financial Accounts",
+          lede: "Each card is its own Financial Account. PayLah is a wallet. v1 reads DBS, Citi, and UOB statements plus PayLah mail.",
+          body: () => renderStepAccounts(),
+          valid: () => state.selectedAccounts.length > 0,
+          hint: "Watch at least one Financial Account.",
+        },
+        {
+          id: "sources",
+          title: "Where Source Artifacts land",
+          lede: "Drop statements into an inbox folder per Financial Account. A failed Extraction creates a Pending Review and no Claims.",
+          body: () => renderStepSources(),
+          valid: () => state.probe === "ok",
+          hint: "Read the inbox folders once so Billzebub can see the Source Artifacts.",
+        },
+        {
+          id: "categories",
+          title: "Categories for Expenses",
+          lede: "A Category is a reporting label. It is not Transaction Kind. Transfers stay out of spending totals on purpose.",
+          body: () => renderStepCategories(),
+          valid: () => activeCategories().length > 0,
+          hint: "Keep at least one Category for Expense reporting.",
+        },
+        {
+          id: "ready",
+          title: "September is already on disk",
+          lede: "The next screen is Overview. Review stays one click away with a badge. Setup remains in the rail if you need to replay it.",
+          body: () => renderStepReady(),
+          valid: () => state.extract === "done",
+          hint: "Run the first Extraction so September has Claims and Transactions.",
+        },
+      ];
+
+      const state = loadState();
+
+      function loadState() {
+        const saved = safeParse(sessionStorage.getItem(KEY));
+        const route = parseHash();
+        const onboarded = saved.onboarded === true;
+        const page = route.page || (onboarded ? "overview" : "onboarding");
+        return {
+          onboarded,
+          step: Number.isInteger(saved.step) ? saved.step : 0,
+          selectedAccounts: saved.selectedAccounts || ["dbs", "citi", "uob", "paylah"],
+          shortcut: saved.shortcut !== false,
+          extraCategory: saved.extraCategory || "",
+          enabledCategories: saved.enabledCategories || CATEGORIES.slice(),
+          probe: saved.probe === "ok" ? "ok" : "idle",
+          extract: saved.extract === "done" ? "done" : "idle",
+          categories: saved.categories || {},
+          resolved: saved.resolved || [],
+          route: page,
+          drawer: route.drawer,
+          q: "",
+          account: "",
+          category: "",
+          confirmation: route.confirmation || "",
+          reviewFilter: route.reviewFilter || "",
+          reviewSelection: "",
+          toast: "",
+          caret: 0,
+          focus: "",
+          seen: {},
+        };
+      }
+
+      function persist() {
+        sessionStorage.setItem(
+          KEY,
+          JSON.stringify({
+            onboarded: state.onboarded,
+            step: state.step,
+            selectedAccounts: state.selectedAccounts,
+            shortcut: state.shortcut,
+            extraCategory: state.extraCategory,
+            enabledCategories: state.enabledCategories,
+            probe: state.probe,
+            extract: state.extract,
+            categories: state.categories,
+            resolved: state.resolved,
+          }),
+        );
+      }
+
+      /* Motion frequency gate. An entrance plays once per session for a given
+         context key, so a second visit to Overview and every in-route update
+         (search, filter, a resolved decision) stay still. */
+      function isFresh(key) {
+        if (state.seen[key]) return false;
+        state.seen[key] = true;
+        return true;
+      }
+
+      function reducedMotion() {
+        return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      }
+
+      function safeParse(raw) {
+        try {
+          return raw ? JSON.parse(raw) : {};
+        } catch {
+          return {};
+        }
+      }
+
+      function parseHash() {
+        const raw = location.hash.replace(/^#\/?/, "");
+        const [page, rest] = raw.split("/");
+        if (page === "onboarding" || page === "setup") return { page: "onboarding" };
+        if (page === "review") return { page: "review", reviewFilter: rest || "" };
+        if (page === "transactions") {
+          if (rest && rest.startsWith("t")) return { page: "transactions", drawer: rest };
+          return { page: "transactions", confirmation: rest || "" };
+        }
+        if (page === "overview") return { page: "overview" };
+        return { page: "" };
+      }
+
+      function setHash() {
+        let hash = "#/" + state.route;
+        if (state.route === "review" && state.reviewFilter) hash += "/" + state.reviewFilter;
+        if (state.route === "transactions" && state.drawer) hash += "/" + state.drawer;
+        else if (state.route === "transactions" && state.confirmation) hash += "/" + state.confirmation;
+        if (location.hash !== hash) history.replaceState(null, "", hash);
+      }
+
+      function go(page, extras) {
+        state.route = page;
+        Object.assign(state, extras || {});
+        if (page !== "transactions") state.drawer = null;
+        persist();
+        setHash();
+        render();
+      }
+
+      function money(cents, signed) {
+        const sign = signed ? (cents < 0 ? "−" : cents > 0 ? "+" : "") : "";
+        const abs = Math.abs(cents);
+        const whole = Math.floor(abs / 100).toLocaleString("en-SG");
+        const frac = String(abs % 100).padStart(2, "0");
+        return sign + "S$ " + whole + "." + frac;
+      }
+
+      function accountName(id) {
+        return ACCOUNTS.find((item) => item.id === id)?.name || id;
+      }
+
+      function txnCategory(item) {
+        return state.categories[item.id] || item.category;
+      }
+
+      function reviews() {
+        return SEED_REVIEWS.filter((item) => !state.resolved.includes(item.id));
+      }
+
+      /* Blocking Extractions gate the whole ledger, so they lead the queue.
+         Everything else queues oldest first. */
+      function filteredReviews() {
+        return reviews()
+          .filter((item) => {
+            if (state.reviewFilter === "blocking") return item.severity === "blocking";
+            if (state.reviewFilter === "attention") return item.severity === "attention";
+            return true;
+          })
+          .sort((a, b) => {
+            if (a.severity !== b.severity) return a.severity === "blocking" ? -1 : 1;
+            return b.openedDays - a.openedDays;
+          });
+      }
+
+      function openedLabel(item) {
+        return "opened " + item.openedDays + (item.openedDays === 1 ? " day ago" : " days ago");
+      }
+
+      function selectedReview(items) {
+        return items.find((item) => item.id === state.reviewSelection) || items[0] || null;
+      }
+
+      function advanceSelection(resolvedId) {
+        if (state.reviewSelection && state.reviewSelection !== resolvedId) return;
+        const remaining = filteredReviews().filter((item) => item.id !== resolvedId);
+        state.reviewSelection = remaining[0]?.id || "";
+      }
+
+      function activeCategories() {
+        const extra = state.extraCategory.trim();
+        const base = CATEGORIES.filter((name) => state.enabledCategories.includes(name));
+        return extra && !base.includes(extra) ? base.concat(extra) : base;
+      }
+
+      function watchedAccounts() {
+        return ACCOUNTS.filter((item) => state.selectedAccounts.includes(item.id));
+      }
+
+      function firstBlockedStep() {
+        const index = STEPS.findIndex((step) => !step.valid());
+        return index === -1 ? STEPS.length - 1 : index;
+      }
+
+      function liveTxns() {
+        return TXNS.map((item) => ({ ...item, category: txnCategory(item) })).sort((a, b) => {
+          if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+          return Math.abs(b.cents) - Math.abs(a.cents);
+        });
+      }
+
+      function spendingTxns() {
+        return liveTxns().filter((item) => item.kind === "expense");
+      }
+
+      function monthTotals() {
+        const confirmed = spendingTxns()
+          .filter((item) => item.state === "confirmed")
+          .reduce((sum, item) => sum + Math.abs(item.cents), 0);
+        const provisional = spendingTxns()
+          .filter((item) => item.state === "provisional")
+          .reduce((sum, item) => sum + Math.abs(item.cents), 0);
+        return { confirmed, provisional, estimated: confirmed + provisional };
+      }
+
+      function categoryTotals() {
+        const map = new Map();
+        for (const item of spendingTxns()) {
+          if (item.state !== "confirmed") continue;
+          map.set(item.category, (map.get(item.category) || 0) + Math.abs(item.cents));
+        }
+        return [...map.entries()]
+          .map(([name, cents]) => ({ name, cents }))
+          .sort((a, b) => b.cents - a.cents);
+      }
+
+      function weekBars() {
+        const days = ["2026-09-07", "2026-09-08", "2026-09-09", "2026-09-10", "2026-09-11", "2026-09-12", "2026-09-13"];
+        const values = days.map((date) =>
+          spendingTxns()
+            .filter((item) => item.date === date)
+            .reduce((sum, item) => sum + Math.abs(item.cents), 0),
+        );
+        const max = Math.max(...values, 1);
+        return values.map((cents, i) => ({
+          label: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][i],
+          pct: Math.max(8, Math.round((cents / max) * 100)),
+        }));
+      }
+
+      function filteredTxns() {
+        const q = state.q.trim().toLowerCase();
+        return liveTxns().filter((item) => {
+          if (state.account && item.account !== state.account) return false;
+          if (state.category && item.category !== state.category) return false;
+          if (state.confirmation === "confirmed" && item.state !== "confirmed") return false;
+          if (state.confirmation === "provisional" && item.state !== "provisional") return false;
+          if (state.confirmation === "review" && !item.review) return false;
+          if (state.confirmation === "review" && state.resolved.includes(item.review)) return false;
+          if (q) {
+            const hay = [item.counterparty, accountName(item.account), item.category, item.raw]
+              .join(" ")
+              .toLowerCase();
+            if (!hay.includes(q)) return false;
+          }
+          return true;
+        });
+      }
+
+      function groupTxns(items) {
+        const buckets = [
+          { key: "Today", dates: ["2026-09-13"], rows: [] },
+          { key: "Yesterday", dates: ["2026-09-12"], rows: [] },
+          { key: "This week", dates: ["2026-09-11", "2026-09-10", "2026-09-09", "2026-09-08", "2026-09-07"], rows: [] },
+          { key: "Earlier in September", dates: [], rows: [] },
+        ];
+        for (const item of items) {
+          const hit = buckets.find((bucket) => bucket.dates.includes(item.date));
+          (hit || buckets[3]).rows.push(item);
+        }
+        return buckets.filter((bucket) => bucket.rows.length);
+      }
+
+      function toast(message) {
+        state.toast = message;
+        render();
+        window.clearTimeout(toast._t);
+        toast._t = window.setTimeout(() => {
+          state.toast = "";
+          render();
+        }, 1600);
+      }
+
+      function assignCategory(txnId, name) {
+        if (!name) return;
+        state.categories[txnId] = name;
+        const item = TXNS.find((row) => row.id === txnId);
+        if (item?.review) {
+          advanceSelection(item.review);
+          state.resolved = state.resolved.filter((id) => id !== item.review).concat(item.review);
+        }
+        persist();
+        toast("Category assigned to " + (item?.counterparty || "Transaction"));
+      }
+
+      function resolveReview(id, label) {
+        advanceSelection(id);
+        state.resolved = state.resolved.concat(id);
+        persist();
+        toast(label);
+      }
+
+      function runProbe() {
+        state.probe = "running";
+        render();
+        window.clearTimeout(runProbe._t);
+        runProbe._t = window.setTimeout(
+          () => {
+            state.probe = "ok";
+            persist();
+            render();
+          },
+          reducedMotion() ? 120 : 900,
+        );
+      }
+
+      function runExtraction() {
+        state.extract = "running";
+        render();
+        window.clearTimeout(runExtraction._t);
+        runExtraction._t = window.setTimeout(
+          () => {
+            state.extract = "done";
+            persist();
+            render();
+          },
+          reducedMotion() ? 160 : 1400,
+        );
+      }
+
+      function escapeHtml(value) {
+        return String(value)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;");
+      }
+
+      function navItems() {
+        const pending = reviews();
+        const blocking = pending.some((item) => item.severity === "blocking");
+        return [
+          { id: "overview", label: "Overview", icon: ICONS.overview },
+          {
+            id: "review",
+            label: "Review",
+            icon: ICONS.review,
+            count: pending.length,
+            blocking,
+          },
+          { id: "transactions", label: "Transactions", icon: ICONS.transactions },
+        ];
+      }
+
+      function renderNav(item) {
+        const current = state.route === item.id ? ' aria-current="page"' : "";
+        const badge = item.count
+          ? `<span class="badge ${item.blocking ? "badge-blocking" : "badge-attention"}">${item.count}</span>`
+          : "";
+        return `<button class="rail-item" type="button" data-action="nav" data-page="${item.id}"${current}>${item.icon}<span>${item.label}</span>${badge}</button>`;
+      }
+
+      function ringSvg(parts) {
+        const total = parts.reduce((sum, part) => sum + part.cents, 0) || 1;
+        const r = 36;
+        const c = 2 * Math.PI * r;
+        let offset = 0;
+        const segs = parts
+          .map((part) => {
+            const len = (part.cents / total) * c;
+            const dash = `<circle cx="48" cy="48" r="${r}" fill="none" stroke="${CAT_COLOR[part.name] || "#343331"}" stroke-width="10" stroke-dasharray="${len} ${c - len}" stroke-dashoffset="${offset}" transform="rotate(-90 48 48)"></circle>`;
+            offset -= len;
+            return dash;
+          })
+          .join("");
+        return `<svg viewBox="0 0 96 96" aria-hidden="true"><circle cx="48" cy="48" r="36" fill="none" stroke="#282726" stroke-width="10"></circle>${segs}</svg>`;
+      }
+
+      function renderRow(item, compact) {
+        const kind =
+          item.kind === "transfer"
+            ? '<span class="badge badge-count">Transfer</span>'
+            : item.state === "provisional"
+              ? '<span class="badge badge-provisional">Provisional</span>'
+              : "";
+        const amountClass = item.kind === "expense" ? "" : "muted";
+        return `<button class="row" type="button" data-action="open-txn" data-id="${item.id}">
+          <span class="when">${item.date.slice(8)} Sep</span>
+          <span><strong>${escapeHtml(item.counterparty)}</strong><span class="meta">${escapeHtml(accountName(item.account))}${compact ? "" : " · " + escapeHtml(item.category)}</span></span>
+          ${kind}
+          <strong class="amount ${amountClass}">${item.kind === "transfer" ? money(Math.abs(item.cents), false) : money(item.cents, true)}</strong>
+        </button>`;
+      }
+
+      function renderOverview() {
+        const totals = monthTotals();
+        const cats = categoryTotals();
+        const pending = reviews();
+        const failed = pending.filter((item) => item.condition === "extraction_failed").length;
+        const confirmedCount = spendingTxns().filter((item) => item.state === "confirmed").length;
+        const provisionalCount = spendingTxns().filter((item) => item.state === "provisional").length;
+        const recent = liveTxns().slice(0, 6);
+        const bars = weekBars();
+        const fresh = isFresh("overview");
+        return `
+          <section class="card statement ${fresh ? "stage-enter" : ""}">
+            <div class="statement-cell">
+              <p class="eyebrow">September 2026 · SGD</p>
+              <p class="hero-value amount">${money(totals.estimated, false)}</p>
+              <p class="hero-sub">Estimated spending. Confirmed uses Posted Amount. Provisional uses eligible Real-time Claims.</p>
+              <div class="bars ${fresh ? "is-fresh" : ""}" aria-hidden="true">${bars
+                .map((bar, index) => `<i style="height:${bar.pct}%;animation-delay:${index * 10}ms"></i>`)
+                .join("")}</div>
+              <div class="bar-labels">${bars.map((bar) => `<span>${bar.label}</span>`).join("")}</div>
+            </div>
+            <button class="statement-cell" type="button" data-action="filter-state" data-state="confirmed">
+              <span class="cell-label"><i class="cell-dot confirmed"></i>Confirmed</span>
+              <span class="cell-value amount">${money(totals.confirmed, false)}</span>
+              <span class="cell-foot"><strong>${confirmedCount}</strong> Transactions with a Posted Amount</span>
+            </button>
+            <button class="statement-cell tone-yellow" type="button" data-action="filter-state" data-state="provisional">
+              <span class="cell-label"><i class="cell-dot provisional"></i>Provisional</span>
+              <span class="cell-value amount">${money(totals.provisional, false)}</span>
+              <span class="cell-foot"><strong>${provisionalCount}</strong> awaiting a Statement Claim</span>
+            </button>
+            <button class="statement-cell ${failed ? "tone-red" : ""}" type="button" data-action="nav" data-page="review">
+              <span class="cell-label"><i class="cell-dot ${failed ? "blocking" : "review"}"></i>Pending Review</span>
+              <span class="cell-value amount">${pending.length}</span>
+              <span class="cell-foot">${
+                pending.length
+                  ? `<strong>${failed}</strong> blocking Extraction · ${pending.length - failed} attention`
+                  : "Queue is clear"
+              }</span>
+            </button>
+          </section>
+          <article class="card split">
+            <div class="ring-wrap">
+              ${ringSvg(cats)}
+              <p class="muted">Confirmed by Category</p>
+            </div>
+            <div class="cat-list">
+              ${cats
+                .map(
+                  (cat) => `<button class="cat-row" type="button" data-action="filter-cat" data-cat="${escapeHtml(cat.name)}"><span><i class="swatch" style="background:${CAT_COLOR[cat.name]}"></i>${escapeHtml(cat.name)}</span><span class="amount">${money(cat.cents, false)}</span></button>`,
+                )
+                .join("")}
+            </div>
+          </article>
+          <section class="card recent">
+            <div class="recent-head"><h2>Recent activity</h2><button class="btn btn-ghost" type="button" data-action="nav" data-page="transactions">All Transactions</button></div>
+            ${recent.map((item) => renderRow(item, true)).join("")}
+          </section>
+        `;
+      }
+
+      function txnListHtml() {
+        const groups = groupTxns(filteredTxns());
+        if (groups.length === 0) return '<p class="empty">No Transactions match these filters.</p>';
+        return groups
+          .map(
+            (group) =>
+              `<h2 class="group-label">${group.key}</h2>${group.rows.map((item) => renderRow(item, false)).join("")}`,
+          )
+          .join("");
+      }
+
+      function renderTransactions() {
+        const chips = [
+          ["all", "All"],
+          ["confirmed", "Confirmed"],
+          ["provisional", "Provisional"],
+          ["review", "Needs review"],
+        ];
+        return `
+          <div class="filters ${isFresh("transactions") ? "stage-enter" : ""}">
+            <label class="sr-only" for="q">Search counterparties</label>
+            <input class="field" id="q" value="${escapeHtml(state.q)}" placeholder="Search Counterparty or raw text" data-action="search" />
+            <select class="select" data-action="account" aria-label="Financial Account">
+              <option value="">All Financial Accounts</option>
+              ${ACCOUNTS.map((item) => `<option value="${item.id}" ${state.account === item.id ? "selected" : ""}>${escapeHtml(item.name)}</option>`).join("")}
+            </select>
+            <select class="select" data-action="category" aria-label="Category">
+              <option value="">All Categories</option>
+              ${activeCategories().concat("Uncategorized").map((name) => `<option ${state.category === name ? "selected" : ""}>${escapeHtml(name)}</option>`).join("")}
+            </select>
+            ${chips
+              .map(
+                ([value, label]) =>
+                  `<button class="chip" type="button" data-action="filter-state" data-state="${value}" aria-pressed="${(state.confirmation || "all") === value}">${label}</button>`,
+              )
+              .join("")}
+          </div>
+          <section class="card recent" id="txn-list">${txnListHtml()}</section>
+        `;
+      }
+
+      function renderReview() {
+        const items = filteredReviews();
+        const selected = selectedReview(items);
+        return `
+          <div class="filters ${isFresh("review") ? "stage-enter" : ""}">
+            ${[
+              ["", "All"],
+              ["blocking", "Blocking"],
+              ["attention", "Attention"],
+            ]
+              .map(
+                ([value, label]) =>
+                  `<button class="chip" type="button" data-action="review-filter" data-filter="${value}" aria-pressed="${state.reviewFilter === value}">${label}</button>`,
+              )
+              .join("")}
+          </div>
+          <div class="desk">
+            <section class="card queue-pane" aria-label="Pending Review queue">
+              <div class="panel-head">
+                <h2>Queue</h2>
+                <span class="muted" style="font-size:var(--bz-text-sm)">${items.length} open · blocking first</span>
+              </div>
+              ${
+                items.length === 0
+                  ? '<p class="empty">No Pending Review in this filter. Confirmed history is up to date.</p>'
+                  : `<div class="queue-list">${items.map((item) => renderQueueItem(item, selected)).join("")}</div>`
+              }
+            </section>
+            <section class="card evidence-pane" aria-live="polite">
+              ${
+                selected
+                  ? renderEvidence(selected)
+                  : '<p class="empty">Nothing to decide. Pick another filter or come back after the next Extraction.</p>'
+              }
+            </section>
+          </div>
+        `;
+      }
+
+      function renderQueueItem(item, selected) {
+        const current = Boolean(selected) && selected.id === item.id;
+        return `<button class="queue-item ${item.severity === "blocking" ? "is-blocking" : ""}" type="button" data-action="select-review" data-id="${item.id}" aria-current="${current}">
+          <span>
+            <span class="queue-title">${escapeHtml(item.title)}</span>
+            <span class="queue-reason">${escapeHtml(item.subject)}</span>
+          </span>
+          <span class="queue-right">
+            <span class="amount">${item.amountCents === null ? "Source Artifact" : money(item.amountCents, false)}</span>
+            <span class="queue-age">${openedLabel(item)}</span>
+          </span>
+        </button>`;
+      }
+
+      function renderEvidence(item) {
+        const subject = item.txnId ? liveTxns().find((row) => row.id === item.txnId) : null;
+        const claims = item.claims || subject?.claims || [];
+        const blocking = item.severity === "blocking";
+        return `
+          <div class="panel-head">
+            <div>
+              <span class="badge ${blocking ? "badge-blocking" : "badge-attention"}">${item.severity}</span>
+              <h2 style="margin-top:8px">${escapeHtml(item.title)}</h2>
+            </div>
+            ${subject ? `<button class="btn btn-ghost" type="button" data-action="open-txn" data-id="${subject.id}">Open Transaction</button>` : ""}
+          </div>
+          <div class="evidence-body ${isFresh("review:" + item.id) ? "stage-enter" : ""}">
+            <p class="prompt ${blocking ? "is-blocking" : ""}">${escapeHtml(item.body)}</p>
+            <dl class="kv">
+              <dt>Financial Account</dt><dd>${escapeHtml(item.account)}</dd>
+              <dt>Amount in question</dt><dd>${item.amountCents === null ? "No Claims created" : money(item.amountCents, false)}</dd>
+              <dt>Raw source</dt><dd>${escapeHtml(item.raw)}</dd>
+              <dt>Opened</dt><dd>${openedLabel(item)}</dd>
+            </dl>
+            <section>
+              <h3 class="eyebrow">Claim evidence</h3>
+              ${claims.map((claim) => `<p class="claim">${escapeHtml(claim)}</p>`).join("")}
+            </section>
+            <section>
+              <h3 class="eyebrow" style="display:block;margin-bottom:12px">Permitted actions</h3>
+              <div class="review-actions">${renderPermittedActions(item)}</div>
+            </section>
+          </div>
+        `;
+      }
+
+      function renderPermittedActions(item) {
+        if (item.condition === "categorization_needed") {
+          return `<select class="select" data-action="pick-cat" data-txn="${item.txnId}" aria-label="Category">
+              <option value="">Choose Category</option>
+              ${activeCategories().map((name) => `<option>${escapeHtml(name)}</option>`).join("")}
+            </select>
+            <button class="btn btn-primary" type="button" data-action="apply-cat" data-txn="${item.txnId}">Assign Category</button>`;
+        }
+        return item.decisions
+          .map(
+            ([value, label]) =>
+              `<button class="btn ${value.includes("exclude") || value === "keep_quarantine" ? "btn-outline" : "btn-primary"}" type="button" data-action="decide" data-id="${item.id}" data-label="${escapeHtml(label)}">${escapeHtml(label)}</button>`,
+          )
+          .join("");
+      }
+
+      function renderOnboarding() {
+        const index = state.step;
+        const step = STEPS[index];
+        const blocked = firstBlockedStep();
+        const valid = step.valid();
+        const last = index === STEPS.length - 1;
+        const replay = index === 0 && state.onboarded;
+        return `
+          <div class="onboard">
+            <article class="card onboard-card ${isFresh("onboarding:" + index) ? "stage-enter" : ""}">
+              <p class="eyebrow">Setup · ${index + 1} of ${STEPS.length}</p>
+              <div class="steps" role="list">
+                ${STEPS.map(
+                  (item, i) =>
+                    `<button class="step-dot ${i < index ? "is-done" : ""}" type="button" data-action="step" data-step="${i}" aria-label="${item.id}" ${i === index ? 'aria-current="step"' : ""}${i > blocked ? " disabled" : ""}></button>`,
+                ).join("")}
+              </div>
+              <h1>${escapeHtml(step.title)}</h1>
+              <p class="lede">${escapeHtml(step.lede)}</p>
+              ${step.body()}
+              <div class="onboard-nav">
+                ${
+                  replay
+                    ? '<button class="btn btn-ghost" type="button" data-action="nav" data-page="overview">Return to Overview</button>'
+                    : `<button class="btn btn-ghost" type="button" data-action="back"${index === 0 ? " disabled" : ""}>Back</button>`
+                }
+                <div style="display:flex;align-items:center;gap:12px">
+                  <p class="gate-hint" role="status"${valid ? " hidden" : ""}>${escapeHtml(step.hint)}</p>
+                  <button class="btn btn-primary" type="button" data-action="next"${valid ? "" : " disabled"}>${last ? "Enter Overview" : "Continue"}</button>
+                </div>
+              </div>
+            </article>
+          </div>
+        `;
+      }
+
+      /* Keeps the gate honest between renders. Typing in a field must not
+         re-render the step, or the caret jumps out of the input. */
+      function syncGate() {
+        const valid = STEPS[state.step].valid();
+        const next = document.querySelector('[data-action="next"]');
+        const hint = document.querySelector(".gate-hint");
+        if (next) next.disabled = !valid;
+        if (hint) hint.hidden = valid;
+      }
+
+      function renderStepWorkspace() {
+        return `<div class="stack">
+          <label class="field-label">Reporting Currency<input class="field" value="SGD" readonly /></label>
+          <label class="field-label">Timezone<input class="field" value="Asia/Singapore" readonly /></label>
+          <label class="field-label">Owner identity<input class="field" value="you@tailnet" readonly /></label>
+          <p class="muted">Owner identity comes from Tailscale. Secrets stay on the host. This flow only records what the app should watch.</p>
+        </div>`;
+      }
+
+      function renderStepAccounts() {
+        return `<div class="stack">
+          ${ACCOUNTS.map((item) => {
+            const on = state.selectedAccounts.includes(item.id);
+            return `<button class="card account-toggle" type="button" data-action="toggle-account" data-id="${item.id}" aria-pressed="${on}">
+              <span class="badge ${on ? "badge-confirmed" : "badge-count"}">${on ? "Watching" : "Off"}</span>
+              <span><strong style="display:block">${escapeHtml(item.name)}</strong><span class="muted">${escapeHtml(item.kind)}</span></span>
+            </button>`;
+          }).join("")}
+        </div>`;
+      }
+
+      function renderStepSources() {
+        const rows = watchedAccounts();
+        return `<div class="stack">
+          ${rows
+            .map(
+              (item) =>
+                `<div class="card" style="padding:12px 16px"><strong>${escapeHtml(item.name)}</strong><div class="path">${escapeHtml(item.inbox)}</div></div>`,
+            )
+            .join("")}
+          ${renderProbe(rows)}
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+            <button class="btn btn-outline" type="button" data-action="probe"${state.probe === "running" ? " disabled" : ""}>${state.probe === "ok" ? "Read again" : "Test read"}</button>
+            <span class="muted" style="font-size:var(--bz-text-xs)">Reads each inbox once and reports which parser claims each Source Artifact.</span>
+          </div>
+          <button class="card account-toggle" type="button" data-action="toggle-shortcut" aria-pressed="${state.shortcut}">
+            <span class="badge ${state.shortcut ? "badge-confirmed" : "badge-count"}">${state.shortcut ? "On" : "Off"}</span>
+            <span><strong style="display:block">Apple Shortcut</strong><span class="muted">Creates Real-time Claims from Apple Pay. Token scope is created later in Settings.</span></span>
+          </button>
+        </div>`;
+      }
+
+      function renderProbe(rows) {
+        if (state.probe === "idle") return "";
+        if (state.probe === "running") {
+          return `<div class="probe"><p class="probe-line"><span class="spinner"></span>Reading ${rows.length} inbox ${rows.length === 1 ? "folder" : "folders"}…</p></div>`;
+        }
+        const artifacts = rows.flatMap((item) => item.artifacts);
+        return `<div class="probe">
+          <p class="probe-line" style="color:var(--bz-positive)"><b style="color:var(--bz-positive)">${artifacts.length} Source Artifacts</b> readable across ${rows.length} ${rows.length === 1 ? "inbox" : "inboxes"}</p>
+          ${artifacts
+            .map(
+              (artifact) =>
+                `<p class="probe-line">${escapeHtml(artifact.file)} <b${artifact.ok ? "" : ' style="color:var(--bz-provisional)"'}>${escapeHtml(artifact.parser)}</b></p>`,
+            )
+            .join("")}
+        </div>`;
+      }
+
+      function renderStepCategories() {
+        const extra = state.extraCategory.trim();
+        return `<div class="stack">
+          <div class="filters">
+            ${CATEGORIES.map(
+              (name) =>
+                `<button class="chip" type="button" data-action="toggle-cat" data-cat="${escapeHtml(name)}" aria-pressed="${state.enabledCategories.includes(name)}">${escapeHtml(name)}</button>`,
+            ).join("")}
+            ${extra && !CATEGORIES.includes(extra) ? `<span class="chip" aria-pressed="true">${escapeHtml(extra)}</span>` : ""}
+            <span class="chip">Uncategorized</span>
+          </div>
+          <label class="field-label">Add a Category<input class="field" data-action="extra-cat" value="${escapeHtml(state.extraCategory)}" placeholder="Family, Pets, Home" /></label>
+          <p class="muted" style="font-size:var(--bz-text-xs)">${activeCategories().length} Categories will be offered when a Transaction needs one. Uncategorized always stays available.</p>
+        </div>`;
+      }
+
+      function renderStepReady() {
+        if (state.extract !== "done") {
+          return `<div class="stack">
+            ${
+              state.extract === "running"
+                ? `<div class="probe">
+                    <p class="probe-line"><span class="spinner"></span>Staging Claims from ${watchedAccounts().flatMap((item) => item.artifacts).length} Source Artifacts…</p>
+                    <p class="probe-line">Validating statement totals</p>
+                    <p class="probe-line">Reconciling Real-time Claims</p>
+                  </div>`
+                : ""
+            }
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+              <button class="btn btn-outline" type="button" data-action="extract"${state.extract === "running" ? " disabled" : ""}>Run first Extraction</button>
+              <span class="muted" style="font-size:var(--bz-text-xs)">A statement that fails validation creates no Claims and is quarantined instead.</span>
+            </div>
+          </div>`;
+        }
+        const failed = reviews().filter((item) => item.condition === "extraction_failed").length;
+        const provisional = spendingTxns().filter((item) => item.state === "provisional").length;
+        return `<div class="stack">
+          <div class="probe">
+            <p class="probe-line" style="color:var(--bz-positive)"><b style="color:var(--bz-positive)">Extraction accepted</b> September history is on disk</p>
+          </div>
+          <dl class="kv">
+            <dt>Financial Accounts</dt><dd>${state.selectedAccounts.length} watching, Reporting Currency SGD</dd>
+            <dt>Categories</dt><dd>${activeCategories().length} enabled for Expense reporting</dd>
+            <dt>Apple Shortcut</dt><dd>${state.shortcut ? "On for Real-time Claims" : "Off"}</dd>
+            <dt>Transactions</dt><dd>${liveTxns().length} established, ${provisional} still Provisional</dd>
+            <dt>Pending Review</dt><dd>${reviews().length} items${failed ? ", including one blocking failed Extraction" : ""}</dd>
+            <dt>Next</dt><dd>Overview is home. The rail badge keeps Review one click away.</dd>
+          </dl>
+        </div>`;
+      }
+
+      function renderDrawer() {
+        const item = liveTxns().find((row) => row.id === state.drawer);
+        const open = Boolean(item);
+        if (!item) {
+          return `<button class="drawer-backdrop" type="button" tabindex="-1" aria-hidden="true"></button>
+            <aside class="drawer" aria-hidden="true"></aside>`;
+        }
+        const cats = activeCategories()
+          .map((name) => `<option ${item.category === name ? "selected" : ""}>${escapeHtml(name)}</option>`)
+          .join("");
+        return `
+          <button class="drawer-backdrop open" type="button" data-action="close-drawer" aria-label="Close detail"></button>
+          <aside class="drawer open" role="dialog" aria-labelledby="drawer-title">
+            <div class="drawer-head">
+              <div>
+                <p class="eyebrow">${item.date} · ${escapeHtml(accountName(item.account))}</p>
+                <h2 id="drawer-title">${escapeHtml(item.counterparty)}</h2>
+                <p class="hero-value amount" style="font-size:1.6rem;margin-top:12px">${item.kind === "transfer" ? money(Math.abs(item.cents), false) : money(item.cents, true)}</p>
+              </div>
+              <button class="icon-btn" type="button" data-action="close-drawer" aria-label="Close">${ICONS.close}</button>
+            </div>
+            <div class="drawer-body">
+              <dl class="kv">
+                <dt>Posted Amount</dt><dd>${money(Math.abs(item.cents), false)} SGD</dd>
+                <dt>Financial Account</dt><dd>${escapeHtml(accountName(item.account))}</dd>
+                <dt>Transaction Kind</dt><dd>${item.kind === "expense" ? "Expense" : "Transfer"}</dd>
+                <dt>Category</dt><dd>${escapeHtml(item.category)}</dd>
+                <dt>Confirmation</dt><dd>${item.state === "confirmed" ? "Confirmed by Statement Claim" : "Provisional Real-time Claim"}</dd>
+                <dt>Raw description</dt><dd>${escapeHtml(item.raw)}</dd>
+                <dt>Corrections</dt><dd>${item.corrections.length ? item.corrections.join(", ") : "None"}</dd>
+              </dl>
+              <section>
+                <h3 class="eyebrow">Linked Claims</h3>
+                ${item.claims.map((claim) => `<p class="claim">${escapeHtml(claim)}</p>`).join("")}
+              </section>
+              ${
+                item.kind === "expense"
+                  ? `<label class="field-label">Assign Category
+                      <select class="select" data-action="pick-cat" data-txn="${item.id}">
+                        <option value="">Choose Category</option>${cats}
+                      </select>
+                    </label>
+                    <button class="btn btn-primary" type="button" data-action="apply-cat" data-txn="${item.id}">Save Category</button>`
+                  : ""
+              }
+            </div>
+          </aside>
+        `;
+      }
+
+      function renderShell(inner) {
+        const items = navItems();
+        return `
+          <a class="sr-only" href="#stage">Skip to content</a>
+          <aside class="rail" aria-label="Daily navigation">
+            <div class="brand"><span class="mark">B</span><div><strong>Billzebub</strong><span>Quiet Rail · local</span></div></div>
+            <div class="rail-group">
+              <p class="rail-label">Daily</p>
+              ${items.map(renderNav).join("")}
+            </div>
+            <div class="rail-foot">
+              <p class="rail-label">Workspace</p>
+              <button class="rail-item" type="button" data-action="nav" data-page="onboarding">${ICONS.setup}<span>Setup</span></button>
+            </div>
+          </aside>
+          <div class="main">
+            <nav class="mobile-nav" aria-label="Daily navigation">${items.map(renderNav).join("")}${renderNav({ id: "onboarding", label: "Setup", icon: ICONS.setup })}</nav>
+            <header class="topbar">
+              <div>
+                <p class="eyebrow">September 2026</p>
+                <h1>${state.route === "review" ? "Pending Review" : state.route === "transactions" ? "Transactions" : "Overview"}</h1>
+              </div>
+              <p class="top-meta">SGD · Asia/Singapore · ${state.selectedAccounts.length} Financial Accounts</p>
+            </header>
+            <main class="stage" id="stage">${inner}</main>
+          </div>
+          ${renderDrawer()}
+        `;
+      }
+
+      function render() {
+        const root = document.getElementById("app");
+        if (state.route === "onboarding") {
+          root.className = "app is-onboarding";
+          root.innerHTML = renderOnboarding();
+        } else {
+          root.className = "app";
+          const page =
+            state.route === "review"
+              ? renderReview()
+              : state.route === "transactions"
+                ? renderTransactions()
+                : renderOverview();
+          root.innerHTML = renderShell(page);
+        }
+        if (state.toast) {
+          const note = document.createElement("div");
+          note.className = "toast";
+          note.setAttribute("role", "status");
+          note.textContent = state.toast;
+          root.appendChild(note);
+        }
+        const q = document.getElementById("q");
+        if (q && state.focus === "q") {
+          q.focus();
+          q.setSelectionRange(state.caret, state.caret);
+        }
+        setHash();
+      }
+
+      function currentSelect(target, key) {
+        const select = target.closest(".review-actions, .drawer-body")?.querySelector("select");
+        return select ? select.value : state[key];
+      }
+
+      document.getElementById("app").addEventListener("click", (event) => {
+        const el = event.target.closest("[data-action]");
+        if (!el) return;
+        const action = el.dataset.action;
+        if (action === "nav") {
+          const page = el.dataset.page;
+          if (page === "onboarding" && state.onboarded) state.step = 0;
+          go(page, { reviewFilter: "", confirmation: "", drawer: null });
+        }
+        if (action === "next") {
+          if (!STEPS[state.step].valid()) return;
+          if (state.step === STEPS.length - 1) {
+            state.onboarded = true;
+            go("overview");
+          } else {
+            state.step += 1;
+            persist();
+            render();
+          }
+        }
+        if (action === "back") {
+          state.step = Math.max(0, state.step - 1);
+          persist();
+          render();
+        }
+        if (action === "step") {
+          const target = Number(el.dataset.step);
+          if (target > firstBlockedStep()) return;
+          state.step = target;
+          persist();
+          render();
+        }
+        if (action === "probe") runProbe();
+        if (action === "extract") runExtraction();
+        if (action === "toggle-account") {
+          const id = el.dataset.id;
+          state.selectedAccounts = state.selectedAccounts.includes(id)
+            ? state.selectedAccounts.filter((item) => item !== id)
+            : state.selectedAccounts.concat(id);
+          state.probe = "idle";
+          state.extract = "idle";
+          persist();
+          render();
+        }
+        if (action === "toggle-cat") {
+          const name = el.dataset.cat;
+          state.enabledCategories = state.enabledCategories.includes(name)
+            ? state.enabledCategories.filter((item) => item !== name)
+            : state.enabledCategories.concat(name);
+          persist();
+          render();
+        }
+        if (action === "toggle-shortcut") {
+          state.shortcut = !state.shortcut;
+          persist();
+          render();
+        }
+        if (action === "filter-state") {
+          const confirmation = el.dataset.state === "all" ? "" : el.dataset.state;
+          go("transactions", { confirmation, drawer: null, category: state.category });
+        }
+        if (action === "filter-cat") {
+          go("transactions", { category: el.dataset.cat, confirmation: "confirmed", drawer: null });
+        }
+        if (action === "review-filter") {
+          state.reviewFilter = el.dataset.filter;
+          setHash();
+          render();
+        }
+        if (action === "select-review") {
+          state.reviewSelection = el.dataset.id;
+          render();
+        }
+        if (action === "open-txn") {
+          state.route = "transactions";
+          state.drawer = el.dataset.id;
+          setHash();
+          render();
+        }
+        if (action === "close-drawer") {
+          state.drawer = null;
+          setHash();
+          render();
+        }
+        if (action === "apply-cat") assignCategory(el.dataset.txn, currentSelect(el, "pick"));
+        if (action === "decide") resolveReview(el.dataset.id, el.dataset.label);
+      });
+
+      document.getElementById("app").addEventListener("input", (event) => {
+        const el = event.target;
+        if (el.dataset.action === "search") {
+          state.q = el.value;
+          const list = document.getElementById("txn-list");
+          if (list) list.innerHTML = txnListHtml();
+        }
+        if (el.dataset.action === "extra-cat") {
+          state.extraCategory = el.value;
+          persist();
+          syncGate();
+        }
+      });
+
+      document.getElementById("app").addEventListener("change", (event) => {
+        const el = event.target;
+        if (el.dataset.action === "account") {
+          state.account = el.value;
+          render();
+        }
+        if (el.dataset.action === "category") {
+          state.category = el.value;
+          render();
+        }
+      });
+
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && state.drawer) {
+          state.drawer = null;
+          setHash();
+          render();
+        }
+      });
+
+      window.addEventListener("hashchange", () => {
+        const next = parseHash();
+        state.route = next.page || (state.onboarded ? "overview" : "onboarding");
+        state.drawer = next.drawer || null;
+        if (next.confirmation) state.confirmation = next.confirmation;
+        if (next.reviewFilter) state.reviewFilter = next.reviewFilter;
+        render();
+      });
+
+      if (!location.hash) {
+        history.replaceState(null, "", state.onboarded ? "#/overview" : "#/onboarding");
+      }
+      render();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,4758 @@
+<!doctype html>
+<html lang="en-SG">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Billzebub — Ledger Desk prototype</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      /* ===================================================================
+         BILLZEBUB — "LEDGER DESK"
+         Throwaway arena prototype. Structure mirrors a future design system:
+
+           1. TOKENS          -> @theme / tokens.css
+           2. RESET + BASE    -> base.css
+           3. PRIMITIVES      -> <Button> <Pill> <Field> <Badge> <Card>
+           4. LAYOUT          -> <AppShell> <Spine> <Topbar> <Ledge>
+           5. PATTERNS        -> <Ledger> <StatementBlock> <ReviewCase>
+           6. OVERLAYS        -> <Drawer> <CommandPalette> <Setup> <Toast>
+           7. MOTION          -> motion tokens + keyframes + reduced motion
+
+         Every visual value below is a token reference. No literal hex, no
+         literal duration, and no literal easing appears outside section 1.
+         =================================================================== */
+
+      /* ---------------------------------------------------------------
+         1. TOKENS
+         --------------------------------------------------------------- */
+      :root {
+        /* -- Flexoki Dark: surfaces ------------------------------------ */
+        --bz-bg: #100f0f; /* black          page */
+        --bz-surface: #1c1b1a; /* base-950  raised */
+        --bz-surface-hover: #21201f; /* between 950/900 */
+        --bz-line: #282726; /* base-900       hairline */
+        --bz-line-strong: #343331; /* base-850  hover / control */
+        --bz-control: #282726; /* base-900       quiet control fill */
+        --bz-control-hover: #343331; /* base-850  */
+
+        /* -- Flexoki Dark: ink ---------------------------------------- */
+        --bz-ink: #cecdc3; /* base-200       primary text */
+        --bz-ink-dim: #b7b5ac; /* base-300   secondary emphasis */
+        --bz-ink-muted: #878580; /* base-500 muted label */
+        --bz-ink-faint: #6f6e69; /* base-600  disabled / gutter */
+
+        /* -- Flexoki Dark: semantic accents (the only four) ----------- */
+        --bz-accent: #3aa99f; /* cyan-400    interactive */
+        --bz-confirmed: #879a39; /* green-400 confirmed / positive */
+        --bz-provisional: #d0a215; /* yellow-400 provisional / attention */
+        --bz-failed: #d14d41; /* red-400     failed / blocking */
+
+        /* Tinted washes, derived so no new hue is introduced. */
+        --bz-accent-wash: color-mix(in srgb, var(--bz-accent) 14%, var(--bz-surface));
+        --bz-accent-edge: color-mix(in srgb, var(--bz-accent) 42%, var(--bz-line));
+        --bz-provisional-wash: color-mix(in srgb, var(--bz-provisional) 8%, var(--bz-surface));
+        --bz-failed-wash: color-mix(in srgb, var(--bz-failed) 10%, var(--bz-surface));
+        --bz-confirmed-wash: color-mix(in srgb, var(--bz-confirmed) 12%, var(--bz-surface));
+        --bz-scrim: color-mix(in srgb, var(--bz-bg) 72%, transparent);
+
+        /* -- Type ------------------------------------------------------ */
+        --bz-font-ui: "Inter", ui-sans-serif, system-ui, -apple-system,
+          "Segoe UI", sans-serif;
+        --bz-font-display: "Iowan Old Style", "Palatino Linotype", Palatino,
+          "Book Antiqua", Georgia, ui-serif, serif;
+        --bz-font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo,
+          Consolas, monospace;
+
+        --bz-size-micro: 0.6875rem; /* 11px  keyboard hints, eyebrows */
+        --bz-size-xs: 0.75rem; /* 12px     meta, pills */
+        --bz-size-sm: 0.8125rem; /* 13px   dense ledger meta */
+        --bz-size-base: 0.875rem; /* 14px  body, rows */
+        --bz-size-md: 0.9375rem; /* 15px   row primary */
+        --bz-size-lg: 1.125rem; /* 18px    section lead */
+        --bz-size-xl: 1.375rem; /* 22px    statement figure */
+        --bz-size-display: 2rem; /* 32px   editorial heading */
+        --bz-size-hero: 2.75rem; /* 44px   the one big number */
+
+        --bz-track-eyebrow: 0.09em;
+        --bz-leading-tight: 1.15;
+        --bz-leading-body: 1.55;
+
+        /* -- Space (4px base) ------------------------------------------ */
+        --bz-s1: 0.25rem;
+        --bz-s2: 0.5rem;
+        --bz-s3: 0.75rem;
+        --bz-s4: 1rem;
+        --bz-s5: 1.5rem;
+        --bz-s6: 2rem;
+        --bz-s7: 3rem;
+        --bz-s8: 4rem;
+
+        /* -- Radius ---------------------------------------------------- */
+        --bz-r-sm: 0.375rem;
+        --bz-r-md: 0.5rem;
+        --bz-r-lg: 0.75rem;
+        --bz-r-full: 999px;
+
+        /* -- Structure ------------------------------------------------- */
+        --bz-spine: 3.5rem; /* 56px glyph spine, not a labelled rail */
+        --bz-topbar: 3.25rem;
+        --bz-ledge: 1.75rem; /* keyboard status ledge */
+        --bz-measure: 64rem; /* editorial column */
+        --bz-drawer: 27rem;
+
+        /* -- Motion (Emil Kowalski rules) ------------------------------ */
+        --bz-ease-out: cubic-bezier(0.16, 1, 0.3, 1); /* entrances */
+        --bz-ease-out-soft: cubic-bezier(0.22, 0.61, 0.36, 1); /* exits */
+        --bz-d-press: 90ms;
+        --bz-d-fast: 120ms;
+        --bz-d-base: 180ms;
+        --bz-d-slow: 240ms; /* hard ceiling for UI motion */
+        --bz-press: 0.97; /* never scale(0) */
+        --bz-lift: 6px; /* entrance travel */
+
+        /* -- Elevation ------------------------------------------------- */
+        --bz-shadow-overlay: 0 24px 64px -12px rgb(0 0 0 / 0.62);
+        --bz-shadow-drawer: -28px 0 72px -24px rgb(0 0 0 / 0.7);
+        --bz-focus: 0 0 0 2px var(--bz-bg), 0 0 0 3px var(--bz-accent);
+      }
+
+      /* ---------------------------------------------------------------
+         2. RESET + BASE
+         --------------------------------------------------------------- */
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      html {
+        -webkit-text-size-adjust: 100%;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: var(--bz-bg);
+        color: var(--bz-ink);
+        font-family: var(--bz-font-ui);
+        font-size: var(--bz-size-base);
+        line-height: var(--bz-leading-body);
+        font-synthesis: none;
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+      }
+
+      h1,
+      h2,
+      h3,
+      h4,
+      p,
+      figure {
+        margin: 0;
+      }
+
+      button,
+      input,
+      select,
+      textarea {
+        font: inherit;
+        color: inherit;
+      }
+
+      button {
+        cursor: pointer;
+      }
+
+      :focus-visible {
+        outline: none;
+        box-shadow: var(--bz-focus);
+      }
+
+      .bz-num {
+        font-variant-numeric: tabular-nums;
+        font-feature-settings: "tnum" 1;
+      }
+
+      .bz-eyebrow {
+        color: var(--bz-ink-muted);
+        font-size: var(--bz-size-micro);
+        font-weight: 600;
+        letter-spacing: var(--bz-track-eyebrow);
+        text-transform: uppercase;
+      }
+
+      .bz-muted {
+        color: var(--bz-ink-muted);
+      }
+
+      .bz-sr {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+      }
+
+      /* ---------------------------------------------------------------
+         3. PRIMITIVES — shadcn-flavoured: quiet borders, clear press
+         --------------------------------------------------------------- */
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: var(--bz-s2);
+        min-height: 2rem;
+        padding: 0 var(--bz-s3);
+        border: 1px solid var(--bz-line-strong);
+        border-radius: var(--bz-r-sm);
+        background: var(--bz-control);
+        color: var(--bz-ink);
+        font-size: var(--bz-size-sm);
+        font-weight: 500;
+        white-space: nowrap;
+        transition:
+          background var(--bz-d-fast) var(--bz-ease-out),
+          border-color var(--bz-d-fast) var(--bz-ease-out),
+          color var(--bz-d-fast) var(--bz-ease-out),
+          transform var(--bz-d-press) var(--bz-ease-out);
+      }
+
+      .btn:hover {
+        background: var(--bz-control-hover);
+        border-color: var(--bz-ink-faint);
+      }
+
+      .btn:active {
+        transform: scale(var(--bz-press));
+      }
+
+      .btn[disabled] {
+        opacity: 0.45;
+        cursor: not-allowed;
+        transform: none;
+      }
+
+      .btn--primary {
+        border-color: var(--bz-accent);
+        background: var(--bz-accent);
+        color: var(--bz-bg);
+        font-weight: 600;
+      }
+
+      .btn--primary:hover {
+        background: color-mix(in srgb, var(--bz-accent) 86%, var(--bz-ink));
+        border-color: color-mix(in srgb, var(--bz-accent) 86%, var(--bz-ink));
+      }
+
+      .btn--ghost {
+        border-color: transparent;
+        background: transparent;
+        color: var(--bz-ink-muted);
+      }
+
+      .btn--ghost:hover {
+        background: var(--bz-control);
+        color: var(--bz-ink);
+        border-color: var(--bz-line);
+      }
+
+      .btn--danger:hover {
+        border-color: var(--bz-failed);
+        color: var(--bz-failed);
+      }
+
+      .btn--lg {
+        min-height: 2.375rem;
+        padding: 0 var(--bz-s4);
+        font-size: var(--bz-size-base);
+      }
+
+      .btn--sm {
+        min-height: 1.75rem;
+        padding: 0 var(--bz-s2);
+        font-size: var(--bz-size-xs);
+      }
+
+      .kbd {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 1.125rem;
+        height: 1.125rem;
+        padding: 0 var(--bz-s1);
+        border: 1px solid var(--bz-line-strong);
+        border-radius: var(--bz-r-sm);
+        background: var(--bz-bg);
+        color: var(--bz-ink-muted);
+        font-family: var(--bz-font-ui);
+        font-size: var(--bz-size-micro);
+        font-weight: 600;
+        line-height: 1;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--bz-s2);
+        height: 1.75rem;
+        padding: 0 var(--bz-s3);
+        border: 1px solid var(--bz-line);
+        border-radius: var(--bz-r-full);
+        background: transparent;
+        color: var(--bz-ink-muted);
+        font-size: var(--bz-size-xs);
+        font-weight: 500;
+        transition:
+          background var(--bz-d-fast) var(--bz-ease-out),
+          border-color var(--bz-d-fast) var(--bz-ease-out),
+          color var(--bz-d-fast) var(--bz-ease-out),
+          transform var(--bz-d-press) var(--bz-ease-out);
+      }
+
+      .pill:hover {
+        background: var(--bz-control);
+        color: var(--bz-ink);
+      }
+
+      .pill:active {
+        transform: scale(var(--bz-press));
+      }
+
+      .pill[aria-pressed="true"],
+      .pill.is-on {
+        border-color: var(--bz-accent-edge);
+        background: var(--bz-accent-wash);
+        color: var(--bz-ink);
+      }
+
+      .pill__count {
+        color: var(--bz-ink-faint);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--bz-s1);
+        padding: 0 var(--bz-s2);
+        height: 1.25rem;
+        border: 1px solid var(--bz-line);
+        border-radius: var(--bz-r-sm);
+        color: var(--bz-ink-muted);
+        font-size: var(--bz-size-micro);
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        white-space: nowrap;
+      }
+
+      .badge::before {
+        content: "";
+        width: 5px;
+        height: 5px;
+        border-radius: var(--bz-r-full);
+        background: currentColor;
+      }
+
+      .badge--confirmed {
+        color: var(--bz-confirmed);
+        border-color: color-mix(in srgb, var(--bz-confirmed) 34%, var(--bz-line));
+      }
+
+      .badge--provisional {
+        color: var(--bz-provisional);
+        border-color: color-mix(in srgb, var(--bz-provisional) 34%, var(--bz-line));
+      }
+
+      .badge--failed {
+        color: var(--bz-failed);
+        border-color: color-mix(in srgb, var(--bz-failed) 34%, var(--bz-line));
+      }
+
+      .badge--quiet::before {
+        display: none;
+      }
+
+      .field {
+        display: grid;
+        gap: var(--bz-s2);
+      }
+
+      .field > label {
+        color: var(--bz-ink-dim);
+        font-size: var(--bz-size-sm);
+        font-weight: 500;
+      }
+
+      .field__hint {
+        color: var(--bz-ink-muted);
+        font-size: var(--bz-size-xs);
+      }
+
+      .input,
+      .select {
+        width: 100%;
+        min-height: 2.25rem;
+        padding: 0 var(--bz-s3);
+        border: 1px solid var(--bz-line-strong);
+        border-radius: var(--bz-r-sm);
+        background: var(--bz-bg);
+        font-size: var(--bz-size-base);
+        transition:
+          border-color var(--bz-d-fast) var(--bz-ease-out),
+          background var(--bz-d-fast) var(--bz-ease-out);
+      }
+
+      .input:hover,
+      .select:hover {
+        border-color: var(--bz-ink-faint);
+      }
+
+      .input:focus,
+      .select:focus {
+        outline: none;
+        border-color: var(--bz-accent);
+        box-shadow: 0 0 0 3px var(--bz-accent-wash);
+      }
+
+      .input--mono {
+        font-family: var(--bz-font-mono);
+        font-size: var(--bz-size-sm);
+      }
+
+      .card {
+        border: 1px solid var(--bz-line);
+        border-radius: var(--bz-r-lg);
+        background: var(--bz-surface);
+      }
+
+      .rule {
+        height: 1px;
+        border: 0;
+        margin: 0;
+        background: var(--bz-line);
+      }
+
+      /* ---------------------------------------------------------------
+         4. LAYOUT — AppShell / Spine / Topbar / Ledge
+         --------------------------------------------------------------- */
+      .shell {
+        display: grid;
+        grid-template-columns: var(--bz-spine) minmax(0, 1fr);
+        min-height: 100vh;
+      }
+
+      .spine {
+        position: sticky;
+        top: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: var(--bz-s2);
+        height: 100vh;
+        padding: var(--bz-s3) 0 calc(var(--bz-ledge) + var(--bz-s3));
+        border-right: 1px solid var(--bz-line);
+        background: var(--bz-bg);
+      }
+
+      .spine__mark {
+        display: grid;
+        place-items: center;
+        width: 1.75rem;
+        height: 1.75rem;
+        margin-bottom: var(--bz-s3);
+        border-radius: var(--bz-r-sm);
+        background: var(--bz-accent-wash);
+        border: 1px solid var(--bz-accent-edge);
+        color: var(--bz-accent);
+        font-family: var(--bz-font-display);
+        font-size: var(--bz-size-sm);
+        font-weight: 700;
+      }
+
+      .spine__btn {
+        position: relative;
+        display: grid;
+        place-items: center;
+        width: 2.25rem;
+        height: 2.25rem;
+        border: 1px solid transparent;
+        border-radius: var(--bz-r-md);
+        background: transparent;
+        color: var(--bz-ink-faint);
+        transition:
+          color var(--bz-d-fast) var(--bz-ease-out),
+          background var(--bz-d-fast) var(--bz-ease-out),
+          transform var(--bz-d-press) var(--bz-ease-out);
+      }
+
+      .spine__btn:hover {
+        background: var(--bz-surface);
+        color: var(--bz-ink);
+      }
+
+      .spine__btn:active {
+        transform: scale(var(--bz-press));
+      }
+
+      .spine__btn[aria-current="page"] {
+        background: var(--bz-surface);
+        border-color: var(--bz-line);
+        color: var(--bz-accent);
+      }
+
+      .spine__btn[aria-current="page"]::after {
+        content: "";
+        position: absolute;
+        left: calc(var(--bz-s2) * -1 - 3px);
+        width: 2px;
+        height: 1rem;
+        border-radius: var(--bz-r-full);
+        background: var(--bz-accent);
+      }
+
+      .spine__dot {
+        position: absolute;
+        top: 5px;
+        right: 5px;
+        width: 5px;
+        height: 5px;
+        border-radius: var(--bz-r-full);
+        background: var(--bz-provisional);
+      }
+
+      .spine__tip {
+        position: absolute;
+        left: calc(100% + var(--bz-s2));
+        display: flex;
+        align-items: center;
+        gap: var(--bz-s2);
+        padding: var(--bz-s1) var(--bz-s2);
+        border: 1px solid var(--bz-line);
+        border-radius: var(--bz-r-sm);
+        background: var(--bz-surface);
+        color: var(--bz-ink);
+        font-size: var(--bz-size-xs);
+        white-space: nowrap;
+        opacity: 0;
+        transform: translateX(-4px);
+        pointer-events: none;
+        z-index: 40;
+        transition:
+          opacity var(--bz-d-fast) var(--bz-ease-out),
+          transform var(--bz-d-fast) var(--bz-ease-out);
+      }
+
+      .spine__btn:hover .spine__tip,
+      .spine__btn:focus-visible .spine__tip {
+        opacity: 1;
+        transform: translateX(0);
+      }
+
+      .spine__spacer {
+        flex: 1;
+      }
+
+      .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 30;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 22rem) minmax(0, 1fr);
+        align-items: center;
+        gap: var(--bz-s4);
+        height: var(--bz-topbar);
+        padding: 0 var(--bz-s5);
+        border-bottom: 1px solid var(--bz-line);
+        background: color-mix(in srgb, var(--bz-bg) 88%, transparent);
+        backdrop-filter: blur(12px);
+      }
+
+      .topbar__where {
+        display: flex;
+        align-items: center;
+        gap: var(--bz-s2);
+        min-width: 0;
+        font-size: var(--bz-size-sm);
+      }
+
+      .topbar__where b {
+        font-weight: 600;
+      }
+
+      .topbar__sep {
+        color: var(--bz-ink-faint);
+      }
+
+      .cmdtrigger {
+        display: flex;
+        align-items: center;
+        gap: var(--bz-s2);
+        width: 100%;
+        height: 2rem;
+        padding: 0 var(--bz-s2) 0 var(--bz-s3);
+        border: 1px solid var(--bz-line);
+        border-radius: var(--bz-r-sm);
+        background: var(--bz-surface);
+        color: var(--bz-ink-muted);
+        font-size: var(--bz-size-sm);
+        transition:
+          border-color var(--bz-d-fast) var(--bz-ease-out),
+          background var(--bz-d-fast) var(--bz-ease-out),
+          transform var(--bz-d-press) var(--bz-ease-out);
+      }
+
+      .cmdtrigger:hover {
+        border-color: var(--bz-line-strong);
+        background: var(--bz-surface-hover);
+        color: var(--bz-ink);
+      }
+
+      .cmdtrigger:active {
+        transform: scale(var(--bz-press));
+      }
+
+      .cmdtrigger__spacer {
+        flex: 1;
+      }
+
+      .topbar__right {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: var(--bz-s2);
+      }
+
+      .sync {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--bz-s2);
+        color: var(--bz-ink-muted);
+        font-size: var(--bz-size-xs);
+      }
+
+      .sync__dot {
+        width: 6px;
+        height: 6px;
+        border-radius: var(--bz-r-full);
+        background: var(--bz-confirmed);
+      }
+
+      .canvas {
+        padding: var(--bz-s6) var(--bz-s5) calc(var(--bz-ledge) + var(--bz-s8));
+      }
+
+      .measure {
+        width: min(var(--bz-measure), 100%);
+        margin: 0 auto;
+      }
+
+      .ledge {
+        position: fixed;
+        left: var(--bz-spine);
+        right: 0;
+        bottom: 0;
+        z-index: 25;
+        display: flex;
+        align-items: center;
+        gap: var(--bz-s4);
+        height: var(--bz-ledge);
+        padding: 0 var(--bz-s5);
+        border-top: 1px solid var(--bz-line);
+        background: color-mix(in srgb, var(--bz-bg) 92%, transparent);
+        backdrop-filter: blur(8px);
+        color: var(--bz-ink-faint);
+        font-size: var(--bz-size-micro);
+      }
+
+      .ledge__hint {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--bz-s1);
+        white-space: nowrap;
+      }
+
+      .ledge__spacer {
+        flex: 1;
+      }
+
+      /* ---------------------------------------------------------------
+         5. PATTERNS
+         --------------------------------------------------------------- */
+
+      /* 5a. StatementBlock — editorial overview typography */
+      .dateline {
+        display: flex;
+        align-items: baseline;
+        gap: var(--bz-s3);
+        margin-bottom: var(--bz-s5);
+      }
+
+      .statement__lead {
+        max-width: 34rem;
+        font-family: var(--bz-font-display);
+        font-size: var(--bz-size-display);
+        line-height: var(--bz-leading-tight);
+        letter-spacing: -0.01em;
+        color: var(--bz-ink);
+      }
+
+      .statement__lead em {
+        font-style: normal;
+        color: var(--bz-ink-muted);
+      }
+
+      .figure {
+        display: flex;
+        align-items: baseline;
+        gap: var(--bz-s3);
+        margin: var(--bz-s5) 0 var(--bz-s3);
+      }
+
+      .figure__currency {
+        color: var(--bz-ink-muted);
+        font-size: var(--bz-size-lg);
+        font-weight: 500;
+      }
+
+      .figure__value {
+        font-size: var(--bz-size-hero);
+        font-weight: 600;
+        letter-spacing: -0.03em;
+        line-height: 1;
+      }
+
+      .splitline {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        align-items: center;
+        gap: var(--bz-s4);
+        padding: var(--bz-s3) 0;
+        border-top: 1px solid var(--bz-line);
+        font-size: var(--bz-size-base);
+      }
+
+      .splitline:last-of-type {
+        border-bottom: 1px solid var(--bz-line);
+      }
+
+      .splitline__label {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--bz-s2);
+        color: var(--bz-ink-dim);
+      }
+
+      .splitline__amount {
+        font-weight: 500;
+        letter-spacing: -0.01em;
+      }
+
+      .linkish {
+        border: 0;
+        background: none;
+        padding: 0;
+        color: var(--bz-accent);
+        font-size: var(--bz-size-sm);
+        font-weight: 500;
+        text-align: left;
+        transition:
+          color var(--bz-d-fast) var(--bz-ease-out),
+          transform var(--bz-d-press) var(--bz-ease-out);
+      }
+
+      .linkish:hover {
+        color: color-mix(in srgb, var(--bz-accent) 80%, var(--bz-ink));
+        text-decoration: underline;
+        text-underline-offset: 3px;
+      }
+
+      .linkish:active {
+        transform: scale(var(--bz-press));
+      }
+
+      .section {
+        margin-top: var(--bz-s7);
+      }
+
+      .section__head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: var(--bz-s4);
+        padding-bottom: var(--bz-s3);
+        border-bottom: 1px solid var(--bz-line-strong);
+      }
+
+      .section__title {
+        font-family: var(--bz-font-display);
+        font-size: var(--bz-size-lg);
+        font-weight: 600;
+        letter-spacing: -0.005em;
+      }
+
+      .grid2 {
+        display: grid;
+        grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+        gap: var(--bz-s6);
+      }
+
+      /* 5b. Category bars — one accent at varying weight, never a rainbow */
+      .catrow {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        align-items: baseline;
+        gap: var(--bz-s3);
+        width: 100%;
+        padding: var(--bz-s3) 0;
+        border: 0;
+        border-bottom: 1px solid var(--bz-line);
+        background: none;
+        text-align: left;
+        transition: background var(--bz-d-fast) var(--bz-ease-out);
+      }
+
+      .catrow:hover {
+        background: var(--bz-surface);
+      }
+
+      .catrow__name {
+        font-size: var(--bz-size-base);
+      }
+
+      .catrow__amount {
+        font-size: var(--bz-size-base);
+        font-weight: 500;
+      }
+
+      .catrow__bar {
+        grid-column: 1 / -1;
+        height: 3px;
+        border-radius: var(--bz-r-full);
+        background: var(--bz-line-strong);
+        overflow: hidden;
+      }
+
+      /* Category colour stays subordinate to the amount: one dimmed accent,
+         never a categorical palette. */
+      .catrow__fill {
+        display: block;
+        height: 100%;
+        border-radius: var(--bz-r-full);
+        background: color-mix(in srgb, var(--bz-accent) 62%, var(--bz-line));
+        transform-origin: left center;
+        transform: scaleX(var(--fill, 0));
+        transition: transform var(--bz-d-slow) var(--bz-ease-out);
+      }
+
+      /* 5c. Trend — hand-rolled SVG, no chart library */
+      .trend {
+        display: grid;
+        grid-template-columns: repeat(13, 1fr);
+        align-items: end;
+        gap: 3px;
+        height: 4.5rem;
+        margin-top: var(--bz-s4);
+      }
+
+      .trend__bar {
+        border: 0;
+        padding: 0;
+        border-radius: 2px 2px 0 0;
+        background: var(--bz-line-strong);
+        transform-origin: bottom center;
+        transform: scaleY(var(--h, 0.1));
+        height: 100%;
+        transition:
+          transform var(--bz-d-slow) var(--bz-ease-out),
+          background var(--bz-d-fast) var(--bz-ease-out);
+      }
+
+      .trend__bar:hover {
+        background: var(--bz-ink-faint);
+      }
+
+      .trend__bar.is-today {
+        background: var(--bz-accent);
+      }
+
+      .trend__bar.is-provisional {
+        background: var(--bz-provisional);
+      }
+
+      .trend__axis {
+        display: flex;
+        justify-content: space-between;
+        margin-top: var(--bz-s2);
+        color: var(--bz-ink-faint);
+        font-size: var(--bz-size-micro);
+      }
+
+      /* 5d. Ledger — the dense core pattern */
+      .ledger {
+        border-top: 1px solid var(--bz-line-strong);
+      }
+
+      .ledger__daymark {
+        display: flex;
+        align-items: center;
+        gap: var(--bz-s3);
+        padding: var(--bz-s4) 0 var(--bz-s2);
+        color: var(--bz-ink-muted);
+        font-size: var(--bz-size-xs);
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .ledger__daymark::after {
+        content: "";
+        flex: 1;
+        height: 1px;
+        background: var(--bz-line);
+      }
+
+      .row {
+        position: relative;
+        display: grid;
+        grid-template-columns:
+          3.25rem minmax(0, 1fr) 8rem 8.5rem 5.75rem
+          6.25rem;
+        align-items: center;
+        gap: var(--bz-s3);
+        width: 100%;
+        padding: var(--bz-s3);
+        border: 0;
+        border-bottom: 1px solid var(--bz-line);
+        border-radius: var(--bz-r-sm);
+        background: none;
+        color: inherit;
+        text-align: left;
+        font-size: var(--bz-size-md);
+        transition:
+          background var(--bz-d-fast) var(--bz-ease-out),
+          box-shadow var(--bz-d-fast) var(--bz-ease-out),
+          opacity var(--bz-d-base) var(--bz-ease-out),
+          transform var(--bz-d-base) var(--bz-ease-out);
+      }
+
+      .row:hover {
+        background: var(--bz-surface);
+      }
+
+      .row.is-cursor {
+        background: var(--bz-surface);
+        box-shadow: inset 2px 0 0 0 var(--bz-accent);
+      }
+
+      .row.is-leaving {
+        opacity: 0;
+        transform: translateX(10px);
+      }
+
+      .row__date {
+        color: var(--bz-ink-muted);
+        font-size: var(--bz-size-sm);
+      }
+
+      .row__who {
+        min-width: 0;
+      }
+
+      .row__name {
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-weight: 500;
+      }
+
+      .row__raw {
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: var(--bz-ink-faint);
+        font-family: var(--bz-font-mono);
+        font-size: var(--bz-size-micro);
+        letter-spacing: -0.01em;
+      }
+
+      .row__meta {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: var(--bz-ink-muted);
+        font-size: var(--bz-size-sm);
+      }
+
+      .row__cat {
+        min-width: 0;
+        overflow: hidden;
+      }
+
+      .row__state {
+        display: flex;
+        justify-content: flex-start;
+      }
+
+      .row__amount {
+        text-align: right;
+        font-weight: 500;
+        letter-spacing: -0.01em;
+      }
+
+      .row__amount.is-positive {
+        color: var(--bz-confirmed);
+      }
+
+      .row__amount.is-provisional {
+        color: var(--bz-ink-dim);
+      }
+
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--bz-s1);
+        max-width: 100%;
+        padding: 1px var(--bz-s2);
+        border: 1px solid var(--bz-line);
+        border-radius: var(--bz-r-sm);
+        color: var(--bz-ink-muted);
+        font-size: var(--bz-size-micro);
+        font-weight: 500;
+      }
+
+      .tag--empty {
+        border-style: dashed;
+        border-color: var(--bz-provisional);
+        color: var(--bz-provisional);
+      }
+
+      .toolbar {
+        display: flex;
+        align-items: center;
+        gap: var(--bz-s2);
+        flex-wrap: wrap;
+        margin: var(--bz-s4) 0 var(--bz-s5);
+      }
+
+      .toolbar__search {
+        position: relative;
+        flex: 1;
+        min-width: 12rem;
+      }
+
+      .empty {
+        padding: var(--bz-s7) var(--bz-s4);
+        border: 1px dashed var(--bz-line-strong);
+        border-radius: var(--bz-r-lg);
+        color: var(--bz-ink-muted);
+        text-align: center;
+      }
+
+      /* 5e. ReviewCase — one decision at a time */
+      .queuebar {
+        display: flex;
+        gap: var(--bz-s2);
+        flex-wrap: wrap;
+        margin: var(--bz-s4) 0 var(--bz-s5);
+      }
+
+      .case {
+        border: 1px solid var(--bz-line);
+        border-radius: var(--bz-r-lg);
+        background: var(--bz-surface);
+        overflow: hidden;
+      }
+
+      .case + .case {
+        margin-top: var(--bz-s4);
+      }
+
+      .case.is-cursor {
+        border-color: var(--bz-accent-edge);
+      }
+
+      .case.is-leaving {
+        opacity: 0;
+        transform: translateY(-4px);
+        transition:
+          opacity var(--bz-d-base) var(--bz-ease-out),
+          transform var(--bz-d-base) var(--bz-ease-out);
+      }
+
+      .case__head {
+        display: flex;
+        align-items: center;
+        gap: var(--bz-s3);
+        padding: var(--bz-s3) var(--bz-s4);
+        border-bottom: 1px solid var(--bz-line);
+      }
+
+      .case__head--attention {
+        background: var(--bz-provisional-wash);
+      }
+
+      .case__head--blocking {
+        background: var(--bz-failed-wash);
+      }
+
+      .case__title {
+        font-size: var(--bz-size-base);
+        font-weight: 600;
+      }
+
+      .case__body {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 15rem);
+        gap: var(--bz-s5);
+        padding: var(--bz-s4);
+      }
+
+      .case__why {
+        color: var(--bz-ink-muted);
+        font-size: var(--bz-size-sm);
+      }
+
+      .case__subject {
+        display: flex;
+        align-items: baseline;
+        gap: var(--bz-s3);
+        margin-bottom: var(--bz-s3);
+      }
+
+      .case__subject b {
+        font-size: var(--bz-size-lg);
+        font-weight: 600;
+      }
+
+      .case__amount {
+        font-size: var(--bz-size-xl);
+        font-weight: 600;
+        letter-spacing: -0.02em;
+      }
+
+      .case__evidence {
+        display: grid;
+        gap: var(--bz-s2);
+        padding: var(--bz-s3);
+        border: 1px solid var(--bz-line);
+        border-radius: var(--bz-r-md);
+        background: var(--bz-bg);
+        font-size: var(--bz-size-sm);
+      }
+
+      .case__decide {
+        display: grid;
+        align-content: start;
+        gap: var(--bz-s2);
+        padding-left: var(--bz-s5);
+        border-left: 1px solid var(--bz-line);
+      }
+
+      .choice {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--bz-s2);
+        width: 100%;
+        min-height: 2.125rem;
+        padding: 0 var(--bz-s3);
+        border: 1px solid var(--bz-line-strong);
+        border-radius: var(--bz-r-sm);
+        background: var(--bz-control);
+        font-size: var(--bz-size-sm);
+        text-align: left;
+        transition:
+          background var(--bz-d-fast) var(--bz-ease-out),
+          border-color var(--bz-d-fast) var(--bz-ease-out),
+          transform var(--bz-d-press) var(--bz-ease-out);
+      }
+
+      .choice:hover {
+        background: var(--bz-control-hover);
+        border-color: var(--bz-accent-edge);
+      }
+
+      .choice:active {
+        transform: scale(var(--bz-press));
+      }
+
+      .kv {
+        display: grid;
+        grid-template-columns: 8.5rem minmax(0, 1fr);
+        gap: var(--bz-s2) var(--bz-s3);
+        font-size: var(--bz-size-sm);
+      }
+
+      .kv dt {
+        color: var(--bz-ink-muted);
+      }
+
+      .kv dd {
+        margin: 0;
+      }
+
+      /* ---------------------------------------------------------------
+         6. OVERLAYS
+         --------------------------------------------------------------- */
+      .scrim {
+        position: fixed;
+        inset: 0;
+        z-index: 50;
+        background: var(--bz-scrim);
+        opacity: 0;
+        transition: opacity var(--bz-d-base) var(--bz-ease-out);
+      }
+
+      .scrim.is-open {
+        opacity: 1;
+      }
+
+      .scrim[hidden] {
+        display: none;
+      }
+
+      /* Drawer */
+      .drawer {
+        position: fixed;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 60;
+        width: min(var(--bz-drawer), 100%);
+        display: flex;
+        flex-direction: column;
+        border-left: 1px solid var(--bz-line);
+        background: var(--bz-surface);
+        box-shadow: var(--bz-shadow-drawer);
+        opacity: 0;
+        transform: translateX(18px);
+        transition:
+          opacity var(--bz-d-base) var(--bz-ease-out),
+          transform var(--bz-d-slow) var(--bz-ease-out);
+      }
+
+      .drawer.is-open {
+        opacity: 1;
+        transform: translateX(0);
+      }
+
+      .drawer[hidden] {
+        display: none;
+      }
+
+      .drawer__head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: var(--bz-s3);
+        padding: var(--bz-s4);
+        border-bottom: 1px solid var(--bz-line);
+      }
+
+      .drawer__body {
+        flex: 1;
+        overflow-y: auto;
+        padding: var(--bz-s4);
+      }
+
+      .drawer__foot {
+        display: flex;
+        gap: var(--bz-s2);
+        padding: var(--bz-s3) var(--bz-s4);
+        border-top: 1px solid var(--bz-line);
+        background: var(--bz-bg);
+      }
+
+      .block {
+        margin-top: var(--bz-s5);
+      }
+
+      .block__title {
+        margin-bottom: var(--bz-s3);
+        padding-bottom: var(--bz-s2);
+        border-bottom: 1px solid var(--bz-line);
+        color: var(--bz-ink-muted);
+        font-size: var(--bz-size-micro);
+        font-weight: 600;
+        letter-spacing: var(--bz-track-eyebrow);
+        text-transform: uppercase;
+      }
+
+      .claim {
+        display: grid;
+        gap: var(--bz-s1);
+        padding: var(--bz-s3);
+        border: 1px solid var(--bz-line);
+        border-radius: var(--bz-r-md);
+        background: var(--bz-bg);
+        font-size: var(--bz-size-sm);
+      }
+
+      .claim + .claim {
+        margin-top: var(--bz-s2);
+      }
+
+      .claim__top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--bz-s2);
+      }
+
+      .claim__raw {
+        color: var(--bz-ink-faint);
+        font-family: var(--bz-font-mono);
+        font-size: var(--bz-size-micro);
+        word-break: break-all;
+      }
+
+      .timeline {
+        display: grid;
+        gap: var(--bz-s3);
+        font-size: var(--bz-size-sm);
+      }
+
+      .timeline__item {
+        display: grid;
+        grid-template-columns: 0.75rem minmax(0, 1fr);
+        gap: var(--bz-s3);
+      }
+
+      .timeline__dot {
+        margin-top: 0.4rem;
+        width: 7px;
+        height: 7px;
+        border-radius: var(--bz-r-full);
+        background: var(--bz-line-strong);
+      }
+
+      .timeline__dot.is-now {
+        background: var(--bz-accent);
+      }
+
+      /* Command palette */
+      .palette {
+        position: fixed;
+        left: 50%;
+        top: 14vh;
+        z-index: 70;
+        width: min(34rem, calc(100vw - 2rem));
+        transform: translate(-50%, 0) scale(0.98);
+        opacity: 0;
+        border: 1px solid var(--bz-line-strong);
+        border-radius: var(--bz-r-lg);
+        background: var(--bz-surface);
+        box-shadow: var(--bz-shadow-overlay);
+        overflow: hidden;
+        transition:
+          opacity var(--bz-d-base) var(--bz-ease-out),
+          transform var(--bz-d-base) var(--bz-ease-out);
+      }
+
+      .palette.is-open {
+        opacity: 1;
+        transform: translate(-50%, 0) scale(1);
+      }
+
+      .palette[hidden] {
+        display: none;
+      }
+
+      .palette__input {
+        width: 100%;
+        height: 2.875rem;
+        padding: 0 var(--bz-s4);
+        border: 0;
+        border-bottom: 1px solid var(--bz-line);
+        background: transparent;
+        font-size: var(--bz-size-md);
+      }
+
+      .palette__input:focus {
+        outline: none;
+      }
+
+      .palette__list {
+        max-height: 19rem;
+        overflow-y: auto;
+        padding: var(--bz-s2);
+      }
+
+      .palette__group {
+        padding: var(--bz-s2) var(--bz-s2) var(--bz-s1);
+        color: var(--bz-ink-faint);
+        font-size: var(--bz-size-micro);
+        font-weight: 600;
+        letter-spacing: var(--bz-track-eyebrow);
+        text-transform: uppercase;
+      }
+
+      .palette__item {
+        display: flex;
+        align-items: center;
+        gap: var(--bz-s3);
+        width: 100%;
+        min-height: 2.125rem;
+        padding: 0 var(--bz-s2);
+        border: 0;
+        border-radius: var(--bz-r-sm);
+        background: none;
+        color: var(--bz-ink-dim);
+        font-size: var(--bz-size-base);
+        text-align: left;
+        transition: background var(--bz-d-fast) var(--bz-ease-out);
+      }
+
+      .palette__item[aria-selected="true"] {
+        background: var(--bz-control);
+        color: var(--bz-ink);
+      }
+
+      .palette__keys {
+        display: flex;
+        gap: 2px;
+        margin-left: auto;
+      }
+
+      .palette__glyph {
+        color: var(--bz-ink-faint);
+      }
+
+      .palette__empty {
+        padding: var(--bz-s5) var(--bz-s3);
+        color: var(--bz-ink-muted);
+        font-size: var(--bz-size-sm);
+        text-align: center;
+      }
+
+      /* Setup (frontend-native onboarding) */
+      .setup {
+        position: fixed;
+        inset: 0;
+        z-index: 80;
+        display: grid;
+        grid-template-columns: 17rem minmax(0, 1fr);
+        background: var(--bz-bg);
+        opacity: 0;
+        transform: scale(0.995);
+        transition:
+          opacity var(--bz-d-slow) var(--bz-ease-out),
+          transform var(--bz-d-slow) var(--bz-ease-out);
+      }
+
+      .setup.is-open {
+        opacity: 1;
+        transform: scale(1);
+      }
+
+      .setup[hidden] {
+        display: none;
+      }
+
+      .setup__aside {
+        display: flex;
+        flex-direction: column;
+        padding: var(--bz-s6) var(--bz-s5);
+        border-right: 1px solid var(--bz-line);
+        background: var(--bz-surface);
+      }
+
+      .setup__brand {
+        display: flex;
+        align-items: center;
+        gap: var(--bz-s3);
+        margin-bottom: var(--bz-s6);
+      }
+
+      .steps {
+        display: grid;
+        gap: var(--bz-s1);
+      }
+
+      .steps > button {
+        border: 0;
+        background: transparent;
+        font: inherit;
+        color: inherit;
+        text-align: left;
+        cursor: pointer;
+      }
+
+      .step {
+        display: grid;
+        grid-template-columns: 1.5rem minmax(0, 1fr);
+        align-items: center;
+        gap: var(--bz-s3);
+        padding: var(--bz-s2);
+        border-radius: var(--bz-r-md);
+        color: var(--bz-ink-faint);
+        font-size: var(--bz-size-sm);
+        transition:
+          color var(--bz-d-fast) var(--bz-ease-out),
+          background var(--bz-d-fast) var(--bz-ease-out);
+      }
+
+      .step.is-current {
+        background: var(--bz-bg);
+        color: var(--bz-ink);
+        font-weight: 500;
+      }
+
+      .step.is-done {
+        color: var(--bz-ink-muted);
+      }
+
+      .step__num {
+        display: grid;
+        place-items: center;
+        width: 1.5rem;
+        height: 1.5rem;
+        border: 1px solid var(--bz-line-strong);
+        border-radius: var(--bz-r-full);
+        font-family: var(--bz-font-display);
+        font-size: var(--bz-size-xs);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .step.is-current .step__num {
+        border-color: var(--bz-accent);
+        color: var(--bz-accent);
+      }
+
+      .step.is-done .step__num {
+        border-color: color-mix(in srgb, var(--bz-confirmed) 40%, var(--bz-line));
+        color: var(--bz-confirmed);
+      }
+
+      .setup__main {
+        display: flex;
+        flex-direction: column;
+        overflow-y: auto;
+      }
+
+      .setup__stage {
+        flex: 1;
+        width: min(38rem, 100%);
+        margin: 0 auto;
+        padding: var(--bz-s8) var(--bz-s5) var(--bz-s6);
+      }
+
+      .setup__foot {
+        position: sticky;
+        bottom: 0;
+        display: flex;
+        align-items: center;
+        gap: var(--bz-s3);
+        padding: var(--bz-s4) var(--bz-s5);
+        border-top: 1px solid var(--bz-line);
+        background: color-mix(in srgb, var(--bz-bg) 92%, transparent);
+        backdrop-filter: blur(8px);
+      }
+
+      .setup__foot .ledge__spacer {
+        flex: 1;
+      }
+
+      .setup__meter {
+        height: 2px;
+        border-radius: var(--bz-r-full);
+        background: var(--bz-line);
+        overflow: hidden;
+        margin-bottom: var(--bz-s6);
+      }
+
+      .setup__meter span {
+        display: block;
+        height: 100%;
+        background: var(--bz-accent);
+        transform-origin: left center;
+        transform: scaleX(var(--p, 0.2));
+        transition: transform var(--bz-d-slow) var(--bz-ease-out);
+      }
+
+      .stage__title {
+        margin: var(--bz-s3) 0 var(--bz-s3);
+        font-family: var(--bz-font-display);
+        font-size: var(--bz-size-display);
+        line-height: var(--bz-leading-tight);
+        letter-spacing: -0.015em;
+      }
+
+      .stage__sub {
+        max-width: 32rem;
+        color: var(--bz-ink-muted);
+      }
+
+      .stage__form {
+        display: grid;
+        gap: var(--bz-s4);
+        margin-top: var(--bz-s6);
+      }
+
+      .pick {
+        display: flex;
+        align-items: center;
+        gap: var(--bz-s3);
+        width: 100%;
+        padding: var(--bz-s3);
+        border: 1px solid var(--bz-line-strong);
+        border-radius: var(--bz-r-md);
+        background: var(--bz-surface);
+        text-align: left;
+        transition:
+          border-color var(--bz-d-fast) var(--bz-ease-out),
+          background var(--bz-d-fast) var(--bz-ease-out),
+          transform var(--bz-d-press) var(--bz-ease-out);
+      }
+
+      .pick:hover {
+        border-color: var(--bz-ink-faint);
+      }
+
+      .pick:active {
+        transform: scale(var(--bz-press));
+      }
+
+      .pick.is-on {
+        border-color: var(--bz-accent);
+        background: var(--bz-accent-wash);
+      }
+
+      .pick__tick {
+        display: grid;
+        place-items: center;
+        width: 1.125rem;
+        height: 1.125rem;
+        border: 1px solid var(--bz-line-strong);
+        border-radius: var(--bz-r-sm);
+        color: var(--bz-bg);
+        font-size: var(--bz-size-micro);
+      }
+
+      .pick.is-on .pick__tick {
+        border-color: var(--bz-accent);
+        background: var(--bz-accent);
+      }
+
+      .pick__body {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .pick__name {
+        display: block;
+        font-size: var(--bz-size-base);
+        font-weight: 500;
+      }
+
+      .pick__meta {
+        display: block;
+        color: var(--bz-ink-muted);
+        font-size: var(--bz-size-xs);
+      }
+
+      .stagefade {
+        animation: bz-rise var(--bz-d-slow) var(--bz-ease-out) both;
+      }
+
+      .probe {
+        display: grid;
+        gap: var(--bz-s2);
+        padding: var(--bz-s3);
+        border: 1px solid var(--bz-line);
+        border-radius: var(--bz-r-md);
+        background: var(--bz-surface);
+        font-size: var(--bz-size-sm);
+      }
+
+      .probe__line {
+        display: flex;
+        align-items: center;
+        gap: var(--bz-s2);
+        color: var(--bz-ink-muted);
+      }
+
+      .probe__line b {
+        color: var(--bz-ink);
+        font-weight: 500;
+      }
+
+      .spinner {
+        width: 12px;
+        height: 12px;
+        border: 2px solid var(--bz-line-strong);
+        border-top-color: var(--bz-accent);
+        border-radius: var(--bz-r-full);
+        animation: bz-spin 640ms linear infinite;
+      }
+
+      .tokenline {
+        display: flex;
+        align-items: center;
+        gap: var(--bz-s2);
+        padding: var(--bz-s3);
+        border: 1px dashed var(--bz-line-strong);
+        border-radius: var(--bz-r-md);
+        background: var(--bz-bg);
+        font-family: var(--bz-font-mono);
+        font-size: var(--bz-size-sm);
+        word-break: break-all;
+      }
+
+      /* Toast */
+      .toasts {
+        position: fixed;
+        right: var(--bz-s5);
+        bottom: calc(var(--bz-ledge) + var(--bz-s4));
+        z-index: 90;
+        display: grid;
+        gap: var(--bz-s2);
+        justify-items: end;
+      }
+
+      .toast {
+        display: flex;
+        align-items: center;
+        gap: var(--bz-s3);
+        padding: var(--bz-s3) var(--bz-s4);
+        border: 1px solid var(--bz-line-strong);
+        border-radius: var(--bz-r-md);
+        background: var(--bz-surface);
+        box-shadow: var(--bz-shadow-overlay);
+        font-size: var(--bz-size-sm);
+        animation: bz-toast-in var(--bz-d-slow) var(--bz-ease-out) both;
+      }
+
+      .toast.is-leaving {
+        animation: bz-toast-out var(--bz-d-fast) var(--bz-ease-out-soft) both;
+      }
+
+      /* Token gallery (design-system extraction aid) */
+      .swatches {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+        gap: var(--bz-s3);
+        margin-top: var(--bz-s4);
+      }
+
+      .swatch {
+        display: grid;
+        gap: var(--bz-s2);
+        padding: var(--bz-s3);
+        border: 1px solid var(--bz-line);
+        border-radius: var(--bz-r-md);
+        background: var(--bz-surface);
+      }
+
+      .swatch__chip {
+        height: 2.25rem;
+        border: 1px solid var(--bz-line-strong);
+        border-radius: var(--bz-r-sm);
+      }
+
+      .swatch__name {
+        font-family: var(--bz-font-mono);
+        font-size: var(--bz-size-micro);
+      }
+
+      .swatch__use {
+        color: var(--bz-ink-muted);
+        font-size: var(--bz-size-micro);
+      }
+
+      /* ---------------------------------------------------------------
+         7. MOTION — keyframes + entrances + reduced motion
+         --------------------------------------------------------------- */
+      @keyframes bz-rise {
+        from {
+          opacity: 0;
+          transform: translateY(var(--bz-lift));
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      @keyframes bz-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      @keyframes bz-toast-in {
+        from {
+          opacity: 0;
+          transform: translateY(8px) scale(0.98);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
+      }
+
+      @keyframes bz-toast-out {
+        from {
+          opacity: 1;
+          transform: translateY(0);
+        }
+        to {
+          opacity: 0;
+          transform: translateY(4px);
+        }
+      }
+
+      /* Route entrance: staggered only across a handful of blocks, so the
+         app never feels like it is performing for the user. */
+      .canvas > .measure > * {
+        animation: bz-rise var(--bz-d-base) var(--bz-ease-out) both;
+      }
+
+      .canvas > .measure > *:nth-child(2) {
+        animation-delay: 24ms;
+      }
+
+      .canvas > .measure > *:nth-child(3) {
+        animation-delay: 48ms;
+      }
+
+      .canvas > .measure > *:nth-child(n + 4) {
+        animation-delay: 64ms;
+      }
+
+      /* In-place updates (filtering, resolving a case) must not replay the
+         route entrance. Motion earns attention only when context changes. */
+      .canvas.is-quiet > .measure > * {
+        animation: none;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation-duration: 1ms !important;
+          animation-delay: 0ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 1ms !important;
+          transition-delay: 0ms !important;
+        }
+
+        :root {
+          --bz-press: 1;
+          --bz-lift: 0px;
+        }
+
+        .drawer,
+        .palette,
+        .setup {
+          transform: none !important;
+        }
+
+        /* A looping spinner is the one thing the blanket override would make
+           worse, so it stops entirely and the surrounding copy carries the
+           progress instead. */
+        .spinner {
+          animation: none !important;
+          border-color: var(--bz-accent);
+        }
+      }
+
+      /* ---------------------------------------------------------------
+         RESPONSIVE — spine collapses to a top bar of glyphs
+         --------------------------------------------------------------- */
+      @media (max-width: 60rem) {
+        .grid2,
+        .case__body {
+          grid-template-columns: minmax(0, 1fr);
+        }
+
+        .case__decide {
+          padding-left: 0;
+          border-left: 0;
+          border-top: 1px solid var(--bz-line);
+          padding-top: var(--bz-s3);
+        }
+
+        .row {
+          grid-template-columns: 3rem minmax(0, 1fr) 6.5rem;
+        }
+
+        .row__meta,
+        .row__cat,
+        .row__state {
+          display: none;
+        }
+
+        .setup {
+          grid-template-columns: minmax(0, 1fr);
+        }
+
+        .setup__aside {
+          display: none;
+        }
+      }
+
+      @media (max-width: 44rem) {
+        .shell {
+          grid-template-columns: minmax(0, 1fr);
+        }
+
+        .spine {
+          position: sticky;
+          flex-direction: row;
+          height: auto;
+          padding: var(--bz-s2) var(--bz-s3);
+          border-right: 0;
+          border-bottom: 1px solid var(--bz-line);
+        }
+
+        .spine__mark {
+          margin-bottom: 0;
+        }
+
+        .spine__tip {
+          display: none;
+        }
+
+        .ledge {
+          left: 0;
+        }
+
+        .topbar {
+          grid-template-columns: auto minmax(0, 1fr);
+          gap: var(--bz-s2);
+          padding: 0 var(--bz-s3);
+        }
+
+        .topbar__where,
+        .sync {
+          display: none;
+        }
+
+        /* The command trigger becomes a glyph: the keyboard shell is a
+           desktop affordance, and touch users get the spine instead. */
+        .cmdtrigger {
+          width: 2rem;
+          padding: 0;
+          justify-content: center;
+        }
+
+        .cmdtrigger > *:not(:first-child) {
+          display: none;
+        }
+
+        .ledge__hint {
+          display: none;
+        }
+
+        .ledge__hint:last-child {
+          display: inline-flex;
+        }
+
+        .toasts {
+          left: var(--bz-s4);
+          right: var(--bz-s4);
+        }
+
+        .toast {
+          width: 100%;
+        }
+
+        .figure__value {
+          font-size: var(--bz-size-display);
+        }
+
+        .canvas {
+          padding: var(--bz-s5) var(--bz-s4) calc(var(--bz-ledge) + var(--bz-s8));
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <a class="bz-sr" href="#canvas">Skip to content</a>
+
+    <div class="shell">
+      <nav aria-label="Sections" class="spine" id="spine"></nav>
+
+      <div>
+        <header class="topbar">
+          <div class="topbar__where" id="where"></div>
+          <button class="cmdtrigger" id="cmd-open" type="button">
+            <span aria-hidden="true">⌕</span>
+            <span>Search or run a command</span>
+            <span class="cmdtrigger__spacer"></span>
+            <span class="kbd">⌘</span><span class="kbd">K</span>
+          </button>
+          <div class="topbar__right" id="topbar-right"></div>
+        </header>
+
+        <main class="canvas" id="canvas"></main>
+      </div>
+    </div>
+
+    <div class="ledge" id="ledge"></div>
+
+    <div class="scrim" id="scrim" hidden></div>
+
+    <aside
+      aria-labelledby="drawer-title"
+      class="drawer"
+      id="drawer"
+      role="dialog"
+      aria-modal="true"
+      hidden
+    ></aside>
+
+    <div
+      aria-label="Command palette"
+      class="palette"
+      id="palette"
+      role="dialog"
+      aria-modal="true"
+      hidden
+    >
+      <input
+        aria-label="Command"
+        autocomplete="off"
+        class="palette__input"
+        id="palette-input"
+        placeholder="Jump to a view, filter the ledger, run setup…"
+        spellcheck="false"
+        type="text"
+      />
+      <div class="palette__list" id="palette-list" role="listbox"></div>
+    </div>
+
+    <section
+      aria-label="Billzebub setup"
+      class="setup"
+      id="setup"
+      role="dialog"
+      aria-modal="true"
+      hidden
+    ></section>
+
+    <div aria-live="polite" class="toasts" id="toasts"></div>
+
+    <script>
+      "use strict";
+
+      /* ===================================================================
+         LEDGER DESK — prototype logic
+         Vanilla + delegated events on purpose: the point of the arena is the
+         surface, and a future extraction should read the markup, not a
+         framework. Sections mirror the CSS: data, format, shell, overlays,
+         routes.
+         =================================================================== */
+
+      /* ---------------------------------------------------------------
+         DATA — fixtures shaped like the domain in CONTEXT.md
+         --------------------------------------------------------------- */
+      const TODAY = "2026-09-13";
+
+      const ACCOUNTS = {
+        multiplier: {
+          id: "multiplier",
+          name: "DBS Multiplier",
+          label: "Multiplier ···4821",
+          kind: "Savings account",
+          provider: "DBS",
+        },
+        livefresh: {
+          id: "livefresh",
+          name: "DBS Live Fresh",
+          label: "Live Fresh ···7702",
+          kind: "Credit card",
+          provider: "DBS",
+        },
+        paylah: {
+          id: "paylah",
+          name: "PayLah! wallet",
+          label: "PayLah! ···9014",
+          kind: "Wallet",
+          provider: "DBS",
+        },
+      };
+
+      const TX = [
+        {
+          id: "tx_yakun",
+          d: "2026-09-13",
+          cp: "Ya Kun Kaya Toast",
+          raw: "YA KUN KAYA TOAST #01-22 SG",
+          acc: "paylah",
+          cat: "Dining",
+          kind: "Expense",
+          amt: -5.8,
+          state: "provisional",
+          rt: "08:12",
+        },
+        {
+          id: "tx_grab_13",
+          d: "2026-09-13",
+          cp: "Grab",
+          raw: "GRAB *A-7HK2QN SINGAPORE",
+          acc: "livefresh",
+          cat: "Transport",
+          kind: "Expense",
+          amt: -14.2,
+          state: "provisional",
+          rt: "07:41",
+          review: "rev_recon",
+          candidate: -14.6,
+        },
+        {
+          id: "tx_fairprice",
+          d: "2026-09-12",
+          cp: "NTUC FairPrice",
+          raw: "NTUC FP-TAMPINES MALL SG",
+          acc: "livefresh",
+          cat: "Groceries",
+          kind: "Expense",
+          amt: -87.45,
+          state: "confirmed",
+          rt: "19:03",
+        },
+        {
+          id: "tx_simplygo",
+          d: "2026-09-12",
+          cp: "SimplyGo",
+          raw: "TRANSITLINK SIMPLYGO SG",
+          acc: "livefresh",
+          cat: "Transport",
+          kind: "Expense",
+          amt: -22.36,
+          state: "confirmed",
+        },
+        {
+          id: "tx_singtel",
+          d: "2026-09-12",
+          cp: "Singtel",
+          raw: "GIRO SINGTEL MOBILE 9xxx",
+          acc: "multiplier",
+          cat: "Utilities",
+          kind: "Expense",
+          amt: -68.9,
+          state: "confirmed",
+        },
+        {
+          id: "tx_donki",
+          d: "2026-09-11",
+          cp: "Don Don Donki",
+          raw: "DONKI ORCHARD CENTRAL SG",
+          acc: "livefresh",
+          cat: "Groceries",
+          kind: "Expense",
+          amt: -41.15,
+          state: "confirmed",
+          rt: "21:18",
+        },
+        {
+          id: "tx_atlas",
+          d: "2026-09-11",
+          cp: "Atlas Coffeehouse",
+          raw: "ATLAS COFFEEHOUSE PTE SG",
+          acc: "paylah",
+          cat: "Dining",
+          kind: "Expense",
+          amt: -18.0,
+          state: "confirmed",
+        },
+        {
+          id: "tx_shopee",
+          d: "2026-09-10",
+          cp: "Shopee",
+          raw: "SHOPEE SG 26091012884",
+          acc: "livefresh",
+          cat: null,
+          kind: "Expense",
+          amt: -132.4,
+          state: "confirmed",
+          review: "rev_cat_shopee",
+        },
+        {
+          id: "tx_spgroup",
+          d: "2026-09-10",
+          cp: "SP Group",
+          raw: "GIRO SP SERVICES LTD",
+          acc: "multiplier",
+          cat: "Utilities",
+          kind: "Expense",
+          amt: -154.72,
+          state: "confirmed",
+        },
+        {
+          id: "tx_koufu",
+          d: "2026-09-09",
+          cp: "Koufu",
+          raw: "KOUFU PTE LTD #03 SG",
+          acc: "paylah",
+          cat: "Dining",
+          kind: "Expense",
+          amt: -7.4,
+          state: "confirmed",
+        },
+        {
+          id: "tx_watsons",
+          d: "2026-09-09",
+          cp: "Watsons",
+          raw: "WATSONS SG 0221 SG",
+          acc: "livefresh",
+          cat: "Health",
+          kind: "Expense",
+          amt: -29.85,
+          state: "confirmed",
+        },
+        {
+          id: "tx_deliveroo",
+          d: "2026-09-08",
+          cp: "Deliveroo",
+          raw: "DELIVEROO SINGAPORE SG",
+          acc: "livefresh",
+          cat: "Dining",
+          kind: "Expense",
+          amt: -38.6,
+          state: "confirmed",
+        },
+        {
+          id: "tx_shengsiong",
+          d: "2026-09-08",
+          cp: "Sheng Siong",
+          raw: "SHENG SIONG SUPERMKT SG",
+          acc: "livefresh",
+          cat: "Groceries",
+          kind: "Expense",
+          amt: -52.3,
+          state: "confirmed",
+        },
+        {
+          id: "tx_paynow_jtan",
+          d: "2026-09-07",
+          cp: "J. Tan",
+          raw: "PAYNOW TRANSFER TO J TAN 9xxx",
+          acc: "multiplier",
+          cat: null,
+          kind: "Expense",
+          amt: -60.0,
+          state: "confirmed",
+          review: "rev_kind_paynow",
+        },
+        {
+          id: "tx_uniqlo",
+          d: "2026-09-06",
+          cp: "Uniqlo",
+          raw: "UNIQLO ORCHARD CENTRAL SG",
+          acc: "livefresh",
+          cat: "Shopping",
+          kind: "Expense",
+          amt: -79.9,
+          state: "confirmed",
+        },
+        {
+          id: "tx_salary",
+          d: "2026-09-05",
+          cp: "Kiasu Labs Pte Ltd",
+          raw: "SALARY KIASU LABS SEP2026",
+          acc: "multiplier",
+          cat: null,
+          kind: "Income",
+          amt: 6420.0,
+          state: "confirmed",
+        },
+        {
+          id: "tx_circles",
+          d: "2026-09-05",
+          cp: "Circles.Life",
+          raw: "CIRCLES LIFE SUBSCRIPTION",
+          acc: "multiplier",
+          cat: "Subscriptions",
+          kind: "Expense",
+          amt: -26.0,
+          state: "confirmed",
+        },
+        {
+          id: "tx_coldstorage",
+          d: "2026-09-04",
+          cp: "Cold Storage",
+          raw: "COLD STORAGE GREAT WORLD",
+          acc: "livefresh",
+          cat: "Groceries",
+          kind: "Expense",
+          amt: -64.05,
+          state: "confirmed",
+        },
+        {
+          id: "tx_gv",
+          d: "2026-09-03",
+          cp: "Golden Village",
+          raw: "GV VIVOCITY SG",
+          acc: "paylah",
+          cat: null,
+          kind: "Expense",
+          amt: -27.0,
+          state: "confirmed",
+          review: "rev_cat_gv",
+        },
+        {
+          id: "tx_topup",
+          d: "2026-09-03",
+          cp: "PayLah! top-up",
+          raw: "TRANSFER TO PAYLAH 9014",
+          acc: "multiplier",
+          cat: null,
+          kind: "Transfer",
+          amt: -100.0,
+          state: "confirmed",
+        },
+        {
+          id: "tx_csh",
+          d: "2026-09-02",
+          cp: "Chye Seng Huat Hardware",
+          raw: "CSHH COFFEE BAR SG",
+          acc: "livefresh",
+          cat: "Dining",
+          kind: "Expense",
+          amt: -16.5,
+          state: "confirmed",
+        },
+        {
+          id: "tx_decathlon",
+          d: "2026-09-02",
+          cp: "Decathlon",
+          raw: "DECATHLON SG KALLANG",
+          acc: "livefresh",
+          cat: "Shopping",
+          kind: "Expense",
+          amt: -45.9,
+          state: "confirmed",
+        },
+        {
+          id: "tx_lazada_refund",
+          d: "2026-09-01",
+          cp: "Lazada",
+          raw: "LAZADA REFUND 90223118",
+          acc: "livefresh",
+          cat: null,
+          kind: "Refund",
+          amt: 23.9,
+          state: "confirmed",
+          review: "rev_offset_lazada",
+        },
+        {
+          id: "tx_income_insure",
+          d: "2026-09-01",
+          cp: "NTUC Income",
+          raw: "GIRO NTUC INCOME PREMIUM",
+          acc: "multiplier",
+          cat: "Insurance",
+          kind: "Expense",
+          amt: -108.0,
+          state: "confirmed",
+        },
+      ];
+
+      /* Unmatched Real-time Claims never became Transactions — they live in
+         the review inbox only, which is exactly the domain distinction. */
+      const CLAIMS_UNMATCHED = [
+        {
+          id: "clm_comfort",
+          d: "2026-09-07",
+          cp: "ComfortDelGro",
+          raw: "CDG TAXI APPLE PAY 19:44",
+          acc: "livefresh",
+          amt: -19.5,
+          captured: "7 Sep, 19:44",
+          since: "2 statements processed since capture",
+        },
+        {
+          id: "clm_kopitiam",
+          d: "2026-09-04",
+          cp: "Kopitiam",
+          raw: "KOPITIAM #05 APPLE PAY 12:31",
+          acc: "paylah",
+          amt: -4.2,
+          captured: "4 Sep, 12:31",
+          since: "1 statement processed since capture",
+        },
+      ];
+
+      const REVIEWS = [
+        {
+          id: "rev_cat_shopee",
+          queue: "categorization",
+          severity: "attention",
+          title: "Category needed",
+          subject: "tx_shopee",
+          why: "Confirmed by the 10 Sep Live Fresh Statement Claim, but the Counterparty resolves to a marketplace, so the Category is uncertain.",
+          choices: [
+            { label: "Shopping", kind: "category" },
+            { label: "Home", kind: "category" },
+            { label: "Groceries", kind: "category" },
+            { label: "Split across Categories…", kind: "split" },
+          ],
+        },
+        {
+          id: "rev_cat_gv",
+          queue: "categorization",
+          severity: "attention",
+          title: "Category needed",
+          subject: "tx_gv",
+          why: "First Transaction for this Counterparty. No earlier decision to reuse.",
+          choices: [
+            { label: "Entertainment", kind: "category" },
+            { label: "Dining", kind: "category" },
+            { label: "Shopping", kind: "category" },
+          ],
+        },
+        {
+          id: "rev_kind_paynow",
+          queue: "categorization",
+          severity: "attention",
+          title: "Transaction Kind uncertain",
+          subject: "tx_paynow_jtan",
+          why: "A PayNow transfer to a person is an Expense only when it is not a Transfer between your own Financial Accounts.",
+          choices: [
+            { label: "Expense · Dining", kind: "category" },
+            { label: "Transfer between own accounts", kind: "kind" },
+            { label: "Reimbursement owed to me", kind: "kind" },
+          ],
+        },
+        {
+          id: "rev_offset_lazada",
+          queue: "categorization",
+          severity: "attention",
+          title: "Refund not yet allocated",
+          subject: "tx_lazada_refund",
+          why: "A Refund reduces net spending through an Offset Allocation. Choose the earlier Expense it repays.",
+          choices: [
+            { label: "Shopee · 10 Sep · S$132.40", kind: "offset" },
+            { label: "Decathlon · 2 Sep · S$45.90", kind: "offset" },
+            { label: "Leave unallocated for now", kind: "defer" },
+          ],
+        },
+        {
+          id: "rev_unmatched_comfort",
+          queue: "unmatched",
+          severity: "attention",
+          title: "Real-time Claim never posted",
+          claim: "clm_comfort",
+          why: "Captured from Apple Pay on 7 Sep. Two Live Fresh statements have been processed since, and no Statement Claim matched it.",
+          choices: [
+            { label: "Keep as Unconfirmed", kind: "disposition" },
+            { label: "Exclude from history", kind: "disposition" },
+            { label: "Match to an existing Transaction…", kind: "match" },
+          ],
+        },
+        {
+          id: "rev_unmatched_kopitiam",
+          queue: "unmatched",
+          severity: "attention",
+          title: "Real-time Claim never posted",
+          claim: "clm_kopitiam",
+          why: "Captured from Apple Pay on 4 Sep. Wallet statements lag, so this may still post.",
+          choices: [
+            { label: "Wait for the next statement", kind: "defer" },
+            { label: "Keep as Unconfirmed", kind: "disposition" },
+            { label: "Exclude from history", kind: "disposition" },
+          ],
+        },
+        {
+          id: "rev_recon",
+          queue: "reconciliation",
+          severity: "attention",
+          title: "Two Claims may describe one movement",
+          subject: "tx_grab_13",
+          why: "An Apple Pay Real-time Claim of S$14.20 and a Statement Claim of S$14.60 share the Counterparty and fall one day apart. Amounts differ by the usual Grab tip adjustment.",
+          choices: [
+            { label: "Link as one Transaction (Posted S$14.60)", kind: "link" },
+            { label: "Keep as separate Transactions", kind: "split" },
+            { label: "Decide later", kind: "defer" },
+          ],
+        },
+        {
+          id: "rev_import_fail",
+          queue: "imports",
+          severity: "blocking",
+          title: "Extraction failed validation",
+          artifact: "art_aug_livefresh",
+          why: "Statement total S$1,204.55 does not equal the sum of extracted Claims S$1,176.65. The Extraction was rejected atomically, so no Claims were created.",
+          choices: [
+            { label: "Reprocess with parser dbs_credit_card v4", kind: "reprocess" },
+            { label: "Keep quarantined", kind: "quarantine" },
+          ],
+        },
+      ];
+
+      const ARTIFACTS = [
+        {
+          id: "art_aug_livefresh",
+          file: "dbs-live-fresh-2026-08.pdf",
+          parser: "dbs_credit_card v3",
+          period: "1–31 Aug 2026",
+          acc: "livefresh",
+          status: "failed",
+          claims: 0,
+          detail: "Statement total mismatch · S$27.90 unaccounted",
+        },
+        {
+          id: "art_sep_livefresh",
+          file: "dbs-live-fresh-2026-09-a.pdf",
+          parser: "dbs_credit_card v3",
+          period: "1–12 Sep 2026",
+          acc: "livefresh",
+          status: "accepted",
+          claims: 31,
+          detail: "Accepted 12 Sep, 21:04",
+        },
+        {
+          id: "art_sep_multiplier",
+          file: "dbs-multiplier-2026-09.csv",
+          parser: "dbs_savings_csv v2",
+          period: "1–12 Sep 2026",
+          acc: "multiplier",
+          status: "accepted",
+          claims: 14,
+          detail: "Accepted 12 Sep, 21:04",
+        },
+        {
+          id: "art_paylah",
+          file: "paylah-2026-09.pdf",
+          parser: "paylah_wallet v1",
+          period: "1–12 Sep 2026",
+          acc: "paylah",
+          status: "accepted",
+          claims: 9,
+          detail: "Accepted 12 Sep, 21:05",
+        },
+        {
+          id: "art_shortcut",
+          file: "apple-shortcut capture stream",
+          parser: "realtime_capture v1",
+          period: "rolling",
+          acc: "livefresh",
+          status: "live",
+          claims: 6,
+          detail: "Last capture 13 Sep, 08:12",
+        },
+      ];
+
+      /* ---------------------------------------------------------------
+         FORMAT
+         --------------------------------------------------------------- */
+      const MONTHS = [
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec",
+      ];
+      const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+      function money(value, opts) {
+        const options = opts || {};
+        const abs = Math.abs(value).toLocaleString("en-SG", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        });
+        const prefix = value < 0 ? "−" : options.plus ? "+" : "";
+        return prefix + (options.bare ? "" : "S$") + abs;
+      }
+
+      function plain(value) {
+        return Math.abs(value).toLocaleString("en-SG", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        });
+      }
+
+      function dayNum(iso) {
+        return Number(iso.slice(8, 10));
+      }
+
+      function shortDate(iso) {
+        return dayNum(iso) + " " + MONTHS[Number(iso.slice(5, 7)) - 1];
+      }
+
+      function longDate(iso) {
+        const date = new Date(iso + "T12:00:00Z");
+        return (
+          DAYS[date.getUTCDay()] +
+          " " +
+          dayNum(iso) +
+          " " +
+          MONTHS[Number(iso.slice(5, 7)) - 1] +
+          " " +
+          iso.slice(0, 4)
+        );
+      }
+
+      function dayLabel(iso) {
+        if (iso === TODAY) return "Today · " + shortDate(iso);
+        if (dayNum(iso) === dayNum(TODAY) - 1)
+          return "Yesterday · " + shortDate(iso);
+        return longDate(iso);
+      }
+
+      function esc(text) {
+        return String(text).replace(
+          /[&<>"']/g,
+          (ch) =>
+            ({
+              "&": "&amp;",
+              "<": "&lt;",
+              ">": "&gt;",
+              '"': "&quot;",
+              "'": "&#39;",
+            })[ch],
+        );
+      }
+
+      const ICONS = {
+        overview: '<path d="M3 13.2V8.4M8 13.2V3.2M13 13.2v-3.6"/>',
+        transactions:
+          '<path d="M2.6 4.5h10.8M2.6 8.5h10.8M2.6 12.5h6.4"/>',
+        review:
+          '<path d="M2.5 9.5h3.1l1 1.9h2.8l1-1.9h3.1M2.5 9.5 4.6 3.3h6.8l2.1 6.2v3.3a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1z"/>',
+        imports:
+          '<path d="M8 2.6v6.9m0 0 2.4-2.4M8 9.5 5.6 7.1M2.6 11.4v1.2a1 1 0 0 0 1 1h8.8a1 1 0 0 0 1-1v-1.2"/>',
+        tokens:
+          '<path d="M2.6 3.2h4.6v4.6H2.6zM8.8 8.2h4.6v4.6H8.8z"/><circle cx="11.1" cy="5.5" r="2.3"/><circle cx="4.9" cy="10.5" r="2.3"/>',
+        close: '<path d="M4 4l8 8M12 4l-8 8"/>',
+        check: '<path d="M3.4 8.6l3 3 6.2-7.2"/>',
+        arrow: '<path d="M3.5 8h9m0 0L9 4.5M12.5 8 9 11.5"/>',
+      };
+
+      function icon(name) {
+        return (
+          '<svg aria-hidden="true" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">' +
+          ICONS[name] +
+          "</svg>"
+        );
+      }
+
+      /* ---------------------------------------------------------------
+         STATE
+         --------------------------------------------------------------- */
+      const NAV = [
+        { id: "overview", label: "Overview", key: "O", icon: "overview" },
+        {
+          id: "transactions",
+          label: "Transactions",
+          key: "T",
+          icon: "transactions",
+        },
+        { id: "review", label: "Review", key: "R", icon: "review" },
+        { id: "imports", label: "Imports", key: "I", icon: "imports" },
+        { id: "tokens", label: "Design tokens", key: "D", icon: "tokens" },
+      ];
+
+      const state = {
+        route: "overview",
+        cursor: 0,
+        rows: [],
+        filters: { account: "all", state: "all", needsReview: false },
+        query: "",
+        resolved: {},
+        queue: "categorization",
+        drawer: null,
+        palette: { open: false, query: "", index: 0, items: [] },
+        setup: { open: false, step: 0, done: false, data: {} },
+        heroAnimated: false,
+      };
+
+      const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+      function pendingReviews() {
+        return REVIEWS.filter((review) => !state.resolved[review.id]);
+      }
+
+      function reviewFor(id) {
+        return REVIEWS.find((review) => review.id === id) || null;
+      }
+
+      function txFor(id) {
+        return TX.find((tx) => tx.id === id) || null;
+      }
+
+      function claimFor(id) {
+        return CLAIMS_UNMATCHED.find((claim) => claim.id === id) || null;
+      }
+
+      function effectiveCategory(tx) {
+        const decided = state.resolved[tx.review];
+        if (decided && decided.category) return decided.category;
+        return tx.cat;
+      }
+
+      function txNeedsReview(tx) {
+        return Boolean(tx.review) && !state.resolved[tx.review];
+      }
+
+      /* Month arithmetic is derived, never hardcoded, so decisions made in
+         the review inbox move the numbers on Overview. */
+      function monthTotals() {
+        let confirmed = 0;
+        let provisional = 0;
+        let income = 0;
+        let offsets = 0;
+        for (const tx of TX) {
+          if (tx.kind === "Income") {
+            income += tx.amt;
+            continue;
+          }
+          if (tx.kind === "Transfer") continue;
+          if (tx.kind === "Refund" || tx.kind === "Reimbursement") {
+            offsets += tx.amt;
+            continue;
+          }
+          if (tx.state === "provisional") provisional += Math.abs(tx.amt);
+          else confirmed += Math.abs(tx.amt);
+        }
+        return {
+          confirmed,
+          provisional,
+          income,
+          offsets,
+          estimated: confirmed + provisional - offsets,
+        };
+      }
+
+      function categoryTotals() {
+        const bucket = new Map();
+        for (const tx of TX) {
+          if (tx.kind !== "Expense") continue;
+          const name = effectiveCategory(tx) || "Uncategorized";
+          bucket.set(name, (bucket.get(name) || 0) + Math.abs(tx.amt));
+        }
+        return [...bucket.entries()]
+          .map(([name, total]) => ({ name, total }))
+          .sort((a, b) => b.total - a.total);
+      }
+
+      function dailyTotals() {
+        const days = [];
+        for (let day = 1; day <= 13; day += 1) {
+          const iso = "2026-09-" + String(day).padStart(2, "0");
+          const spend = TX.filter(
+            (tx) => tx.d === iso && tx.kind === "Expense",
+          ).reduce((sum, tx) => sum + Math.abs(tx.amt), 0);
+          const isProvisional = TX.some(
+            (tx) => tx.d === iso && tx.state === "provisional",
+          );
+          days.push({ day, iso, spend, isProvisional });
+        }
+        return days;
+      }
+
+      /* ---------------------------------------------------------------
+         TOASTS
+         --------------------------------------------------------------- */
+      function toast(message, tone) {
+        const host = document.getElementById("toasts");
+        const node = document.createElement("div");
+        node.className = "toast";
+        const glyph =
+          tone === "confirmed"
+            ? '<span style="color:var(--bz-confirmed)">' +
+              icon("check") +
+              "</span>"
+            : '<span class="bz-muted">' + icon("arrow") + "</span>";
+        node.innerHTML = glyph + "<span>" + esc(message) + "</span>";
+        host.append(node);
+        const life = reduced.matches ? 1600 : 2600;
+        window.setTimeout(() => {
+          node.classList.add("is-leaving");
+          window.setTimeout(() => node.remove(), reduced.matches ? 10 : 140);
+        }, life);
+      }
+
+      /* ---------------------------------------------------------------
+         SHELL CHROME
+         --------------------------------------------------------------- */
+      function renderSpine() {
+        const pending = pendingReviews().length;
+        const items = NAV.map((item) => {
+          const current = state.route === item.id ? ' aria-current="page"' : "";
+          const dot =
+            item.id === "review" && pending > 0
+              ? '<span class="spine__dot"></span>'
+              : "";
+          return (
+            '<button class="spine__btn" data-act="route" data-arg="' +
+            item.id +
+            '" type="button"' +
+            current +
+            ' aria-label="' +
+            item.label +
+            '">' +
+            icon(item.icon) +
+            dot +
+            '<span class="spine__tip">' +
+            item.label +
+            '<span class="kbd">g</span><span class="kbd">' +
+            item.key.toLowerCase() +
+            "</span></span></button>"
+          );
+        }).join("");
+
+        document.getElementById("spine").innerHTML =
+          '<div class="spine__mark" title="Billzebub">B</div>' +
+          items +
+          '<div class="spine__spacer"></div>' +
+          '<button class="spine__btn" data-act="setup" type="button" aria-label="Setup">' +
+          '<svg aria-hidden="true" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="8" cy="8" r="2.3"/><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M12.4 3.6l-1.1 1.1M4.7 11.3l-1.1 1.1"/></svg>' +
+          '<span class="spine__tip">Setup</span></button>';
+      }
+
+      function renderTopbar() {
+        const title = NAV.find((item) => item.id === state.route).label;
+        document.getElementById("where").innerHTML =
+          "<b>Billzebub</b>" +
+          '<span class="topbar__sep">/</span>' +
+          "<span>" +
+          title +
+          "</span>" +
+          '<span class="badge badge--quiet">SGD</span>';
+
+        const pending = pendingReviews().length;
+        const setupLabel = state.setup.done
+          ? "Setup complete"
+          : "Finish setup";
+        document.getElementById("topbar-right").innerHTML =
+          (pending > 0
+            ? '<button class="pill is-on" data-act="route" data-arg="review" type="button">' +
+              pending +
+              " Pending Review</button>"
+            : '<span class="pill"><span style="color:var(--bz-confirmed)">' +
+              icon("check") +
+              "</span>Inbox clear</span>") +
+          '<span class="sync"><span class="sync__dot"></span>Synced 08:14</span>' +
+          '<button class="btn" data-act="setup" type="button">' +
+          setupLabel +
+          "</button>";
+      }
+
+      const LEDGE_HINTS = {
+        overview: [
+          ["g", "t", "ledger"],
+          ["g", "r", "review inbox"],
+        ],
+        transactions: [
+          ["j", "k", "move"],
+          ["↵", null, "open detail"],
+          ["f", null, "filters"],
+        ],
+        review: [
+          ["j", "k", "move case"],
+          ["1", "3", "decide"],
+          ["x", null, "defer"],
+        ],
+        imports: [["↵", null, "open artifact"]],
+        tokens: [],
+      };
+
+      function renderLedge() {
+        const hints = LEDGE_HINTS[state.route] || [];
+        const left = hints
+          .map((hint) => {
+            const keys =
+              '<span class="kbd">' +
+              hint[0] +
+              "</span>" +
+              (hint[1] ? '<span class="kbd">' + hint[1] + "</span>" : "");
+            return '<span class="ledge__hint">' + keys + hint[2] + "</span>";
+          })
+          .join("");
+        const totals = monthTotals();
+        document.getElementById("ledge").innerHTML =
+          left +
+          '<span class="ledge__hint"><span class="kbd">⌘</span><span class="kbd">K</span>commands</span>' +
+          '<span class="ledge__spacer"></span>' +
+          '<span class="ledge__hint">Reporting currency SGD · estimated ' +
+          money(totals.estimated) +
+          " this month</span>";
+      }
+
+      /* ---------------------------------------------------------------
+         ROUTER
+         --------------------------------------------------------------- */
+      const ROUTES = {};
+
+      function go(route) {
+        if (!ROUTES[route]) return;
+        state.route = route;
+        state.cursor = 0;
+        closePalette();
+        closeDrawer();
+        window.scrollTo({ top: 0 });
+        writeHash();
+        render();
+      }
+
+      /* Deep links: every screen, queue, drawer and setup step is
+         addressable, which is also how the review inbox gets linked from a
+         notification later. */
+      let hashLock = false;
+
+      function writeHash() {
+        hashLock = true;
+        const suffix =
+          state.route === "review" ? "/" + state.queue : "";
+        window.history.replaceState(null, "", "#/" + state.route + suffix);
+        window.setTimeout(() => (hashLock = false), 0);
+      }
+
+      function applyHash() {
+        const parts = window.location.hash
+          .replace(/^#\/?/, "")
+          .split("/")
+          .filter(Boolean);
+        const head = parts[0];
+        const arg = parts[1];
+
+        if (head === "setup") {
+          openSetup(arg === undefined ? 0 : Number(arg));
+          return true;
+        }
+        if (head === "commands") {
+          render();
+          openPalette();
+          return true;
+        }
+        if (head === "tx" && arg) {
+          state.route = "transactions";
+          render();
+          openDrawer(arg);
+          return true;
+        }
+        if (head === "review") {
+          state.route = "review";
+          if (arg && QUEUES.some((queue) => queue.id === arg))
+            state.queue = arg;
+          render();
+          return true;
+        }
+        if (head && ROUTES[head]) {
+          state.route = head;
+          render();
+          return true;
+        }
+        return false;
+      }
+
+      window.addEventListener("hashchange", () => {
+        if (hashLock) return;
+        applyHash();
+      });
+
+      function render(options) {
+        const quiet = Boolean(options && options.quiet);
+        renderSpine();
+        renderTopbar();
+        renderLedge();
+        const canvas = document.getElementById("canvas");
+        canvas.classList.toggle("is-quiet", quiet);
+        canvas.innerHTML =
+          '<div class="measure">' + ROUTES[state.route]() + "</div>";
+        const fresh = !quiet && !state.seen[state.route];
+        state.seen[state.route] = true;
+        requestAnimationFrame(() => paintMeters(fresh));
+      }
+
+      /* An in-route update: same context, so no entrance motion. */
+      function update() {
+        render({ quiet: true });
+      }
+
+      /* Bars and meters ease out from rest to their value on the first frame
+         after insert — once per route per session. A daily tool should not
+         re-perform its charts every time you glance at them. */
+      function paintMeters(animate) {
+        document.querySelectorAll("[data-fill], [data-h]").forEach((node) => {
+          if (!animate) node.style.transition = "none";
+          if (node.dataset.fill)
+            node.style.setProperty("--fill", node.dataset.fill);
+          if (node.dataset.h) node.style.setProperty("--h", node.dataset.h);
+        });
+      }
+
+      /* ---------------------------------------------------------------
+         COMMAND PALETTE — the primary navigator of this direction
+         --------------------------------------------------------------- */
+      function commandItems() {
+        const items = [];
+        for (const item of NAV) {
+          items.push({
+            group: "Go to",
+            label: item.label,
+            hint: "g " + item.key.toLowerCase(),
+            run: () => go(item.id),
+          });
+        }
+        items.push({
+          group: "Review",
+          label: "Open Pending Review inbox",
+          hint: "g r",
+          run: () => go("review"),
+        });
+        items.push({
+          group: "Review",
+          label: "Categorize Shopee · S$132.40",
+          run: () => {
+            state.queue = "categorization";
+            go("review");
+          },
+        });
+        items.push({
+          group: "Review",
+          label: "Reprocess failed Extraction · dbs-live-fresh-2026-08.pdf",
+          run: () => {
+            state.queue = "imports";
+            go("review");
+          },
+        });
+        items.push({
+          group: "Ledger",
+          label: "Filter: provisional activity only",
+          run: () => {
+            state.filters.state = "provisional";
+            go("transactions");
+            toast("Filtered to provisional activity");
+          },
+        });
+        items.push({
+          group: "Ledger",
+          label: "Filter: needs review",
+          run: () => {
+            state.filters.needsReview = true;
+            go("transactions");
+            toast("Filtered to Transactions with a Pending Review");
+          },
+        });
+        for (const account of Object.values(ACCOUNTS)) {
+          items.push({
+            group: "Ledger",
+            label: "Filter: " + account.name,
+            run: () => {
+              state.filters.account = account.id;
+              go("transactions");
+              toast("Filtered to " + account.name);
+            },
+          });
+        }
+        items.push({
+          group: "Setup",
+          label: state.setup.done
+            ? "Re-run setup"
+            : "Finish frontend setup (5 steps)",
+          run: openSetup,
+        });
+        items.push({
+          group: "Setup",
+          label: "Add a Financial Account",
+          run: () => openSetup(1),
+        });
+        items.push({
+          group: "Setup",
+          label: "Create an Apple Shortcut capture token",
+          run: () => openSetup(3),
+        });
+        return items;
+      }
+
+      function openPalette() {
+        state.palette.open = true;
+        state.palette.query = "";
+        state.palette.index = 0;
+        const input = document.getElementById("palette-input");
+        input.value = "";
+        renderPalette();
+        reveal(document.getElementById("scrim"));
+        reveal(document.getElementById("palette"));
+        input.focus();
+      }
+
+      function closePalette() {
+        if (!state.palette.open) return;
+        state.palette.open = false;
+        const palette = document.getElementById("palette");
+        palette.classList.remove("is-open");
+        maybeHideScrim();
+        window.setTimeout(
+          () => {
+            if (!state.palette.open) palette.hidden = true;
+          },
+          reduced.matches ? 10 : 160,
+        );
+      }
+
+      /* Reveal an overlay: unhide, flush style so the transition has a real
+         starting value, then switch to the open state. A forced reflow is
+         more reliable than waiting a frame and costs one layout on an
+         element that is about to be painted anyway. */
+      function reveal(node) {
+        node.hidden = false;
+        void node.offsetWidth;
+        node.classList.add("is-open");
+      }
+
+      function maybeHideScrim() {
+        if (state.palette.open || state.drawer) return;
+        const scrim = document.getElementById("scrim");
+        scrim.classList.remove("is-open");
+        window.setTimeout(
+          () => {
+            if (!state.palette.open && !state.drawer) scrim.hidden = true;
+          },
+          reduced.matches ? 10 : 180,
+        );
+      }
+
+      function renderPalette() {
+        const query = state.palette.query.trim().toLowerCase();
+        const matches = commandItems().filter(
+          (item) =>
+            query === "" ||
+            (item.group + " " + item.label).toLowerCase().includes(query),
+        );
+        state.palette.items = matches;
+        if (state.palette.index >= matches.length) state.palette.index = 0;
+
+        if (matches.length === 0) {
+          document.getElementById("palette-list").innerHTML =
+            '<p class="palette__empty">Nothing matches “' +
+            esc(state.palette.query) +
+            "”. Try an account name, “provisional”, or “setup”.</p>";
+          return;
+        }
+
+        let html = "";
+        let group = null;
+        matches.forEach((item, index) => {
+          if (item.group !== group) {
+            group = item.group;
+            html += '<div class="palette__group">' + esc(group) + "</div>";
+          }
+          html +=
+            '<button class="palette__item" data-act="cmd" data-arg="' +
+            index +
+            '" role="option" aria-selected="' +
+            (index === state.palette.index) +
+            '" type="button"><span class="palette__glyph">' +
+            icon("arrow") +
+            "</span><span>" +
+            esc(item.label) +
+            "</span>" +
+            (item.hint
+              ? '<span class="palette__keys">' +
+                item.hint
+                  .split(" ")
+                  .map((key) => '<span class="kbd">' + key + "</span>")
+                  .join("") +
+                "</span>"
+              : "") +
+            "</button>";
+        });
+        document.getElementById("palette-list").innerHTML = html;
+        const active = document.querySelector(
+          '.palette__item[aria-selected="true"]',
+        );
+        if (active) active.scrollIntoView({ block: "nearest" });
+      }
+
+      function runCommand(index) {
+        const item = state.palette.items[index];
+        if (!item) return;
+        closePalette();
+        window.setTimeout(() => item.run(), reduced.matches ? 0 : 80);
+      }
+
+      /* ---------------------------------------------------------------
+         KEYBOARD — command-centric shell, so keys are the contract
+         --------------------------------------------------------------- */
+      let chord = null;
+
+      document.addEventListener("keydown", (event) => {
+        const key = event.key;
+        const meta = event.metaKey || event.ctrlKey;
+
+        if (meta && key.toLowerCase() === "k") {
+          event.preventDefault();
+          if (state.palette.open) closePalette();
+          else openPalette();
+          return;
+        }
+
+        if (state.palette.open) {
+          if (key === "Escape") {
+            event.preventDefault();
+            closePalette();
+          } else if (key === "ArrowDown" || (key === "n" && meta)) {
+            event.preventDefault();
+            state.palette.index =
+              (state.palette.index + 1) % Math.max(state.palette.items.length, 1);
+            renderPalette();
+          } else if (key === "ArrowUp" || (key === "p" && meta)) {
+            event.preventDefault();
+            state.palette.index =
+              (state.palette.index - 1 + state.palette.items.length) %
+              Math.max(state.palette.items.length, 1);
+            renderPalette();
+          } else if (key === "Enter") {
+            event.preventDefault();
+            runCommand(state.palette.index);
+          }
+          return;
+        }
+
+        if (state.setup.open) {
+          if (key === "Escape") {
+            event.preventDefault();
+            closeSetup();
+          } else if (key === "Enter" && !isTyping(event.target)) {
+            event.preventDefault();
+            setupNext();
+          }
+          return;
+        }
+
+        if (key === "Escape") {
+          if (state.drawer) {
+            event.preventDefault();
+            closeDrawer();
+          }
+          return;
+        }
+
+        if (isTyping(event.target)) return;
+
+        if (chord === "g") {
+          chord = null;
+          const target = NAV.find(
+            (item) => item.key.toLowerCase() === key.toLowerCase(),
+          );
+          if (target) {
+            event.preventDefault();
+            go(target.id);
+          }
+          return;
+        }
+
+        if (key === "g") {
+          chord = "g";
+          window.setTimeout(() => (chord = null), 900);
+          return;
+        }
+
+        if (key === "j" || key === "ArrowDown") {
+          event.preventDefault();
+          moveCursor(1);
+        } else if (key === "k" || key === "ArrowUp") {
+          event.preventDefault();
+          moveCursor(-1);
+        } else if (key === "Enter") {
+          const row = document.querySelector(".row.is-cursor");
+          if (row) {
+            event.preventDefault();
+            row.click();
+          }
+        } else if (key === "f" && state.route === "transactions") {
+          event.preventDefault();
+          const search = document.getElementById("ledger-search");
+          if (search) search.focus();
+        } else if (state.route === "review" && /^[1-3]$/.test(key)) {
+          const card = document.querySelector(".case.is-cursor");
+          const choices = card
+            ? card.querySelectorAll(".case__decide .choice")
+            : [];
+          const choice = choices[Number(key) - 1];
+          if (choice) {
+            event.preventDefault();
+            choice.click();
+          }
+        } else if (key === "x" && state.route === "review") {
+          const card = document.querySelector(".case.is-cursor");
+          if (card) {
+            event.preventDefault();
+            toast("Deferred. The Pending Review stays in the queue.");
+          }
+        }
+      });
+
+      function isTyping(node) {
+        return (
+          node &&
+          (node.tagName === "INPUT" ||
+            node.tagName === "TEXTAREA" ||
+            node.tagName === "SELECT" ||
+            node.isContentEditable)
+        );
+      }
+
+      function moveCursor(delta) {
+        const selector = state.route === "review" ? ".case" : ".row";
+        const nodes = [...document.querySelectorAll(selector)];
+        if (nodes.length === 0) return;
+        state.cursor = Math.max(
+          0,
+          Math.min(nodes.length - 1, state.cursor + delta),
+        );
+        nodes.forEach((node, index) =>
+          node.classList.toggle("is-cursor", index === state.cursor),
+        );
+        nodes[state.cursor].scrollIntoView({ block: "nearest" });
+      }
+
+      /* ---------------------------------------------------------------
+         DELEGATED ACTIONS
+         --------------------------------------------------------------- */
+      const ACTIONS = {
+        route: (el) => go(el.dataset.arg),
+        cmd: (el) => runCommand(Number(el.dataset.arg)),
+        palette: openPalette,
+        setup: () => openSetup(),
+        tx: (el) => openDrawer(el.dataset.arg),
+        artifact: (el) => openArtifact(el.dataset.arg),
+        closeDrawer: closeDrawer,
+        filterAccount: (el) => {
+          state.filters.account = el.dataset.arg;
+          update();
+        },
+        filterState: (el) => {
+          state.filters.state = el.dataset.arg;
+          update();
+        },
+        toggleNeedsReview: () => {
+          state.filters.needsReview = !state.filters.needsReview;
+          update();
+        },
+        clearFilters: () => {
+          state.filters = { account: "all", state: "all", needsReview: false };
+          state.query = "";
+          update();
+        },
+        queue: (el) => {
+          state.queue = el.dataset.arg;
+          state.cursor = 0;
+          if (state.route === "review") update();
+          else go("review");
+        },
+        decide: (el) => decide(el.dataset.arg, el.dataset.choice, el.dataset.kind),
+        setupNext: setupNext,
+        setupBack: setupBack,
+        setupSkip: () => {
+          state.setup.step = Math.min(
+            state.setup.step + 1,
+            SETUP_STEPS.length - 1,
+          );
+          renderSetup();
+        },
+        setupClose: closeSetup,
+        setupGoto: (el) => {
+          state.setup.step = Number(el.dataset.arg);
+          renderSetup();
+        },
+        setupToggle: (el) => {
+          const data = state.setup.data;
+          const key = el.dataset.arg;
+          if (el.dataset.field === "accounts")
+            data.accounts[key] = !data.accounts[key];
+          else data[key] = !data[key];
+          renderSetup();
+        },
+        setupPick: (el) => {
+          state.setup.data[el.dataset.field] = el.dataset.arg;
+          renderSetup();
+        },
+        probe: runProbe,
+        extract: runExtraction,
+        copyToken: () => {
+          const token = "bz_pat_live_8Qk3R2vTn9YwLpAs";
+          if (navigator.clipboard) navigator.clipboard.writeText(token);
+          toast("Capture token copied to clipboard");
+        },
+        openInboxFromSetup: () => {
+          closeSetup();
+          state.queue = "categorization";
+          go("review");
+        },
+        noop: () => {},
+      };
+
+      document.addEventListener("click", (event) => {
+        const node = event.target.closest("[data-act]");
+        if (!node) return;
+        const action = ACTIONS[node.dataset.act];
+        if (!action) return;
+        action(node, event);
+      });
+
+      document.getElementById("cmd-open").addEventListener("click", openPalette);
+      document.getElementById("scrim").addEventListener("click", () => {
+        closePalette();
+        closeDrawer();
+      });
+      document
+        .getElementById("palette-input")
+        .addEventListener("input", (event) => {
+          state.palette.query = event.target.value;
+          state.palette.index = 0;
+          renderPalette();
+        });
+
+      /* Canvas inputs are delegated because routes re-render wholesale.
+         Search repaints the ledger without replaying entrance motion, then
+         restores the caret so typing never stutters. */
+      document.addEventListener("input", (event) => {
+        const node = event.target;
+        if (node.id === "ledger-search") {
+          const caret = node.selectionStart;
+          state.query = node.value;
+          update();
+          const next = document.getElementById("ledger-search");
+          if (next) {
+            next.focus();
+            next.setSelectionRange(caret, caret);
+          }
+        } else if (node.id === "path") {
+          state.setup.data.path = node.value;
+        }
+      });
+
+      state.seen = {};
+
+      /* ---------------------------------------------------------------
+         SHARED LEDGER MARKUP
+         --------------------------------------------------------------- */
+      function stateCell(tx) {
+        if (txNeedsReview(tx))
+          return '<span class="badge badge--provisional">Review</span>';
+        if (tx.state === "provisional")
+          return '<span class="badge badge--provisional">Provisional</span>';
+        if (tx.kind === "Refund" || tx.kind === "Income")
+          return '<span class="badge badge--confirmed">' +
+            tx.kind +
+            "</span>";
+        if (tx.kind === "Transfer")
+          return '<span class="badge badge--quiet">Transfer</span>';
+        return '<span class="badge badge--confirmed">Confirmed</span>';
+      }
+
+      function categoryCell(tx) {
+        const category = effectiveCategory(tx);
+        if (category)
+          return '<span class="tag">' + esc(category) + "</span>";
+        if (tx.kind === "Transfer")
+          return '<span class="tag">Not categorized</span>';
+        if (tx.kind === "Income")
+          return '<span class="tag">Income</span>';
+        return '<span class="tag tag--empty">Category needed</span>';
+      }
+
+      function rowHtml(tx) {
+        const amountClass =
+          tx.amt > 0
+            ? " is-positive"
+            : tx.state === "provisional"
+              ? " is-provisional"
+              : "";
+        return (
+          '<button class="row" data-act="tx" data-arg="' +
+          tx.id +
+          '" type="button">' +
+          '<span class="row__date bz-num">' +
+          dayNum(tx.d) +
+          " " +
+          MONTHS[8] +
+          "</span>" +
+          '<span class="row__who"><span class="row__name">' +
+          esc(tx.cp) +
+          '</span><span class="row__raw">' +
+          esc(tx.raw) +
+          "</span></span>" +
+          '<span class="row__meta">' +
+          ACCOUNTS[tx.acc].label +
+          "</span>" +
+          '<span class="row__cat">' +
+          categoryCell(tx) +
+          "</span>" +
+          '<span class="row__state">' +
+          stateCell(tx) +
+          "</span>" +
+          '<span class="row__amount bz-num' +
+          amountClass +
+          '">' +
+          money(tx.amt, { plus: tx.amt > 0 }) +
+          "</span>" +
+          "</button>"
+        );
+      }
+
+      function ledgerHtml(list) {
+        if (list.length === 0) {
+          return (
+            '<div class="empty">No Transactions match these filters.<br />' +
+            '<button class="linkish" data-act="clearFilters" type="button">Clear filters</button></div>'
+          );
+        }
+        let html = '<div class="ledger">';
+        let day = null;
+        for (const tx of list) {
+          if (tx.d !== day) {
+            day = tx.d;
+            const dayTotal = list
+              .filter((item) => item.d === day && item.kind === "Expense")
+              .reduce((sum, item) => sum + Math.abs(item.amt), 0);
+            html +=
+              '<div class="ledger__daymark"><span>' +
+              dayLabel(day) +
+              "</span>" +
+              '<span class="bz-num">' +
+              money(-dayTotal) +
+              "</span></div>";
+          }
+          html += rowHtml(tx);
+        }
+        return html + "</div>";
+      }
+
+      /* ---------------------------------------------------------------
+         ROUTE — OVERVIEW (an editorial statement, not a card grid)
+         --------------------------------------------------------------- */
+      ROUTES.overview = function () {
+        const totals = monthTotals();
+        const pending = pendingReviews();
+        const categories = categoryTotals();
+        const max = categories.length > 0 ? categories[0].total : 1;
+        const days = dailyTotals();
+        const peak = Math.max(...days.map((entry) => entry.spend), 1);
+        const blocking = pending.filter(
+          (review) => review.severity === "blocking",
+        ).length;
+
+        const bars = days
+          .map((entry) => {
+            const height = Math.max(entry.spend / peak, 0.075).toFixed(3);
+            const classes =
+              "trend__bar" +
+              (entry.iso === TODAY ? " is-today" : "") +
+              (entry.isProvisional && entry.iso !== TODAY
+                ? " is-provisional"
+                : "");
+            return (
+              '<button class="' +
+              classes +
+              '" data-h="' +
+              height +
+              '" data-act="route" data-arg="transactions" type="button" title="' +
+              shortDate(entry.iso) +
+              " · " +
+              money(-entry.spend) +
+              '"><span class="bz-sr">' +
+              shortDate(entry.iso) +
+              " " +
+              money(-entry.spend) +
+              "</span></button>"
+            );
+          })
+          .join("");
+
+        const categoryRows = categories
+          .slice(0, 6)
+          .map((entry) => {
+            const share = (entry.total / max).toFixed(3);
+            return (
+              '<button class="catrow" data-act="route" data-arg="transactions" type="button">' +
+              '<span class="catrow__name">' +
+              esc(entry.name) +
+              "</span>" +
+              '<span class="catrow__amount bz-num">' +
+              money(-entry.total) +
+              "</span>" +
+              '<span class="catrow__bar"><span class="catrow__fill" data-fill="' +
+              share +
+              '"></span></span>' +
+              "</button>"
+            );
+          })
+          .join("");
+
+        const decisionRows = [
+          {
+            label: "Categorization and Kind",
+            count: pending.filter((review) => review.queue === "categorization")
+              .length,
+            queue: "categorization",
+          },
+          {
+            label: "Unmatched Real-time Claims",
+            count: pending.filter((review) => review.queue === "unmatched")
+              .length,
+            queue: "unmatched",
+          },
+          {
+            label: "Reconciliation ambiguity",
+            count: pending.filter((review) => review.queue === "reconciliation")
+              .length,
+            queue: "reconciliation",
+          },
+          {
+            label: "Failed Extractions",
+            count: pending.filter((review) => review.queue === "imports").length,
+            queue: "imports",
+          },
+        ]
+          .map((entry) => {
+            const tone =
+              entry.queue === "imports" && entry.count > 0
+                ? "badge--failed"
+                : entry.count > 0
+                  ? "badge--provisional"
+                  : "badge--confirmed";
+            return (
+              '<button class="catrow" data-act="queue" data-arg="' +
+              entry.queue +
+              '" type="button">' +
+              '<span class="catrow__name">' +
+              entry.label +
+              "</span>" +
+              '<span class="badge ' +
+              tone +
+              '">' +
+              (entry.count > 0 ? entry.count + " pending" : "clear") +
+              "</span></button>"
+            );
+          })
+          .join("");
+
+        const recent = TX.slice(0, 5).map(rowHtml).join("");
+
+        return (
+          "<section>" +
+          '<div class="dateline"><span class="bz-eyebrow">September 2026</span>' +
+          '<span class="bz-muted" style="font-size:var(--bz-size-sm)">1–13 Sep · Asia/Singapore · 3 Financial Accounts</span></div>' +
+          '<h1 class="statement__lead">Your month so far reads clean. <em>Two Apple Pay captures are still provisional and ' +
+          pending.length +
+          " decisions are waiting.</em></h1>" +
+          '<div class="figure"><span class="figure__currency">S$</span>' +
+          '<span class="figure__value bz-num">' +
+          plain(totals.estimated) +
+          "</span>" +
+          '<span class="bz-muted" style="font-size:var(--bz-size-sm)">estimated spend, net of one refund</span></div>' +
+          '<div class="splitline"><span class="splitline__label"><span class="badge badge--confirmed">Confirmed</span>Statement-backed Transactions</span>' +
+          '<span class="splitline__amount bz-num">' +
+          money(-totals.confirmed) +
+          "</span></div>" +
+          '<div class="splitline"><span class="splitline__label"><span class="badge badge--provisional">Provisional</span>Eligible Real-time Claims</span>' +
+          '<span class="splitline__amount bz-num">' +
+          money(-totals.provisional) +
+          "</span></div>" +
+          '<div class="splitline"><span class="splitline__label"><span class="badge badge--quiet">Offsets</span>Refunds allocated against Expenses</span>' +
+          '<span class="splitline__amount bz-num">' +
+          money(totals.offsets, { plus: true }) +
+          "</span></div>" +
+          '<div style="display:flex;gap:var(--bz-s4);margin-top:var(--bz-s4)">' +
+          '<button class="linkish" data-act="route" data-arg="transactions" type="button">Open the ledger →</button>' +
+          '<button class="linkish" data-act="route" data-arg="review" type="button">Clear ' +
+          pending.length +
+          " Pending Review →</button></div>" +
+          "</section>" +
+          '<section class="section">' +
+          '<div class="section__head"><h2 class="section__title">Daily spend</h2>' +
+          '<span class="bz-muted" style="font-size:var(--bz-size-sm)">Peak ' +
+          money(-peak) +
+          " · today in cyan</span></div>" +
+          '<div class="trend">' +
+          bars +
+          "</div>" +
+          '<div class="trend__axis"><span>1 Sep</span><span>7 Sep</span><span>13 Sep</span></div>' +
+          "</section>" +
+          '<section class="section grid2">' +
+          "<div>" +
+          '<div class="section__head"><h2 class="section__title">Where it went</h2>' +
+          '<span class="bz-muted" style="font-size:var(--bz-size-sm)">Top-level Categories</span></div>' +
+          categoryRows +
+          '<button class="linkish" data-act="route" data-arg="transactions" style="margin-top:var(--bz-s3)" type="button">All Categories in the ledger →</button>' +
+          "</div>" +
+          "<div>" +
+          '<div class="section__head"><h2 class="section__title">Needs a decision</h2>' +
+          (blocking > 0
+            ? '<span class="badge badge--failed">' +
+              blocking +
+              " blocking</span>"
+            : '<span class="badge badge--confirmed">nothing blocking</span>') +
+          "</div>" +
+          decisionRows +
+          '<button class="linkish" data-act="route" data-arg="review" style="margin-top:var(--bz-s3)" type="button">Open the review inbox →</button>' +
+          "</div>" +
+          "</section>" +
+          '<section class="section">' +
+          '<div class="section__head"><h2 class="section__title">Latest activity</h2>' +
+          '<button class="linkish" data-act="route" data-arg="transactions" type="button">All 24 Transactions →</button></div>' +
+          '<div class="ledger">' +
+          recent +
+          "</div>" +
+          "</section>"
+        );
+      };
+
+      /* ---------------------------------------------------------------
+         ROUTE — TRANSACTIONS (dense ledger)
+         --------------------------------------------------------------- */
+      ROUTES.transactions = function () {
+        const query = state.query.trim().toLowerCase();
+        const list = TX.filter((tx) => {
+          if (
+            state.filters.account !== "all" &&
+            tx.acc !== state.filters.account
+          )
+            return false;
+          if (state.filters.state === "provisional" && tx.state !== "provisional")
+            return false;
+          if (state.filters.state === "confirmed" && tx.state !== "confirmed")
+            return false;
+          if (state.filters.needsReview && !txNeedsReview(tx)) return false;
+          if (
+            query !== "" &&
+            !(tx.cp + " " + tx.raw + " " + (effectiveCategory(tx) || ""))
+              .toLowerCase()
+              .includes(query)
+          )
+            return false;
+          return true;
+        });
+
+        const spend = list
+          .filter((tx) => tx.kind === "Expense")
+          .reduce((sum, tx) => sum + Math.abs(tx.amt), 0);
+        const provisionalCount = list.filter(
+          (tx) => tx.state === "provisional",
+        ).length;
+
+        const accountPills = [
+          { id: "all", label: "All accounts" },
+          ...Object.values(ACCOUNTS).map((account) => ({
+            id: account.id,
+            label: account.name,
+          })),
+        ]
+          .map(
+            (entry) =>
+              '<button class="pill" data-act="filterAccount" data-arg="' +
+              entry.id +
+              '" aria-pressed="' +
+              (state.filters.account === entry.id) +
+              '" type="button">' +
+              entry.label +
+              "</button>",
+          )
+          .join("");
+
+        const statePills = [
+          { id: "all", label: "Any state" },
+          { id: "confirmed", label: "Confirmed" },
+          { id: "provisional", label: "Provisional" },
+        ]
+          .map(
+            (entry) =>
+              '<button class="pill" data-act="filterState" data-arg="' +
+              entry.id +
+              '" aria-pressed="' +
+              (state.filters.state === entry.id) +
+              '" type="button">' +
+              entry.label +
+              "</button>",
+          )
+          .join("");
+
+        return (
+          "<section>" +
+          '<div class="dateline"><span class="bz-eyebrow">Ledger</span>' +
+          '<span class="bz-muted" style="font-size:var(--bz-size-sm)">Canonical Counterparty shown, raw provider text beneath</span></div>' +
+          '<h1 class="statement__lead" style="font-size:var(--bz-size-xl)">' +
+          list.length +
+          " Transactions · " +
+          money(-spend) +
+          " · <em>" +
+          provisionalCount +
+          " provisional</em></h1>" +
+          '<div class="toolbar">' +
+          '<span class="toolbar__search"><input aria-label="Search the ledger" class="input" id="ledger-search" placeholder="Search Counterparty, raw text, Category…" type="search" value="' +
+          esc(state.query) +
+          '" /></span>' +
+          '<button class="pill" data-act="toggleNeedsReview" aria-pressed="' +
+          state.filters.needsReview +
+          '" type="button">Needs review<span class="pill__count">' +
+          TX.filter(txNeedsReview).length +
+          "</span></button>" +
+          '<button class="btn btn--ghost btn--sm" data-act="clearFilters" type="button">Reset</button>' +
+          "</div>" +
+          '<div class="toolbar" style="margin-top:calc(var(--bz-s4) * -1)">' +
+          accountPills +
+          '<span style="width:var(--bz-s2)"></span>' +
+          statePills +
+          "</div>" +
+          ledgerHtml(list) +
+          '<p class="bz-muted" style="margin-top:var(--bz-s4);font-size:var(--bz-size-sm)">' +
+          "Amounts are Posted Amounts where a Statement Claim exists, otherwise Authorized Amounts. " +
+          'Press <span class="kbd">↵</span> on a row to inspect its Claims.</p>' +
+          "</section>"
+        );
+      };
+
+      /* ---------------------------------------------------------------
+         ROUTE — REVIEW (queued decisions, one case at a time)
+         --------------------------------------------------------------- */
+      const QUEUES = [
+        { id: "categorization", label: "Categorization & Kind" },
+        { id: "unmatched", label: "Unmatched Claims" },
+        { id: "reconciliation", label: "Reconciliation" },
+        { id: "imports", label: "Failed Extractions" },
+      ];
+
+      function caseSubject(review) {
+        if (review.subject) {
+          const tx = txFor(review.subject);
+          return {
+            name: tx.cp,
+            amount: tx.amt,
+            meta:
+              longDate(tx.d) +
+              " · " +
+              ACCOUNTS[tx.acc].label +
+              " · " +
+              tx.kind,
+            raw: tx.raw,
+            evidence: [
+              ["Statement Claim", "Posted " + money(tx.amt)],
+              [
+                "Real-time Claim",
+                tx.rt ? "Apple Pay capture " + tx.rt : "none captured",
+              ],
+              ["Claim Disposition", "Confirmed"],
+            ],
+          };
+        }
+        if (review.claim) {
+          const claim = claimFor(review.claim);
+          return {
+            name: claim.cp,
+            amount: claim.amt,
+            meta:
+              longDate(claim.d) +
+              " · " +
+              ACCOUNTS[claim.acc].label +
+              " · Real-time Claim",
+            raw: claim.raw,
+            evidence: [
+              ["Captured", claim.captured],
+              ["Authorized Amount", money(claim.amt)],
+              ["Statement history", claim.since],
+            ],
+          };
+        }
+        const artifact = ARTIFACTS.find(
+          (entry) => entry.id === review.artifact,
+        );
+        return {
+          name: artifact.file,
+          amount: null,
+          meta:
+            artifact.parser + " · " + artifact.period + " · Source Artifact",
+          raw: artifact.detail,
+          evidence: [
+            ["Parser", artifact.parser],
+            ["Claims created", "0 — Extraction rejected atomically"],
+            ["Quarantined since", "1 Sep 2026, 03:12"],
+          ],
+        };
+      }
+
+      ROUTES.review = function () {
+        const pending = pendingReviews();
+        const queuePills = QUEUES.map((queue) => {
+          const count = pending.filter(
+            (review) => review.queue === queue.id,
+          ).length;
+          return (
+            '<button class="pill" data-act="queue" data-arg="' +
+            queue.id +
+            '" aria-pressed="' +
+            (state.queue === queue.id) +
+            '" type="button">' +
+            queue.label +
+            '<span class="pill__count">' +
+            count +
+            "</span></button>"
+          );
+        }).join("");
+
+        const cases = pending.filter(
+          (review) => review.queue === state.queue,
+        );
+
+        const body =
+          cases.length === 0
+            ? '<div class="empty">This queue is clear.<br /><button class="linkish" data-act="route" data-arg="overview" type="button">Back to overview</button></div>'
+            : cases
+                .map((review, index) => {
+                  const subject = caseSubject(review);
+                  const choices = review.choices
+                    .map(
+                      (choice, choiceIndex) =>
+                        '<button class="choice" data-act="decide" data-arg="' +
+                        review.id +
+                        '" data-choice="' +
+                        esc(choice.label) +
+                        '" data-kind="' +
+                        choice.kind +
+                        '" type="button"><span>' +
+                        esc(choice.label) +
+                        "</span>" +
+                        (choiceIndex < 3
+                          ? '<span class="kbd">' + (choiceIndex + 1) + "</span>"
+                          : "") +
+                        "</button>",
+                    )
+                    .join("");
+                  return (
+                    '<article class="case' +
+                    (index === state.cursor ? " is-cursor" : "") +
+                    '" data-case="' +
+                    review.id +
+                    '">' +
+                    '<div class="case__head case__head--' +
+                    review.severity +
+                    '">' +
+                    '<span class="badge badge--' +
+                    (review.severity === "blocking" ? "failed" : "provisional") +
+                    '">' +
+                    review.severity +
+                    "</span>" +
+                    '<span class="case__title">' +
+                    esc(review.title) +
+                    "</span>" +
+                    '<span class="bz-muted" style="margin-left:auto;font-size:var(--bz-size-xs)">' +
+                    esc(subject.meta) +
+                    "</span></div>" +
+                    '<div class="case__body">' +
+                    "<div>" +
+                    '<div class="case__subject"><b>' +
+                    esc(subject.name) +
+                    "</b>" +
+                    (subject.amount === null
+                      ? ""
+                      : '<span class="case__amount bz-num">' +
+                        money(subject.amount, { plus: subject.amount > 0 }) +
+                        "</span>") +
+                    "</div>" +
+                    '<p class="case__why">' +
+                    esc(review.why) +
+                    "</p>" +
+                    '<div class="case__evidence" style="margin-top:var(--bz-s3)">' +
+                    subject.evidence
+                      .map(
+                        (pair) =>
+                          '<div style="display:flex;justify-content:space-between;gap:var(--bz-s3)"><span class="bz-muted">' +
+                          esc(pair[0]) +
+                          "</span><span>" +
+                          esc(pair[1]) +
+                          "</span></div>",
+                      )
+                      .join("") +
+                    '<div class="claim__raw">' +
+                    esc(subject.raw) +
+                    "</div></div>" +
+                    "</div>" +
+                    '<div class="case__decide">' +
+                    '<span class="bz-eyebrow">Permitted decisions</span>' +
+                    choices +
+                    '<button class="btn btn--ghost btn--sm" data-act="noop" style="margin-top:var(--bz-s1)" type="button">Defer <span class="kbd">x</span></button>' +
+                    "</div>" +
+                    "</div></article>"
+                  );
+                })
+                .join("");
+
+        return (
+          "<section>" +
+          '<div class="dateline"><span class="bz-eyebrow">Review inbox</span>' +
+          '<span class="bz-muted" style="font-size:var(--bz-size-sm)">Every decision here is also available over HTTP and MCP</span></div>' +
+          '<h1 class="statement__lead" style="font-size:var(--bz-size-xl)">' +
+          (pending.length === 0
+            ? "Nothing is waiting on you."
+            : pending.length +
+              " Pending Review · <em>" +
+              cases.length +
+              " in this queue</em>") +
+          "</h1>" +
+          '<div class="queuebar">' +
+          queuePills +
+          "</div>" +
+          body +
+          "</section>"
+        );
+      };
+
+      function decide(reviewId, choice, kind) {
+        const review = reviewFor(reviewId);
+        if (!review) return;
+        const category =
+          kind === "category" ? choice.replace(/^Expense · /, "") : null;
+        state.resolved[reviewId] = { choice, kind, category };
+
+        const card = document.querySelector('[data-case="' + reviewId + '"]');
+        const message =
+          kind === "category"
+            ? "Correction recorded · " + category
+            : kind === "reprocess"
+              ? "Queued for re-extraction with parser v4"
+              : "Decision recorded · " + choice;
+
+        if (!card || reduced.matches) {
+          update();
+          toast(message, "confirmed");
+          return;
+        }
+        card.classList.add("is-leaving");
+        window.setTimeout(() => {
+          update();
+          toast(message, "confirmed");
+        }, 180);
+      }
+
+      /* ---------------------------------------------------------------
+         ROUTE — IMPORTS
+         --------------------------------------------------------------- */
+      ROUTES.imports = function () {
+        const rows = ARTIFACTS.map((artifact) => {
+          const badge =
+            artifact.status === "failed"
+              ? '<span class="badge badge--failed">Failed</span>'
+              : artifact.status === "live"
+                ? '<span class="badge badge--provisional">Live capture</span>'
+                : '<span class="badge badge--confirmed">Accepted</span>';
+          return (
+            '<button class="row" data-act="artifact" data-arg="' +
+            artifact.id +
+            '" type="button">' +
+            '<span class="row__date bz-num">' +
+            (artifact.status === "live" ? "—" : dayNum("2026-09-12") + " Sep") +
+            "</span>" +
+            '<span class="row__who"><span class="row__name">' +
+            esc(artifact.file) +
+            '</span><span class="row__raw">' +
+            esc(artifact.parser) +
+            " · " +
+            esc(artifact.period) +
+            "</span></span>" +
+            '<span class="row__meta">' +
+            ACCOUNTS[artifact.acc].label +
+            "</span>" +
+            '<span class="row__cat"><span class="tag">' +
+            artifact.claims +
+            " Claims</span></span>" +
+            '<span class="row__state">' +
+            badge +
+            "</span>" +
+            '<span class="row__amount bz-muted" style="font-size:var(--bz-size-sm)">Inspect</span>' +
+            "</button>"
+          );
+        }).join("");
+
+        return (
+          "<section>" +
+          '<div class="dateline"><span class="bz-eyebrow">Source Artifacts</span>' +
+          '<span class="bz-muted" style="font-size:var(--bz-size-sm)">/volume1/billzebub/inbox · watched</span></div>' +
+          '<h1 class="statement__lead" style="font-size:var(--bz-size-xl)">5 Source Artifacts · <em>1 quarantined after a failed Extraction</em></h1>' +
+          '<div class="ledger" style="margin-top:var(--bz-s5)">' +
+          rows +
+          "</div>" +
+          '<p class="bz-muted" style="margin-top:var(--bz-s4);font-size:var(--bz-size-sm)">A failed Extraction creates no Claims. The artifact stays quarantined until a parser change lets it be reprocessed.</p>' +
+          "</section>"
+        );
+      };
+
+      /* ---------------------------------------------------------------
+         ROUTE — DESIGN TOKENS (so extraction is a copy, not a rewrite)
+         --------------------------------------------------------------- */
+      const TOKEN_DOC = [
+        ["--bz-bg", "#100F0F", "Page background"],
+        ["--bz-surface", "#1C1B1A", "Raised surface, drawer, card"],
+        ["--bz-line", "#282726", "Hairline, quiet control fill"],
+        ["--bz-line-strong", "#343331", "Control border, hover"],
+        ["--bz-ink", "#CECDC3", "Primary text, amounts"],
+        ["--bz-ink-muted", "#878580", "Labels, raw provider text"],
+        ["--bz-accent", "#3AA99F", "Interactive, today, focus"],
+        ["--bz-confirmed", "#879A39", "Confirmed, positive"],
+        ["--bz-provisional", "#D0A215", "Provisional, attention"],
+        ["--bz-failed", "#D14D41", "Failed, blocking"],
+      ];
+
+      ROUTES.tokens = function () {
+        const swatches = TOKEN_DOC.map(
+          (token) =>
+            '<div class="swatch"><div class="swatch__chip" style="background:' +
+            token[1] +
+            '"></div><span class="swatch__name">' +
+            token[0] +
+            '</span><span class="swatch__use">' +
+            token[1] +
+            " · " +
+            token[2] +
+            "</span></div>",
+        ).join("");
+
+        const motion = [
+          ["--bz-d-press", "90ms", "Press feedback, scale(0.97)"],
+          ["--bz-d-fast", "120ms", "Hover, colour, palette exit"],
+          ["--bz-d-base", "180ms", "Route entrance, row exit, palette"],
+          ["--bz-d-slow", "240ms", "Drawer, setup stage, meters"],
+          ["--bz-ease-out", "cubic-bezier(.16,1,.3,1)", "All entrances"],
+          [
+            "--bz-ease-out-soft",
+            "cubic-bezier(.22,.61,.36,1)",
+            "Exits only, never ease-in",
+          ],
+        ]
+          .map(
+            (row) =>
+              '<div class="splitline"><span class="splitline__label"><code style="font-family:var(--bz-font-mono);font-size:var(--bz-size-xs)">' +
+              row[0] +
+              "</code>" +
+              row[2] +
+              '</span><span class="bz-num" style="font-family:var(--bz-font-mono);font-size:var(--bz-size-xs)">' +
+              row[1] +
+              "</span></div>",
+          )
+          .join("");
+
+        return (
+          "<section>" +
+          '<div class="dateline"><span class="bz-eyebrow">Extraction surface</span>' +
+          '<span class="bz-muted" style="font-size:var(--bz-size-sm)">Every screen above is built from exactly these</span></div>' +
+          '<h1 class="statement__lead" style="font-size:var(--bz-size-xl)">Flexoki Dark tokens · <em>10 colours, 4 durations, 2 easings</em></h1>' +
+          '<section class="section"><div class="section__head"><h2 class="section__title">Colour</h2>' +
+          '<span class="bz-muted" style="font-size:var(--bz-size-sm)">No accent outside these four</span></div>' +
+          '<div class="swatches">' +
+          swatches +
+          "</div></section>" +
+          '<section class="section"><div class="section__head"><h2 class="section__title">Motion</h2>' +
+          '<span class="bz-muted" style="font-size:var(--bz-size-sm)">Ceiling 240ms · transform and opacity only</span></div>' +
+          motion +
+          "</section>" +
+          '<section class="section"><div class="section__head"><h2 class="section__title">Controls</h2>' +
+          '<span class="bz-muted" style="font-size:var(--bz-size-sm)">Press any of them</span></div>' +
+          '<div class="toolbar" style="margin-top:var(--bz-s4)">' +
+          '<button class="btn btn--primary" data-act="noop" type="button">Confirm Transaction</button>' +
+          '<button class="btn" data-act="noop" type="button">Add Correction</button>' +
+          '<button class="btn btn--danger" data-act="noop" type="button">Exclude Claim</button>' +
+          '<button class="btn btn--ghost" data-act="noop" type="button">Defer</button>' +
+          '<button class="pill is-on" data-act="noop" type="button">Provisional<span class="pill__count">2</span></button>' +
+          '<span class="badge badge--confirmed">Confirmed</span>' +
+          '<span class="badge badge--provisional">Provisional</span>' +
+          '<span class="badge badge--failed">Failed</span>' +
+          "</div>" +
+          '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(14rem,1fr));gap:var(--bz-s4);margin-top:var(--bz-s4)">' +
+          '<div class="field"><label for="demo-a">Counterparty alias</label><input class="input" id="demo-a" value="NTUC FairPrice" /><span class="field__hint">Raw text stays on the Claim.</span></div>' +
+          '<div class="field"><label for="demo-b">Ingestion folder</label><input class="input input--mono" id="demo-b" value="/volume1/billzebub/inbox" /><span class="field__hint">Watched on the NAS.</span></div>' +
+          "</div></section>" +
+          '<section class="section"><div class="section__head"><h2 class="section__title">Type</h2>' +
+          '<span class="bz-muted" style="font-size:var(--bz-size-sm)">Serif for editorial headings, Inter tabular for every number</span></div>' +
+          '<p class="statement__lead" style="margin-top:var(--bz-s4)">Ledger Desk</p>' +
+          '<p class="bz-num" style="font-size:var(--bz-size-hero);font-weight:600;letter-spacing:-0.03em">1,159.07</p>' +
+          '<p class="bz-muted" style="font-size:var(--bz-size-sm)">11 / 12 / 13 / 14 / 15 / 18 / 22 / 32 / 44 px</p>' +
+          "</section>" +
+          "</section>"
+        );
+      };
+
+      /* ---------------------------------------------------------------
+         DRAWER — detail without losing list context
+         --------------------------------------------------------------- */
+      function openDrawer(id) {
+        const tx = txFor(id);
+        if (!tx) return;
+        state.drawer = { type: "tx", id };
+        const category = effectiveCategory(tx);
+        const decided = state.resolved[tx.review];
+        const claims = [];
+        if (tx.rt) {
+          claims.push(
+            '<div class="claim"><div class="claim__top"><span class="badge badge--provisional">Real-time Claim</span>' +
+              '<span class="bz-num">' +
+              money(tx.amt) +
+              "</span></div>" +
+              '<span class="bz-muted">Apple Pay capture · ' +
+              shortDate(tx.d) +
+              ", " +
+              tx.rt +
+              " · supplies the occurrence time</span>" +
+              '<span class="claim__raw">' +
+              esc(tx.raw) +
+              "</span></div>",
+          );
+        }
+        if (tx.state === "confirmed") {
+          claims.push(
+            '<div class="claim"><div class="claim__top"><span class="badge badge--confirmed">Statement Claim</span>' +
+              '<span class="bz-num">' +
+              money(tx.amt) +
+              "</span></div>" +
+              '<span class="bz-muted">' +
+              ACCOUNTS[tx.acc].provider +
+              " statement · 1–12 Sep 2026 · supplies the Posted Amount</span>" +
+              '<span class="claim__raw">' +
+              esc(tx.raw) +
+              "</span></div>",
+          );
+        } else if (tx.candidate) {
+          claims.push(
+            '<div class="claim"><div class="claim__top"><span class="badge badge--provisional">Statement Claim · candidate</span>' +
+              '<span class="bz-num">' +
+              money(tx.candidate) +
+              "</span></div>" +
+              '<span class="bz-muted">Same Counterparty, one day later, ' +
+              money(Math.abs(tx.candidate) - Math.abs(tx.amt)) +
+              " higher. Reconciliation is waiting on your decision before either becomes a Transaction.</span></div>",
+          );
+        } else {
+          claims.push(
+            '<div class="claim"><div class="claim__top"><span class="badge badge--quiet">Statement Claim</span>' +
+              '<span class="bz-muted">not yet received</span></div>' +
+              '<span class="bz-muted">This amount stays provisional and is excluded from confirmed spending.</span></div>',
+          );
+        }
+
+        const timeline = [
+          [
+            tx.rt ? shortDate(tx.d) + ", " + tx.rt : shortDate(tx.d),
+            tx.rt
+              ? "Real-time Claim captured from Apple Pay"
+              : "Statement Claim extracted",
+            false,
+          ],
+          [
+            "12 Sep, 21:04",
+            tx.state === "confirmed"
+              ? "Extraction accepted · Claim validated"
+              : "Awaiting the next Extraction",
+            false,
+          ],
+          [
+            tx.state === "confirmed" ? "12 Sep, 21:04" : "pending",
+            tx.state === "confirmed"
+              ? "Reconciliation established the Transaction"
+              : "No Transaction established yet",
+            false,
+          ],
+          decided
+            ? ["just now", "Correction recorded · " + decided.choice, true]
+            : txNeedsReview(tx)
+              ? ["now", "Pending Review · awaiting your decision", true]
+              : ["—", "No Corrections", true],
+        ]
+          .map(
+            (entry) =>
+              '<div class="timeline__item"><span class="timeline__dot' +
+              (entry[2] ? " is-now" : "") +
+              '"></span><span><b style="font-weight:500">' +
+              esc(entry[1]) +
+              '</b><br /><span class="bz-muted">' +
+              esc(entry[0]) +
+              "</span></span></div>",
+          )
+          .join("");
+
+        const drawer = document.getElementById("drawer");
+        drawer.innerHTML =
+          '<div class="drawer__head"><div>' +
+          '<span class="bz-eyebrow">' +
+          tx.kind +
+          "</span>" +
+          '<h2 class="section__title" id="drawer-title" style="margin-top:var(--bz-s1)">' +
+          esc(tx.cp) +
+          "</h2>" +
+          '<p class="bz-num" style="font-size:var(--bz-size-hero);font-weight:600;letter-spacing:-0.03em;margin-top:var(--bz-s2)">' +
+          money(tx.amt, { plus: tx.amt > 0 }) +
+          "</p></div>" +
+          '<button class="btn btn--ghost btn--sm" data-act="closeDrawer" aria-label="Close" type="button">' +
+          icon("close") +
+          "</button></div>" +
+          '<div class="drawer__body">' +
+          '<div class="block"><div class="block__title">Effective values</div><dl class="kv">' +
+          "<dt>Occurred</dt><dd>" +
+          longDate(tx.d) +
+          (tx.rt ? ", " + tx.rt : "") +
+          "</dd>" +
+          "<dt>Financial Account</dt><dd>" +
+          ACCOUNTS[tx.acc].name +
+          " · " +
+          ACCOUNTS[tx.acc].kind +
+          "</dd>" +
+          "<dt>Transaction Kind</dt><dd>" +
+          tx.kind +
+          "</dd>" +
+          "<dt>Category</dt><dd>" +
+          (category
+            ? esc(category)
+            : '<span class="tag tag--empty">Category needed</span>') +
+          "</dd>" +
+          "<dt>Posted Amount</dt><dd class=\"bz-num\">" +
+          (tx.state === "confirmed" ? money(tx.amt) : "—") +
+          "</dd>" +
+          "<dt>Authorized Amount</dt><dd class=\"bz-num\">" +
+          (tx.rt ? money(tx.amt) : "—") +
+          "</dd>" +
+          "</dl></div>" +
+          '<div class="block"><div class="block__title">Linked Claims</div>' +
+          claims.join("") +
+          "</div>" +
+          '<div class="block"><div class="block__title">Audit history</div><div class="timeline">' +
+          timeline +
+          "</div></div>" +
+          "</div>" +
+          '<div class="drawer__foot">' +
+          (txNeedsReview(tx)
+            ? '<button class="btn btn--primary" data-act="route" data-arg="review" type="button">Decide in review inbox</button>'
+            : '<button class="btn btn--primary" data-act="noop" type="button">Add Correction</button>') +
+          '<button class="btn" data-act="noop" type="button">Reclassify Kind</button>' +
+          '<span class="ledge__spacer" style="flex:1"></span>' +
+          '<button class="btn btn--ghost btn--sm" data-act="closeDrawer" type="button">Esc</button>' +
+          "</div>";
+
+        reveal(document.getElementById("scrim"));
+        reveal(drawer);
+      }
+
+      function openArtifact(id) {
+        const artifact = ARTIFACTS.find((entry) => entry.id === id);
+        if (!artifact) return;
+        state.drawer = { type: "artifact", id };
+        const drawer = document.getElementById("drawer");
+        drawer.innerHTML =
+          '<div class="drawer__head"><div><span class="bz-eyebrow">Source Artifact</span>' +
+          '<h2 class="section__title" id="drawer-title" style="margin-top:var(--bz-s1);word-break:break-all">' +
+          esc(artifact.file) +
+          "</h2>" +
+          (artifact.status === "failed"
+            ? '<span class="badge badge--failed" style="margin-top:var(--bz-s2)">Extraction failed</span>'
+            : '<span class="badge badge--confirmed" style="margin-top:var(--bz-s2)">Accepted</span>') +
+          "</div>" +
+          '<button class="btn btn--ghost btn--sm" data-act="closeDrawer" aria-label="Close" type="button">' +
+          icon("close") +
+          "</button></div>" +
+          '<div class="drawer__body"><div class="block"><div class="block__title">Extraction</div><dl class="kv">' +
+          "<dt>Parser</dt><dd>" +
+          esc(artifact.parser) +
+          "</dd><dt>Statement period</dt><dd>" +
+          esc(artifact.period) +
+          "</dd><dt>Financial Account</dt><dd>" +
+          ACCOUNTS[artifact.acc].name +
+          "</dd><dt>Claims created</dt><dd>" +
+          artifact.claims +
+          "</dd><dt>Result</dt><dd>" +
+          esc(artifact.detail) +
+          "</dd></dl></div>" +
+          (artifact.status === "failed"
+            ? '<div class="block"><div class="block__title">Why it was rejected</div>' +
+              '<p class="bz-muted" style="font-size:var(--bz-size-sm)">Validation compares the statement total against the sum of extracted Claims. ' +
+              "The Extraction is staged and accepted atomically, so a mismatch creates no Claims and leaves your history untouched.</p></div>"
+            : '<div class="block"><div class="block__title">Validation</div><p class="bz-muted" style="font-size:var(--bz-size-sm)">Statement total matched the sum of extracted Claims. Reconciliation then linked 6 Real-time Claims to their Statement Claims.</p></div>') +
+          "</div>" +
+          '<div class="drawer__foot">' +
+          (artifact.status === "failed"
+            ? '<button class="btn btn--primary" data-act="queue" data-arg="imports" type="button">Open the failed queue</button>'
+            : '<button class="btn" data-act="route" data-arg="transactions" type="button">See its Transactions</button>') +
+          '<span style="flex:1"></span>' +
+          '<button class="btn btn--ghost btn--sm" data-act="closeDrawer" type="button">Esc</button></div>';
+
+        reveal(document.getElementById("scrim"));
+        reveal(drawer);
+      }
+
+      function closeDrawer() {
+        if (!state.drawer) return;
+        state.drawer = null;
+        const drawer = document.getElementById("drawer");
+        drawer.classList.remove("is-open");
+        maybeHideScrim();
+        window.setTimeout(
+          () => {
+            if (!state.drawer) drawer.hidden = true;
+          },
+          reduced.matches ? 10 : 200,
+        );
+      }
+
+      /* ---------------------------------------------------------------
+         SETUP — frontend-native, five steps, no shell commands
+         --------------------------------------------------------------- */
+      const SETUP_STEPS = [
+        { title: "Reporting basis", label: "Reporting basis" },
+        { title: "Financial Accounts", label: "Financial Accounts" },
+        { title: "Statement ingestion", label: "Statement ingestion" },
+        { title: "Capture on iPhone", label: "Capture on iPhone" },
+        { title: "First Extraction", label: "First Extraction" },
+      ];
+
+      function setupDefaults() {
+        return {
+          currency: "SGD",
+          zone: "Asia/Singapore",
+          accounts: { multiplier: true, livefresh: true, paylah: false },
+          path: "/volume1/billzebub/inbox",
+          probe: "idle",
+          token: false,
+          extract: "idle",
+        };
+      }
+
+      function openSetup(step) {
+        state.setup.open = true;
+        state.setup.step = typeof step === "number" ? step : 0;
+        if (!state.setup.data.currency) state.setup.data = setupDefaults();
+        const setup = document.getElementById("setup");
+        renderSetup();
+        reveal(setup);
+      }
+
+      function closeSetup() {
+        if (!state.setup.open) return;
+        state.setup.open = false;
+        const setup = document.getElementById("setup");
+        setup.classList.remove("is-open");
+        window.setTimeout(
+          () => {
+            if (!state.setup.open) setup.hidden = true;
+          },
+          reduced.matches ? 10 : 220,
+        );
+        render();
+      }
+
+      function setupNext() {
+        if (!canContinue()) return;
+        if (state.setup.step === SETUP_STEPS.length - 1) {
+          state.setup.done = true;
+          closeSetup();
+          toast("Setup complete · watching the ingestion folder", "confirmed");
+          return;
+        }
+        state.setup.step += 1;
+        renderSetup();
+      }
+
+      function setupBack() {
+        if (state.setup.step === 0) {
+          closeSetup();
+          return;
+        }
+        state.setup.step -= 1;
+        renderSetup();
+      }
+
+      function canContinue() {
+        const data = state.setup.data;
+        if (state.setup.step === 1)
+          return Object.values(data.accounts).some(Boolean);
+        if (state.setup.step === 2) return data.probe === "ok";
+        if (state.setup.step === 3) return data.token;
+        if (state.setup.step === 4) return data.extract === "done";
+        return true;
+      }
+
+      function runProbe() {
+        state.setup.data.probe = "running";
+        renderSetup();
+        window.setTimeout(
+          () => {
+            state.setup.data.probe = "ok";
+            renderSetup();
+          },
+          reduced.matches ? 120 : 900,
+        );
+      }
+
+      function runExtraction() {
+        state.setup.data.extract = "running";
+        renderSetup();
+        window.setTimeout(
+          () => {
+            state.setup.data.extract = "done";
+            renderSetup();
+          },
+          reduced.matches ? 160 : 1500,
+        );
+      }
+
+      function pickHtml(field, value, name, meta, on) {
+        return (
+          '<button class="pick' +
+          (on ? " is-on" : "") +
+          '" data-act="' +
+          (field === "accounts" ? "setupToggle" : "setupPick") +
+          '" data-field="' +
+          field +
+          '" data-arg="' +
+          value +
+          '" type="button">' +
+          '<span class="pick__tick">' +
+          (on ? icon("check") : "") +
+          "</span>" +
+          '<span class="pick__body"><span class="pick__name">' +
+          name +
+          '</span><span class="pick__meta">' +
+          meta +
+          "</span></span></button>"
+        );
+      }
+
+      function setupStage() {
+        const data = state.setup.data;
+        const step = state.setup.step;
+
+        if (step === 0) {
+          return (
+            '<span class="bz-eyebrow">Step one of five</span>' +
+            '<h2 class="stage__title">What should Billzebub summarize in?</h2>' +
+            '<p class="stage__sub">Original currencies stay on every Claim. This only sets the Reporting Currency used for totals, and the timezone that decides which day a Transaction lands on.</p>' +
+            '<div class="stage__form">' +
+            '<div class="field"><label>Reporting Currency</label>' +
+            '<div style="display:grid;gap:var(--bz-s2)">' +
+            pickHtml(
+              "currency",
+              "SGD",
+              "SGD · Singapore dollar",
+              "Matches your DBS statements",
+              data.currency === "SGD",
+            ) +
+            pickHtml(
+              "currency",
+              "MYR",
+              "MYR · Malaysian ringgit",
+              "Converted at statement rates",
+              data.currency === "MYR",
+            ) +
+            "</div></div>" +
+            '<div class="field"><label for="zone">Timezone</label>' +
+            '<select class="select" id="zone"><option>Asia/Singapore (GMT+8)</option><option>Asia/Kuala_Lumpur (GMT+8)</option><option>UTC</option></select>' +
+            '<span class="field__hint">Real-time Claims captured after midnight land on the right day.</span></div>' +
+            "</div>"
+          );
+        }
+
+        if (step === 1) {
+          const count = Object.values(data.accounts).filter(Boolean).length;
+          return (
+            '<span class="bz-eyebrow">Step two of five</span>' +
+            '<h2 class="stage__title">Which Financial Accounts should be tracked?</h2>' +
+            '<p class="stage__sub">Each tracked card is its own Financial Account, so a card statement can be validated on its own. You can add more later without re-running setup.</p>' +
+            '<div class="stage__form">' +
+            '<div style="display:grid;gap:var(--bz-s2)">' +
+            pickHtml(
+              "accounts",
+              "multiplier",
+              "DBS Multiplier ···4821",
+              "Savings account · CSV export",
+              data.accounts.multiplier,
+            ) +
+            pickHtml(
+              "accounts",
+              "livefresh",
+              "DBS Live Fresh ···7702",
+              "Credit card · PDF statement",
+              data.accounts.livefresh,
+            ) +
+            pickHtml(
+              "accounts",
+              "paylah",
+              "PayLah! wallet ···9014",
+              "Wallet · PDF statement, posts late",
+              data.accounts.paylah,
+            ) +
+            "</div>" +
+            '<button class="btn" data-act="noop" type="button">+ Add another Financial Account</button>' +
+            '<p class="field__hint">' +
+            count +
+            " selected. Billzebub keeps a separate Claim history per account." +
+            "</p></div>"
+          );
+        }
+
+        if (step === 2) {
+          const probe = data.probe;
+          const result =
+            probe === "running"
+              ? '<div class="probe"><div class="probe__line"><span class="spinner"></span>Reading the folder…</div></div>'
+              : probe === "ok"
+                ? '<div class="probe">' +
+                  '<div class="probe__line"><span style="color:var(--bz-confirmed)">' +
+                  icon("check") +
+                  "</span><b>4 Source Artifacts found</b></div>" +
+                  '<div class="probe__line">dbs-live-fresh-2026-09-a.pdf <b>dbs_credit_card v3</b></div>' +
+                  '<div class="probe__line">dbs-multiplier-2026-09.csv <b>dbs_savings_csv v2</b></div>' +
+                  '<div class="probe__line">paylah-2026-09.pdf <b>paylah_wallet v1</b></div>' +
+                  '<div class="probe__line">dbs-live-fresh-2026-08.pdf <span style="color:var(--bz-provisional)">parser matched, totals unverified</span></div>' +
+                  "</div>"
+                : '<p class="field__hint">Nothing has been read yet.</p>';
+          return (
+            '<span class="bz-eyebrow">Step three of five</span>' +
+            '<h2 class="stage__title">Where do statements arrive?</h2>' +
+            '<p class="stage__sub">Billzebub watches one folder. Each file becomes a Source Artifact, and an Extraction is only accepted after the statement total validates.</p>' +
+            '<div class="stage__form">' +
+            '<div class="field"><label for="path">Ingestion folder</label>' +
+            '<input class="input input--mono" id="path" value="' +
+            esc(data.path) +
+            '" />' +
+            '<span class="field__hint">A NAS share or a local path. Files are never modified.</span></div>' +
+            '<div style="display:flex;gap:var(--bz-s2)">' +
+            '<button class="btn" data-act="probe" type="button">' +
+            (probe === "ok" ? "Read again" : "Test read") +
+            "</button>" +
+            (probe === "ok"
+              ? '<span class="badge badge--confirmed" style="align-self:center">Readable</span>'
+              : "") +
+            "</div>" +
+            result +
+            "</div>"
+          );
+        }
+
+        if (step === 3) {
+          return (
+            '<span class="bz-eyebrow">Step four of five</span>' +
+            '<h2 class="stage__title">Capture spending the moment it happens</h2>' +
+            '<p class="stage__sub">An Apple Shortcut posts Real-time Claims from payment notifications. They show as provisional until a Statement Claim confirms them.</p>' +
+            '<div class="stage__form">' +
+            '<div class="field"><label>Capture token</label>' +
+            (data.token
+              ? '<div class="tokenline"><span>bz_pat_live_8Qk3R2vTn9YwLpAs</span>' +
+                '<button class="btn btn--sm" data-act="copyToken" type="button">Copy</button></div>' +
+                '<span class="field__hint">Scope: <b>claims:write</b> only. Rotate or revoke it in Settings at any time.</span>'
+              : '<button class="btn btn--primary" data-act="setupToggle" data-arg="token" type="button">Create a capture token</button>' +
+                '<span class="field__hint">Scoped to writing Claims. Nothing else.</span>') +
+            "</div>" +
+            '<div class="probe"><div class="probe__line"><b>1.</b> Install the Billzebub shortcut on your iPhone.</div>' +
+            '<div class="probe__line"><b>2.</b> Paste the token when it asks.</div>' +
+            '<div class="probe__line"><b>3.</b> Add an automation: when Apple Pay notifies, run the shortcut.</div></div>' +
+            '<button class="btn btn--ghost btn--sm" data-act="setupSkip" type="button">Skip for now — statements alone are enough</button>' +
+            "</div>"
+          );
+        }
+
+        const extract = data.extract;
+        const stageBody =
+          extract === "idle"
+            ? '<button class="btn btn--primary btn--lg" data-act="extract" type="button">Run the first Extraction</button>' +
+              '<p class="field__hint">Nothing is written until every statement validates.</p>'
+            : extract === "running"
+              ? '<div class="probe">' +
+                '<div class="probe__line"><span class="spinner"></span>Staging Claims from 4 Source Artifacts…</div>' +
+                '<div class="probe__line">Validating statement totals</div>' +
+                '<div class="probe__line">Reconciling Real-time Claims</div></div>'
+              : '<div class="probe">' +
+                '<div class="probe__line"><span style="color:var(--bz-confirmed)">' +
+                icon("check") +
+                "</span><b>54 Claims accepted from 3 statements</b></div>" +
+                '<div class="probe__line"><b>24 Transactions</b> established, 2 still provisional</div>' +
+                '<div class="probe__line"><b>8 Pending Review</b> · 4 categorization and Kind, 2 unmatched Claims, 1 reconciliation, 1 failed Extraction</div>' +
+                '<div class="probe__line"><span style="color:var(--bz-failed)">' +
+                icon("close") +
+                "</span>1 Extraction rejected · dbs-live-fresh-2026-08.pdf quarantined</div></div>" +
+                '<button class="btn btn--primary btn--lg" data-act="openInboxFromSetup" type="button">Open the review inbox</button>';
+
+        return (
+          '<span class="bz-eyebrow">Step five of five</span>' +
+          '<h2 class="stage__title">Build your history</h2>' +
+          '<p class="stage__sub">The first Extraction reads everything in the folder. A statement that fails validation creates no Claims and is quarantined, so a bad parse can never corrupt your history.</p>' +
+          '<div class="stage__form">' +
+          stageBody +
+          "</div>"
+        );
+      }
+
+      function renderSetup() {
+        const step = state.setup.step;
+        const steps = SETUP_STEPS.map((entry, index) => {
+          const classes =
+            "step" +
+            (index === step ? " is-current" : index < step ? " is-done" : "");
+          return (
+            '<button class="' +
+            classes +
+            '" data-act="setupGoto" data-arg="' +
+            index +
+            '" type="button">' +
+            '<span class="step__num">' +
+            (index < step ? "✓" : index + 1) +
+            "</span><span>" +
+            entry.label +
+            "</span></button>"
+          );
+        }).join("");
+
+        const last = step === SETUP_STEPS.length - 1;
+        document.getElementById("setup").innerHTML =
+          '<aside class="setup__aside">' +
+          '<div class="setup__brand"><div class="spine__mark" style="margin:0">B</div>' +
+          "<div><b>Billzebub</b><br />" +
+          '<span class="bz-muted" style="font-size:var(--bz-size-xs)">First run · local only</span></div></div>' +
+          '<div class="steps">' +
+          steps +
+          "</div>" +
+          '<div class="spine__spacer" style="flex:1"></div>' +
+          '<p class="bz-muted" style="font-size:var(--bz-size-xs)">No shell access needed. Everything here is stored in your local workspace and can be changed later in Settings.</p>' +
+          "</aside>" +
+          '<div class="setup__main">' +
+          '<div class="setup__stage stagefade">' +
+          '<div class="setup__meter"><span data-fill="' +
+          ((step + 1) / SETUP_STEPS.length).toFixed(2) +
+          '"></span></div>' +
+          setupStage() +
+          "</div>" +
+          '<div class="setup__foot">' +
+          '<button class="btn" data-act="setupBack" type="button">' +
+          (step === 0 ? "Cancel" : "Back") +
+          "</button>" +
+          '<span class="ledge__spacer"></span>' +
+          '<span class="bz-muted" style="font-size:var(--bz-size-xs)">Step ' +
+          (step + 1) +
+          " of " +
+          SETUP_STEPS.length +
+          "</span>" +
+          '<button class="btn btn--primary btn--lg" data-act="setupNext" type="button"' +
+          (canContinue() ? "" : " disabled") +
+          ">" +
+          (last ? "Finish setup" : "Continue") +
+          '<span class="kbd">↵</span></button>' +
+          "</div></div>";
+
+        requestAnimationFrame(() => paintMeters(true));
+      }
+
+      if (!applyHash()) render();
+
+      window.setTimeout(() => {
+        if (!state.setup.done && !state.setup.open) {
+          toast("3 setup steps left before statements import automatically");
+        }
+      }, 900);
+    </script>
+  </body>
+</html>
