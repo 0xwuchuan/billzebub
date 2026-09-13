@@ -2,7 +2,7 @@
 
 ## Outcome
 
-V1 builds a trustworthy, local expense history from DBS, Citi, and UOB credit-card statements, Apple Wallet events, and PayLah email. It preserves every Source Artifact and Claim, confirms Transactions from validated statement evidence, reconciles Real-time Claims when evidence is strong, exposes constrained operations to an external personal agent, and presents a minimal Copilot-inspired Flexoki Dark web UI.
+V1 builds a trustworthy, local expense history from DBS, Citi, and UOB credit-card statements, Apple Wallet Shortcut events, and PayLah Shortcut events. It preserves every Source Artifact and Claim, confirms Transactions from validated statement evidence, reconciles Real-time Claims when evidence is strong, exposes constrained operations to an external personal agent, and presents a minimal Copilot-inspired Flexoki Dark web UI.
 
 V1 is complete only when all three credit-card formats and PayLah work end to end. Deposit-account statements, account-balance reporting, and cross-account Transfer consolidation are post-v1.
 
@@ -16,7 +16,7 @@ V1 is complete only when all three credit-card formats and PayLah work end to en
 - Card payments and PayLah funding are Transfers even when only one side is available.
 - Raw financial data stays local. External agents receive only the agent-safe representation from ADR 0003.
 - The browser is available only through Tailscale Serve and an allowlisted Tailscale identity.
-- Statement and mailbox credentials are host-managed secret files, not database values.
+- Statement credentials are host-managed secret files, not database values. Shortcut ingest uses scoped, hashed bearer tokens, not mailbox secrets.
 
 ## Architectural shape
 
@@ -28,8 +28,8 @@ Browser ──Tailscale Serve──> FastAPI process ──> PostgreSQL
                                   └── serves compiled React SPA
 
 Watched folders ───────────> Worker process ──> artifact store + PostgreSQL
-PayLah IMAP ───────────────> Worker process
-Apple Shortcut ────────────> FastAPI ingestion endpoint
+Apple Wallet Shortcut ─────> FastAPI ingestion endpoint
+PayLah Shortcut ───────────> FastAPI ingestion endpoint
 
 External agent ──stdio MCP adapter──> agent-safe HTTPS resources
 ```
@@ -51,11 +51,11 @@ Avoid a generic layer or repository per database table. Introduce a seam only wh
 
 ### Artifact capture module
 
-**Interface:** capture a file, HTTP body, or email message and return an immutable `SourceArtifactRef`.
+**Interface:** capture a file or HTTP body and return an immutable `SourceArtifactRef`.
 
 The implementation owns stable-file detection, size limits, SHA-256 addressing, atomic copy and verification, duplicate arrivals, original metadata, and safe content paths. Callers never construct artifact paths.
 
-Adapters: watched-folder file, Apple HTTP body, and RFC 822 email.
+Adapters: watched-folder file and Shortcut HTTP body. Wallet and PayLah may share this HTTP capture plumbing; they remain distinct artifact types with distinct adapters.
 
 ### Statement extraction module
 
@@ -258,20 +258,21 @@ This phase begins only after an ordinary physical Apple Pay purchase reaches the
 
 **Exit:** a real Wallet event creates exactly one eligible Real-time Claim, survives API/worker restart, and either confirms against a Statement Claim or follows the documented Unconfirmed path.
 
-### Phase 9 — PayLah email
+### Phase 9 — PayLah Shortcut
 
-Run a private spike before fixing the production contract.
+PayLah capture piggybacks on the existing Shortcut → Source Artifact ingest family (the same pattern as Apple Wallet Shortcut JSON). It is not IMAP, a mailbox, RFC 822, or `.eml` files. The owner already has a working PayLah Shortcut; remaining work is wiring that payload into Billzebub ingest plus Extraction and Claims, not building capture from scratch or email.
 
-- Collect a small local set of raw `.eml` messages covering merchant payments, funding, Refunds, failures, and template variants when naturally available.
-- Connect read-only to a dedicated mailbox or folder using a mounted app-password secret.
-- Capture complete RFC 822 messages before parsing; never mutate read/unread state or delete/move messages.
-- Deduplicate with UIDVALIDITY, UID, Message-ID, and content hash.
-- Validate expected sender, recipient, subject family, recognized template, and available SPF/DKIM results.
-- Parse known templates into Provisional Claims; unknown templates create no Claim and one Blocking review.
+Wallet Shortcut and PayLah Shortcut may share ingest plumbing (scoped bearer token, exact-body Source Artifact retention, fail-closed parsing). They must not share one adapter. PayLah remains its own Financial Account kind and needs a distinct artifact type and PayLah-specific adapter. Do not apply Wallet card-label aliases or the Wallet payload schema to PayLah.
+
+- Inspect the working Shortcut's exact fields and types locally without committing the capture.
+- Define a versioned PayLah payload and retain its exact body as a Source Artifact with a PayLah-specific source type, not `apple_wallet_shortcut`.
+- Reuse shared Shortcut ingest plumbing; add a distinct ingest path or typed adapter so Wallet mapping is not applied to PayLah.
+- Create Provisional Real-time Claims from recognized payloads; unknown or incomplete payloads create no Claim and one Blocking review.
 - Classify funding as Transfer and merchant payment as Expense. Avoid double counting linked-account funding without requiring deposit statements.
-- Add sanitized synthetic message fixtures and keep every real `.eml` private.
+- Exercise locked-phone execution, repeated delivery, unavailable Tailscale, and receiver restart through normal use of the existing Shortcut.
+- Add sanitized synthetic payload fixtures and keep every real captured body private.
 
-**Exit:** naturally observed PayLah message types ingest automatically and idempotently, unknown templates fail closed, mailbox credentials never enter PostgreSQL, and no mailbox state is changed.
+**Exit:** naturally observed PayLah Shortcut event types ingest automatically and idempotently, unknown payloads fail closed, no mailbox or IMAP credentials exist, and PayLah Claims are typed separately from Wallet Claims.
 
 ### Phase 10 — NAS release, backup, and backfill
 
@@ -297,16 +298,16 @@ Run a private spike before fixing the production contract.
 - Confirmed spending, provisional estimates, Refund/Reimbursement offsets, Transfers, Category Splits, and Corrections produce exact and balanced results.
 - The external agent can categorize safely through HTTP or MCP without receiving forbidden information.
 - Overview, Transactions, Review, Imports, and Settings work responsively in Flexoki Dark.
-- Apple Wallet and PayLah produce automatic Provisional Claims from at least one real supported event/template each.
+- Apple Wallet and PayLah produce automatic Provisional Claims from at least one real supported Shortcut payload each.
 - Deposit-account statements, balances, and transfer-side consolidation are absent and explicitly documented as post-v1.
 - PostgreSQL, Source Artifacts, and secrets can be restored from the NAS backup procedure.
-- No real PDF, `.eml`, captured Wallet body, credential, account identifier, or database dump is tracked by Git or emitted to application logs.
+- No real PDF, captured Shortcut body, credential, account identifier, or database dump is tracked by Git or emitted to application logs.
 
 ## Empirical gates, not unresolved product decisions
 
 1. **Monopoly adapter gate:** verify each adapter can recover exact monetary strings, complete row coverage, and page/text provenance. If the published interface cannot, add a narrowly scoped Billzebub adapter extension or upstream contribution rather than weakening validation.
 2. **Apple gate:** observe one real Wallet event before finalizing payload and idempotency.
-3. **PayLah gate:** inspect real local `.eml` structures before finalizing templates and IMAP queries.
+3. **PayLah gate:** inspect the working local Shortcut payload before finalizing the PayLah artifact type, adapter, and Claim mapping. Do not introduce IMAP queries or `.eml` templates.
 4. **FX calibration gate:** tune the accepted initial ±10% band and score margin using private fixtures; never optimize solely for fewer Reviews at the cost of false confirmation.
 
 These gates may change adapters and thresholds, but not the established Source Artifact → Extraction → Claim → Reconciliation → Transaction model.

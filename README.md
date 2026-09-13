@@ -99,6 +99,6 @@ The production release uses [`compose.nas.yaml`](compose.nas.yaml) and explicit 
 
 ## Private data
 
-Real statements, emails, Wallet captures, credentials, artifacts, database dumps, and expected outputs derived from real data must never be committed. Put private parser fixtures only under `fixtures/private/`; repository checks deliberately reject these file types even when force-added.
+Real statements, Wallet and PayLah Shortcut captures, credentials, artifacts, database dumps, and expected outputs derived from real data must never be committed. Put private parser fixtures only under `fixtures/private/`; repository checks deliberately reject these file types even when force-added.
 
 The current throwaway Apple Wallet spike is documented in [`prototypes/apple-shortcut-capture/README.md`](prototypes/apple-shortcut-capture/README.md). Its runtime data remains on the NAS and outside Git.
