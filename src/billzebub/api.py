@@ -43,8 +43,14 @@ from billzebub.owner_transaction_actions import (
 )
 from billzebub.owner_workspace import OwnerWorkspace, OwnerWorkspaceError
 from billzebub.persistence.database import Database
-from billzebub.review_actions import ReviewActionError, ReviewActions
+from billzebub.review_actions import (
+    ReviewActionError,
+    ReviewActions,
+    ReviewConfigurationRequiredError,
+)
 from billzebub.reviews import PendingReviewStatus, ReviewDecision, ReviewError
+from billzebub.statement_adapters import configured_statement_adapters
+from billzebub.statement_extraction import StatementAdapterRegistry, StatementExtraction
 from billzebub.tokens import TokenAuthenticationError, TokenManager, TokenPrincipal, TokenScope
 
 
@@ -295,13 +301,22 @@ class Problem(BaseModel):
     title: str
     status: int
     detail: str
+    next_step: str | None = None
+    command: str | None = None
 
 
 class ProblemError(Exception):
-    def __init__(self, status_code: int, code: str, title: str) -> None:
+    def __init__(
+        self,
+        status_code: int,
+        code: str,
+        title: str,
+        extras: dict[str, Any] | None = None,
+    ) -> None:
         self.status_code = status_code
         self.code = code
         self.title = title
+        self.extras = extras or {}
 
 
 @dataclass(slots=True)
@@ -351,7 +366,18 @@ def create_app(
             resolved_owner_transaction_actions or OwnerTransactionActions(resolved_database)
         )
         resolved_owner_actors = resolved_owner_actors or OwnerActors(resolved_database)
-        resolved_review_actions = resolved_review_actions or ReviewActions(resolved_database)
+        resolved_review_actions = resolved_review_actions or ReviewActions(
+            resolved_database,
+            extraction=StatementExtraction(
+                resolved_database,
+                ContentAddressedStore(
+                    resolved_settings.artifact_root,
+                    max_bytes=resolved_settings.artifact_max_bytes,
+                ),
+                StatementAdapterRegistry(configured_statement_adapters()),
+                password_root=resolved_settings.statement_password_root,
+            ),
+        )
         resolved_owner_workspace = resolved_owner_workspace or OwnerWorkspace(resolved_database)
         resolved_agent_facade = resolved_agent_facade or AgentFacade(resolved_database)
         resolved_token_manager = resolved_token_manager or TokenManager(resolved_database)
@@ -402,7 +428,8 @@ def create_app(
                 title=error.title,
                 status=error.status_code,
                 detail=error.code,
-            ).model_dump(),
+                **error.extras,
+            ).model_dump(exclude_none=True),
             media_type="application/problem+json",
         )
 
@@ -1068,6 +1095,13 @@ def _owner_transaction_action_problem(error: OwnerTransactionActionError) -> Pro
 
 
 def _review_action_problem(error: ReviewActionError | ReviewError) -> ProblemError:
+    if isinstance(error, ReviewConfigurationRequiredError):
+        return ProblemError(
+            status.HTTP_409_CONFLICT,
+            "card_alias_configuration_required",
+            "Card alias configuration required",
+            extras={"next_step": error.next_step, "command": error.command},
+        )
     if str(error) == "Pending Review was not found":
         return ProblemError(
             status.HTTP_404_NOT_FOUND,
@@ -1115,7 +1149,7 @@ def _problem(code: str, title: str, status_code: int) -> JSONResponse:
             title=title,
             status=status_code,
             detail=code,
-        ).model_dump(),
+        ).model_dump(exclude_none=True),
         media_type="application/problem+json",
     )
 
