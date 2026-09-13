@@ -1,0 +1,335 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bz-bg);
+  color: var(--bz-text);
+  font-family: var(--bz-font);
+  font-size: var(--bz-text-md);
+  line-height: 1.45;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+a {
+  color: var(--bz-accent);
+  text-decoration: none;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+.btn,
+.icon-btn,
+.rail-item,
+.chip,
+.step-dot,
+.account-toggle,
+.statement-cell,
+.queue-item {
+  transition:
+    transform var(--bz-t-press) var(--bz-ease-out),
+    background-color var(--bz-t-ui) var(--bz-ease-out),
+    border-color var(--bz-t-ui) var(--bz-ease-out),
+    color var(--bz-t-ui) var(--bz-ease-out);
+}
+
+.btn:active,
+.icon-btn:active,
+.rail-item:active,
+.chip:active,
+.account-toggle:active,
+.statement-cell[data-action]:active,
+.queue-item:active {
+  transform: scale(var(--bz-press));
+}
+
+.stage-enter {
+  animation: stage-enter var(--bz-t-enter) var(--bz-ease-out) both;
+}
+
+.bars.is-fresh i {
+  animation: bar-rise var(--bz-t-ui) var(--bz-ease-out) both;
+  transform-origin: bottom;
+}
+
+.drawer {
+  transition:
+    transform var(--bz-t-drawer) var(--bz-ease-out),
+    opacity var(--bz-t-drawer) var(--bz-ease-out);
+}
+
+.drawer-backdrop {
+  transition: opacity var(--bz-t-drawer) var(--bz-ease-out);
+}
+
+@keyframes stage-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes bar-rise {
+  from {
+    opacity: 0;
+    transform: scaleY(0.42);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.btn,
+.icon-btn,
+.field,
+.select {
+  min-height: var(--bz-control-h);
+  border-radius: var(--bz-radius-md);
+  border: 1px solid var(--bz-border-strong);
+  background: var(--bz-surface);
+}
+
+.btn,
+.chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--bz-space-2);
+  padding: 0 var(--bz-space-3);
+  color: var(--bz-text);
+}
+
+.btn-ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--bz-muted);
+}
+
+.btn-ghost:hover,
+.icon-btn:hover,
+.btn-outline:hover,
+.field:hover,
+.select:hover {
+  border-color: var(--bz-border-strong);
+  background: var(--bz-surface-hover);
+  color: var(--bz-text);
+}
+
+.btn-outline {
+  background: var(--bz-bg);
+}
+
+.btn-primary {
+  border-color: var(--bz-accent);
+  background: var(--bz-accent);
+  color: #100f0f;
+  font-weight: 600;
+}
+
+.btn-primary:hover {
+  background: color-mix(in srgb, #3aa99f 86%, #cecdc3);
+}
+
+.btn-danger {
+  border-color: color-mix(in srgb, #d14d41 50%, #282726);
+  color: var(--bz-danger);
+  background: color-mix(in srgb, #d14d41 10%, #1c1b1a);
+}
+
+.icon-btn {
+  width: var(--bz-control-h);
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  color: var(--bz-muted);
+  background: transparent;
+}
+
+.field,
+.select {
+  width: 100%;
+  padding: 0 var(--bz-space-3);
+  outline: none;
+}
+
+.field:focus-visible,
+.select:focus-visible,
+.btn:focus-visible,
+.icon-btn:focus-visible,
+.rail-item:focus-visible,
+.chip:focus-visible,
+.row:focus-visible,
+.account-toggle:focus-visible {
+  outline: 2px solid var(--bz-accent);
+  outline-offset: 2px;
+}
+
+.select {
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, #878580 50%),
+    linear-gradient(135deg, #878580 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) 16px,
+    calc(100% - 9px) 16px;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 1.75rem;
+}
+
+.chip {
+  min-height: 1.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--bz-border);
+  background: transparent;
+  color: var(--bz-muted);
+  font-size: var(--bz-text-sm);
+}
+
+.chip[aria-pressed="true"] {
+  border-color: var(--bz-accent);
+  background: var(--bz-accent-dim);
+  color: var(--bz-text);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 1.25rem;
+  padding: 0 0.45rem;
+  border-radius: 999px;
+  font-size: var(--bz-text-xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.badge-count {
+  background: var(--bz-border);
+  color: var(--bz-text);
+}
+
+.badge-attention {
+  background: color-mix(in srgb, #d0a215 16%, #1c1b1a);
+  color: var(--bz-provisional);
+}
+
+.badge-blocking {
+  background: color-mix(in srgb, #d14d41 16%, #1c1b1a);
+  color: var(--bz-danger);
+}
+
+.badge-confirmed {
+  background: color-mix(in srgb, #879a39 14%, #1c1b1a);
+  color: var(--bz-positive);
+}
+
+.badge-provisional {
+  background: color-mix(in srgb, #d0a215 14%, #1c1b1a);
+  color: var(--bz-provisional);
+}
+
+.card {
+  border: 1px solid var(--bz-border);
+  border-radius: var(--bz-radius-lg);
+  background: var(--bz-surface);
+}
+
+.eyebrow {
+  color: var(--bz-muted);
+  font-size: var(--bz-text-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.amount {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  letter-spacing: -0.02em;
+}
+
+.muted {
+  color: var(--bz-muted);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+}
+
+.empty {
+  padding: var(--bz-space-6);
+  color: var(--bz-muted);
+}
+
+.error-banner {
+  margin: 0 0 var(--bz-space-4);
+  border: 1px solid var(--bz-danger);
+  border-radius: var(--bz-radius-md);
+  padding: 0.8rem 1rem;
+  color: var(--bz-text);
+  background: color-mix(in srgb, #d14d41 18%, #1c1b1a);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .btn:active,
+  .icon-btn:active,
+  .rail-item:active,
+  .chip:active,
+  .account-toggle:active,
+  .statement-cell[data-action]:active,
+  .queue-item:active {
+    transform: none;
+  }
+}
