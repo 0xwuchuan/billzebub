@@ -1,0 +1,3 @@
+# Use a double-entry ledger
+
+Billzebub will represent confirmed financial movements in an append-only internal double-entry ledger while keeping accounting terminology out of the consumer UI. V1 tracks movements rather than claiming complete Financial Account balances: statement balances are preserved for Extraction validation but create no Opening Balance entries, Uncategorized and temporary counterpart accounts remain hidden, and a trusted one-sided card payment or PayLah funding movement is classified as a Transfer without requiring its other side. This prevents Transfers, Refunds, Reimbursements, and future multi-currency activity from becoming unrelated special cases while deferring balance reporting and cross-account Transfer consolidation.

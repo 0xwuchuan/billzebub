@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TEST_DATABASE_URL: postgresql://billzebub:billzebub-development-only@127.0.0.1:5432/billzebub_test
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: billzebub_test
+          POSTGRES_USER: billzebub
+          POSTGRES_PASSWORD: billzebub-development-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U billzebub -d billzebub_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.3
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install PDF parser system dependencies
+        run: >-
+          sudo apt-get update && sudo apt-get install --yes
+          build-essential libpoppler-cpp-dev pkg-config
+
+      - run: uv sync --locked --all-groups
+      - run: pnpm install --frozen-lockfile
+      - run: make check

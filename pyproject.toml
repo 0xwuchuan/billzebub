@@ -1,0 +1,74 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "billzebub"
+version = "0.0.0"
+description = "Local-first personal expense history"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+authors = [{ name = "Billzebub contributors" }]
+dependencies = [
+  "alembic>=1.15,<2",
+  "fastapi>=0.115,<1",
+  "monopoly-core==0.21.6",
+  "psycopg[binary]>=3.2,<4",
+  "pydantic>=2.10,<3",
+  "pydantic-settings>=2.8,<3",
+  "sqlalchemy>=2.0,<3",
+  "uuid6>=2024.7,<2027",
+  "uvicorn>=0.34,<1",
+]
+
+[dependency-groups]
+dev = [
+  "detect-secrets>=1.5,<2",
+  "httpx2>=2.12.0",
+  "hypothesis>=6.138,<7",
+  "mypy>=1.15,<2",
+  "pytest>=8.3,<9",
+  "pytest-cov>=6,<7",
+  "ruff>=0.11,<0.12",
+]
+
+[project.scripts]
+billzebub-api = "billzebub.entrypoints.api:main"
+billzebub-mcp = "billzebub.entrypoints.mcp:main"
+billzebub-worker = "billzebub.entrypoints.worker:main"
+billzebub = "billzebub.entrypoints.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/billzebub"]
+
+[tool.pytest.ini_options]
+addopts = "--strict-config --strict-markers -ra"
+testpaths = ["tests"]
+pythonpath = ["."]
+markers = [
+  "integration: requires external infrastructure such as PostgreSQL",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["billzebub", "scripts"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src", "scripts", "tests"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "scripts", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "A", "C4", "DTZ", "ISC", "PIE", "PT", "RET", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101"]

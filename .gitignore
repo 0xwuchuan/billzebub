@@ -1,0 +1,56 @@
+# Operating systems and editors
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+secrets/
+**/secrets/
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Private financial inputs and retained artifacts
+fixtures/private/
+artifacts/
+captures/
+backups/
+postgres/
+pgdata/
+**/runtime/
+*.pdf
+*.eml
+*.dump
+*.backup
+*.sqlite
+*.sqlite3
+
+# Python
+.python-version.local
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# JavaScript
+node_modules/
+web/dist/
+*.tsbuildinfo
+
+# Logs and temporary files
+*.log
+.tmp/
+tmp/

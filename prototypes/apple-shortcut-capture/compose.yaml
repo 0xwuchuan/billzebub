@@ -1,0 +1,34 @@
+# THROWAWAY PROTOTYPE — remove after the Apple Wallet ingestion experiment.
+services:
+  capture:
+    image: python:3.12-alpine
+    container_name: billzebub-apple-shortcut-probe
+    restart: unless-stopped
+    command: ["python", "/app/capture_server.py"]
+    environment:
+      CAPTURE_HOST: "0.0.0.0"
+      CAPTURE_PORT: "8765"
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+    # Dedicated read-only capture group shared with the local Hermes agent.
+    user: "1026:19999"
+    read_only: true
+    tmpfs:
+      - /tmp:size=8m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "127.0.0.1:8765:8765"
+    volumes:
+      - ./capture_server.py:/app/capture_server.py:ro
+      - ./runtime:/app/runtime
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/health', timeout=2).read()"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    stop_grace_period: 5s
+    mem_limit: 64m

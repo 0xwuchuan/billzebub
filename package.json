@@ -1,0 +1,16 @@
+{
+  "name": "billzebub-workspace",
+  "private": true,
+  "packageManager": "pnpm@10.30.3",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "web:build": "pnpm --dir web build",
+    "web:format": "pnpm --dir web format",
+    "web:format:check": "pnpm --dir web format:check",
+    "web:lint": "pnpm --dir web lint",
+    "web:test": "pnpm --dir web test",
+    "web:typecheck": "pnpm --dir web typecheck"
+  }
+}

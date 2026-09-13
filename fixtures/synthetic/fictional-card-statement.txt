@@ -1,0 +1,10 @@
+BILLZEBUB FIXTURE — FICTIONAL DATA ONLY
+Institution: Example Bank
+Account alias: example-card
+Statement period: 2026-01-01 through 2026-01-31
+Currency: SGD
+
+2026-01-03  EXAMPLE COFFEE                 4.20
+2026-01-07  EXAMPLE TRANSIT               12.34
+2026-01-10  PAYMENT RECEIVED            (100.00)
+2026-01-14  EXAMPLE BOOKSHOP              23.45

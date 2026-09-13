@@ -1,0 +1,3 @@
+# Use Tailnet identity and host-managed secrets
+
+Billzebub v1 will bind only to localhost behind Tailscale Serve and allowlist the sole browser user from authenticated Tailscale identity headers, avoiding a duplicate application account, password, recovery, and session system; Shortcut and agent access still use separate scoped, hashed bearer tokens. Statement passwords and the PayLah mailbox app password will be permission-restricted NAS files mounted read-only as Docker Compose secrets rather than encrypted values in PostgreSQL, keeping them out of database backups and the web UI while deferring application key management until dynamic credential editing is genuinely required.

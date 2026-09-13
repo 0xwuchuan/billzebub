@@ -1,0 +1,351 @@
+:root {
+  color: #cecdc3;
+  background: #100f0f;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-width: 20rem;
+  min-height: 100vh;
+  margin: 0;
+}
+
+button,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: progress;
+  opacity: 0.55;
+}
+
+.workspace-shell {
+  width: min(76rem, 100%);
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem 5rem;
+}
+
+.topbar,
+.panel-heading,
+.transaction-row,
+.review-row,
+.categorize-control,
+.review-actions {
+  display: flex;
+  align-items: center;
+}
+
+.topbar,
+.panel-heading {
+  justify-content: space-between;
+  gap: 1.5rem;
+}
+
+.topbar {
+  margin-bottom: 2rem;
+}
+
+h1,
+h2,
+h3,
+h4,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: clamp(2.5rem, 7vw, 4.5rem);
+  letter-spacing: -0.055em;
+  line-height: 0.95;
+}
+
+h2 {
+  font-size: 1.4rem;
+  letter-spacing: -0.025em;
+}
+
+h3,
+h4 {
+  font-size: 1rem;
+}
+
+p,
+.status-copy {
+  color: #878580;
+}
+
+.eyebrow,
+.review-severity {
+  color: #3aa99f;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.summary-card,
+.panel {
+  border: 1px solid #282726;
+  background: #1c1b1a;
+}
+
+.summary-card {
+  min-height: 7rem;
+  padding: 1.15rem;
+  border-radius: 0.75rem;
+}
+
+.summary-card p {
+  font-size: 0.85rem;
+}
+
+.summary-card strong {
+  display: block;
+  margin-top: 1.1rem;
+  color: #cecdc3;
+  font-size: 1.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.summary-attention strong {
+  color: #d0a215;
+}
+
+.summary-blocking strong {
+  color: #d14d41;
+}
+
+.panel {
+  margin-top: 1.25rem;
+  overflow: hidden;
+  border-radius: 0.75rem;
+}
+
+.panel-heading {
+  padding: 1.25rem;
+  border-bottom: 1px solid #282726;
+}
+
+.panel-heading .eyebrow {
+  margin-bottom: 0.35rem;
+}
+
+.status-copy {
+  font-size: 0.8rem;
+  text-align: right;
+}
+
+.transaction-list,
+.review-queue {
+  display: grid;
+}
+
+.transaction-row,
+.review-row {
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid #282726;
+}
+
+.transaction-row:last-child,
+.review-row:last-child {
+  border-bottom: 0;
+}
+
+.transaction-date {
+  width: 5.7rem;
+  color: #878580;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.transaction-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.transaction-main h3 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.transaction-main p,
+.review-row p {
+  margin-top: 0.28rem;
+  font-size: 0.82rem;
+}
+
+.amount {
+  min-width: 8rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.categorize-control,
+.review-actions {
+  justify-content: flex-end;
+  gap: 0.45rem;
+}
+
+select,
+.quiet-button,
+.primary-button {
+  min-height: 2.25rem;
+  border-radius: 0.45rem;
+  padding: 0.45rem 0.65rem;
+}
+
+select,
+.quiet-button {
+  border: 1px solid #343331;
+  color: #cecdc3;
+  background: #282726;
+}
+
+.quiet-button:hover,
+select:hover {
+  border-color: #3aa99f;
+  background: #343331;
+}
+
+.primary-button {
+  border: 1px solid #3aa99f;
+  color: #100f0f;
+  background: #3aa99f;
+  font-weight: 700;
+}
+
+.confirmed-badge {
+  color: #879a39;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.load-more {
+  display: flex;
+  justify-content: center;
+  padding: 1rem;
+  border-top: 1px solid #282726;
+}
+
+.review-queue > h3 {
+  padding: 1rem 1.25rem 0.55rem;
+  color: #878580;
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.review-row {
+  justify-content: space-between;
+}
+
+.review-row > div:first-child {
+  min-width: 0;
+}
+
+.review-blocking {
+  color: #d14d41;
+}
+
+.review-attention {
+  color: #d0a215;
+}
+
+.empty-state {
+  padding: 1.25rem;
+  font-size: 0.9rem;
+}
+
+.error-banner {
+  margin: 1rem 0;
+  border: 1px solid #d14d41;
+  border-radius: 0.5rem;
+  padding: 0.8rem 1rem;
+  color: #cecdc3;
+  background: color-mix(in srgb, #d14d41 18%, #1c1b1a);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+@media (max-width: 52rem) {
+  .workspace-shell {
+    padding: 1.5rem 0.85rem 3rem;
+  }
+
+  .summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .summary-card {
+    min-height: auto;
+  }
+
+  .summary-card strong {
+    margin-top: 0.45rem;
+  }
+
+  .status-copy {
+    display: none;
+  }
+
+  .transaction-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+  }
+
+  .transaction-date {
+    width: auto;
+    grid-column: 1 / -1;
+  }
+
+  .categorize-control {
+    grid-column: 1 / -1;
+    justify-content: stretch;
+  }
+
+  .categorize-control select {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .confirmed-badge {
+    grid-column: 1 / -1;
+  }
+
+  .review-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .review-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+}

@@ -1,0 +1,21 @@
+name: billzebub-dev
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: billzebub_test
+      POSTGRES_USER: billzebub
+      POSTGRES_PASSWORD: billzebub-development-only
+    ports:
+      - "127.0.0.1:54329:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U billzebub -d billzebub_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+    volumes:
+      - billzebub-postgres-dev:/var/lib/postgresql/data
+
+volumes:
+  billzebub-postgres-dev:
