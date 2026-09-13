@@ -26,11 +26,10 @@ export function useRoute(onboarded: boolean) {
 
   const go = useCallback((next: Route) => {
     const hash = hashFor(next);
+    setRoute(next);
     if (window.location.hash !== hash) {
       window.location.hash = hash;
-      return;
     }
-    setRoute(next);
   }, []);
 
   return { route, go };

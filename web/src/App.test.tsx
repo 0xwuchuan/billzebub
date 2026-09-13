@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "./App";
@@ -108,9 +114,12 @@ describe("App", () => {
     expect(screen.getByText("−SGD 12.34")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Synthetic Coffee/ }));
-    fireEvent.change(screen.getByLabelText("Category for Synthetic Coffee"), {
-      target: { value: "00000000-0000-0000-0000-000000000099" },
-    });
+    fireEvent.change(
+      await screen.findByLabelText("Category for Synthetic Coffee"),
+      {
+        target: { value: "00000000-0000-0000-0000-000000000099" },
+      },
+    );
     fireEvent.click(screen.getByRole("button", { name: "Categorize" }));
 
     await waitFor(() => {
@@ -135,8 +144,8 @@ describe("App", () => {
         }),
       }),
     );
-    expect(await screen.findByText("Synthetic Food")).toBeInTheDocument();
-    expect(await screen.findByText("Categorized")).toBeInTheDocument();
+    const drawer = await screen.findByRole("dialog");
+    expect(await within(drawer).findByText("Categorized")).toBeInTheDocument();
   });
 
   it("keeps Quiet Rail chrome when the API is down", async () => {
@@ -177,7 +186,9 @@ describe("App", () => {
 
     render(<App />);
 
-    expect(await screen.findByText("Failed Extraction")).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "Failed Extraction" }),
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Retry Extraction" }));
 
     await waitFor(() => {
