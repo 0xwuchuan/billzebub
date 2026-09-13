@@ -90,7 +90,7 @@ services:
     command: ["billzebub-worker"]
     volumes:
       - /volume1/docker/billzebub/artifacts:/var/lib/billzebub/artifacts:rw
-      - /volume1/Billzebub-Inbox:/var/lib/billzebub/inbox:rw
+      - /volume1/billzebub-inbox:/var/lib/billzebub/inbox:rw
       - /volume1/docker/billzebub/secrets:/run/secrets:ro
     mem_limit: 768m
     depends_on:
@@ -106,7 +106,7 @@ services:
       - "19999"
     volumes:
       - /volume1/docker/billzebub/artifacts:/var/lib/billzebub/artifacts:rw
-      - /volume1/Billzebub-Inbox:/var/lib/billzebub/inbox:rw
+      - /volume1/billzebub-inbox:/var/lib/billzebub/inbox:rw
       - /volume1/docker/billzebub/secrets:/run/secrets:ro
       - ${BILLZEBUB_APPLE_PROBE_CAPTURE_ROOT:-/volume1/docker/billzebub-apple-shortcut-probe/runtime/captures}:/import/apple-probe:ro
     depends_on:

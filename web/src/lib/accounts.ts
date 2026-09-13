@@ -11,7 +11,7 @@ export const WATCH_ACCOUNTS: WatchAccount[] = [
     id: "dbs",
     name: "DBS Live Fresh",
     kind: "Credit card",
-    inbox: "/volume1/Billzebub-Inbox/dbs-live-fresh",
+    inbox: "/volume1/billzebub-inbox/dbs-live-fresh",
     artifacts: [
       {
         file: "dbs-live-fresh-2026-09.pdf",
@@ -29,7 +29,7 @@ export const WATCH_ACCOUNTS: WatchAccount[] = [
     id: "citi",
     name: "Citi Cash Back+",
     kind: "Credit card",
-    inbox: "/volume1/Billzebub-Inbox/citi-cash-back",
+    inbox: "/volume1/billzebub-inbox/citi-cash-back",
     artifacts: [
       {
         file: "citi-cash-back-2026-09.pdf",
@@ -42,7 +42,7 @@ export const WATCH_ACCOUNTS: WatchAccount[] = [
     id: "uob",
     name: "UOB Lady's Card",
     kind: "Credit card",
-    inbox: "/volume1/Billzebub-Inbox/uob-ladys",
+    inbox: "/volume1/billzebub-inbox/uob-ladys",
     artifacts: [
       { file: "uob-ladys-2026-09.pdf", parser: "uob_credit_card v2", ok: true },
     ],
@@ -51,7 +51,7 @@ export const WATCH_ACCOUNTS: WatchAccount[] = [
     id: "paylah",
     name: "DBS PayLah",
     kind: "Wallet",
-    inbox: "/volume1/Billzebub-Inbox/paylah",
+    inbox: "/volume1/billzebub-inbox/paylah",
     artifacts: [
       { file: "paylah-2026-09.eml", parser: "paylah_wallet v1", ok: true },
     ],

@@ -24,7 +24,7 @@ Then run `scripts/nas/cutover-wizard.sh` from the NAS checkout to walk through t
 
 The bootstrap script generates secrets locally, prints neither their values nor their filenames, and refuses to replace an existing runtime configuration or database secret. The application reads its database URL only from the mounted private file in NAS mode.
 
-The statement inbox is owned by the worker UID. Grant the NAS account that drops statements only the narrow write access needed for that folder; do not widen artifact or secret access. Statement-password and Apple-card-label files must be regular mode-`0600` files readable by UID `10001` inside the mounted secret directory.
+The statement inbox host path is `/volume1/billzebub-inbox` (a Synology Shared Folder; DSM share names are effectively case-folded) and is owned by the worker UID. Grant the NAS account that drops statements only the narrow write access needed for that folder; do not widen artifact or secret access. The container mount target remains `/var/lib/billzebub/inbox`. Statement-password and Apple-card-label files must be regular mode-`0600` files readable by UID `10001` inside the mounted secret directory.
 
 ## First deployment and upgrades
 

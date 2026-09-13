@@ -277,7 +277,7 @@ Run a private spike before fixing the production contract.
 
 **Implementation status:** production Compose, image build, same-origin static SPA serving, host-managed database-secret support, explicit deploy/upgrade, backup, restore-drill, Tailscale cutover, and Apple probe-import scripts are in the repository. The NAS host setup, first production deployment, owner secret/token configuration, probe backfill, and restore drill remain operator actions.
 
-- Create `/volume1/Billzebub-Inbox/` with DBS, Citi, and UOB account folders and least-privilege worker access.
+- Create `/volume1/billzebub-inbox/` with DBS, Citi, and UOB account folders and least-privilege worker access.
 - Create private `/volume1/docker/billzebub/{artifacts,postgres,backups,secrets}` paths with documented ownership and modes.
 - Build production images with pinned dependencies, non-root users, read-only filesystems where practical, health checks, resource limits, and rotated logs.
 - Bind API only to localhost and replace the probe's Tailscale Serve route with Billzebub HTTPS.
