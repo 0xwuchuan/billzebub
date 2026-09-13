@@ -13,7 +13,7 @@ usage() {
 
 host_layout_is_safe() {
   for directory in "$state_root" "$secrets_root" "$state_root/artifacts" \
-    "$state_root/backups" "$state_root/postgres" "/volume1/Billzebub-Inbox"; do
+    "$state_root/backups" "$state_root/postgres" "/volume1/billzebub-inbox"; do
     [[ -d "$directory" && ! -L "$directory" ]] || return 1
   done
   for secret in "$secrets_root/database-url" "$secrets_root/postgres-password"; do
@@ -139,7 +139,7 @@ install -d -m 0700 "$state_root" "$state_root/backups"
 install -d -m 0710 -o root -g 10001 "$secrets_root"
 install -d -m 0700 -o 10001 -g 10001 "$state_root/artifacts"
 install -d -m 0700 "$state_root/postgres"
-install -d -m 0700 -o 10001 -g 10001 "/volume1/Billzebub-Inbox"
+install -d -m 0700 -o 10001 -g 10001 "/volume1/billzebub-inbox"
 
 umask 077
 password_file="$secrets_root/postgres-password"
