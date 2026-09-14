@@ -56,12 +56,12 @@ Do not stop the probe yet. For an interactive one-card setup that keeps the stat
 
 1. Create Financial Account card aliases from private mode-`0600` label files with the `billzebub account apple-wallet-alias` command in the maintenance container.
 2. Issue a fresh `integration` token scoped only to `shortcut:claims:create`; copy it directly into the Shortcut Authorization header and do not retain it in a shell history or Git file.
-3. Update only the Shortcut endpoint URL to `/api/v1/ingestions/apple-wallet`; leave its observed body format unchanged.
+3. Update the Shortcut endpoint URL to `/api/v1/ingestions/apple-wallet`. Existing `probe-2` Wallet bodies stay valid; new Wallet and PayLah Shortcuts should send `realtime-1` JSON with an explicit `source`.
 4. Import retained probe bodies through the maintenance container. It has a read-only mount of only the probe `captures` directory and joins its dedicated read-only group; it never receives the probe bearer token.
 5. Make one normal Apple Pay purchase, verify the new endpoint creates one provisional Claim, then wait for the next card statement and verify reconciliation.
 6. Only after successful production capture and backfill, stop and remove the throwaway probe. Its old raw bodies must already be retained in the Billzebub Source Artifact store.
 
-The production endpoint records exact bodies, maps card labels only through local aliases, uses the mapped Financial Account's currency for dollar-prefixed source text, and applies the configured owner timezone to the local Shortcut timestamp. Unknown cards remain blocking review conditions and create no Claim.
+The production endpoint records exact bodies, maps Wallet instruments only through local aliases, routes PayLah events to the single active `paylah` Financial Account, uses the mapped Financial Account's currency for dollar-prefixed source text, and applies the configured owner timezone to the local Shortcut timestamp. Unknown Wallet instruments and a missing or ambiguous PayLah account remain blocking review conditions and create no Claim.
 
 ## Backup and restore
 

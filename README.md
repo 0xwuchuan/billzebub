@@ -35,7 +35,7 @@ make worker
 pnpm --dir web dev
 ```
 
-The API exposes `/health/live`, `/health/ready`, authenticated `/api/v1/imports` diagnostics, owner `/api/v1/transactions` and `/api/v1/reviews` workspace resources, `/api/v1/agent` resources, and a development-only `/api/v1/whoami` resource. The bearer-protected `POST /api/v1/ingestions/apple-wallet` endpoint retains exact Shortcut JSON bodies and creates fail-closed Real-time Claims. Owner mutations require same-origin JSON plus the `X-Billzebub-CSRF: bzb-spa` header and a current ETag. `make api` supplies a loopback-only development identity; NAS mode instead requires an allowlisted Tailscale identity.
+The API exposes `/health/live`, `/health/ready`, authenticated `/api/v1/imports` diagnostics, owner `/api/v1/transactions` and `/api/v1/reviews` workspace resources, `/api/v1/agent` resources, and a development-only `/api/v1/whoami` resource. The bearer-protected `POST /api/v1/ingestions/apple-wallet` endpoint retains exact Shortcut JSON bodies and creates fail-closed Real-time Claims for Apple Wallet and PayLah. Owner mutations require same-origin JSON plus the `X-Billzebub-CSRF: bzb-spa` header and a current ETag. `make api` supplies a loopback-only development identity; NAS mode instead requires an allowlisted Tailscale identity.
 
 Configuration uses `BILLZEBUB_` environment variables and is not loaded automatically from `.env` files. Important settings are `ENVIRONMENT`, `DATABASE_URL`, `ARTIFACT_ROOT`, `STATEMENT_INBOX_ROOT`, `STATEMENT_PASSWORD_ROOT`, `STATEMENT_STABLE_SECONDS`, `APPLE_WALLET_TIMEZONE`, `TRUST_TAILSCALE_HEADERS`, `TAILSCALE_ALLOWED_LOGINS` (a JSON list), and `DEVELOPMENT_IDENTITY`.
 
@@ -76,9 +76,48 @@ uv run billzebub token revoke <token-id>
 
 Token plaintext is displayed only by `token issue`; PostgreSQL stores its SHA-256 digest and scoped metadata.
 
-### Apple Wallet Shortcut setup
+### Shortcut Real-time Claim setup
 
-The observed Shortcut payload remains unchanged: `probe-2` JSON with `name`, `merchant`, `card`, `$`-prefixed amount text, and a local English date such as `7 Mar 2026 at 9:05 PM`. Set `BILLZEBUB_APPLE_WALLET_TIMEZONE` to the owner's IANA timezone. Billzebub maps the private `card` label to a Financial Account, assigns that account's ISO default currency, and rejects malformed text rather than guessing.
+Apple Wallet and PayLah Shortcuts share `POST /api/v1/ingestions/apple-wallet` and the `shortcut:claims:create` bearer token. Set `BILLZEBUB_APPLE_WALLET_TIMEZONE` to the owner's IANA timezone. Amounts must be `$`-prefixed text and dates must be local English text such as `7 Mar 2026 at 9:05 PM`. Currency comes from the resolved Financial Account. Unknown `schema_version` or `source` values fail closed.
+
+Legacy `probe-2` Wallet bodies remain valid and must not include `source`:
+
+```json
+{
+  "schema_version": "probe-2",
+  "name": "Synthetic name",
+  "merchant": "Synthetic merchant",
+  "card": "Synthetic Wallet Card",
+  "amount": "$12.34",
+  "date": "7 Mar 2026 at 9:05 PM"
+}
+```
+
+New captures use `realtime-1` with an explicit `source`. Wallet events map `instrument` (or the deprecated `card` alias) through the same private card-label aliases as `probe-2`:
+
+```json
+{
+  "schema_version": "realtime-1",
+  "source": "apple_wallet",
+  "name": "Synthetic name",
+  "merchant": "Synthetic merchant",
+  "instrument": "Synthetic Wallet Card",
+  "amount": "$12.34",
+  "date": "7 Mar 2026 at 9:05 PM"
+}
+```
+
+PayLah events accept only `name`, `amount`, and `date`. Extra `merchant`, `card`, or `instrument` fields are rejected. The Claim is routed to the single active Financial Account of kind `paylah`; zero or multiple active PayLah accounts fail closed:
+
+```json
+{
+  "schema_version": "realtime-1",
+  "source": "paylah",
+  "name": "Synthetic PayLah name",
+  "amount": "$8.50",
+  "date": "7 Mar 2026 at 9:05 PM"
+}
+```
 
 Create a mode-`0600` local file containing the Wallet card label, then configure it without printing its contents:
 
@@ -87,7 +126,7 @@ uv run billzebub account apple-wallet-alias \
   --slug <account-slug> --card-label-file /private/path/wallet-card-label
 ```
 
-Issue an `integration` token with `shortcut:claims:create`, put it only in the Shortcut Authorization header, and send JSON to `/api/v1/ingestions/apple-wallet`. Exact replay bodies share one Source Artifact and one Claim. Unknown card labels create a Blocking Review and no Claim.
+Issue an `integration` token with `shortcut:claims:create`, put it only in the Shortcut Authorization header, and send JSON to `/api/v1/ingestions/apple-wallet`. Exact replay bodies share one Source Artifact and one Claim. Unknown Wallet instruments create a Blocking Review and no Claim.
 
 ## Local MCP adapter
 
@@ -99,6 +138,6 @@ The production release uses [`compose.nas.yaml`](compose.nas.yaml) and explicit 
 
 ## Private data
 
-Real statements, emails, Wallet captures, credentials, artifacts, database dumps, and expected outputs derived from real data must never be committed. Put private parser fixtures only under `fixtures/private/`; repository checks deliberately reject these file types even when force-added.
+Real statements, Wallet and PayLah Shortcut captures, credentials, artifacts, database dumps, and expected outputs derived from real data must never be committed. Put private parser fixtures only under `fixtures/private/`; repository checks deliberately reject these file types even when force-added.
 
 The current throwaway Apple Wallet spike is documented in [`prototypes/apple-shortcut-capture/README.md`](prototypes/apple-shortcut-capture/README.md). Its runtime data remains on the NAS and outside Git.
