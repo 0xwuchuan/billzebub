@@ -92,3 +92,56 @@ def test_financial_account_bootstrap_rejects_unsafe_secret_and_existing_folder(
         bootstrap.bootstrap(command, dry_run=True)
     with database.transaction() as session:
         assert session.scalar(select(FinancialAccount.id)) is None
+
+
+@pytest.mark.integration
+def test_financial_account_bootstrap_creates_paylah_without_inbox(
+    database: Database,
+    tmp_path: Path,
+) -> None:
+    inbox_root = tmp_path / "inbox"
+    bootstrap = FinancialAccountBootstrap(
+        database,
+        inbox_root=inbox_root,
+        password_root=tmp_path / "passwords",
+        adapters={"synthetic-card": "synthetic"},
+    )
+    record = bootstrap.bootstrap(
+        FinancialAccountBootstrapCommand(
+            slug="synthetic-paylah",
+            display_name="Synthetic PayLah",
+            institution="dbs",
+            kind=FinancialAccountKind.PAYLAH,
+            default_currency="SGD",
+        )
+    )
+
+    assert record.kind is FinancialAccountKind.PAYLAH
+    assert record.statement_adapter_key is None
+    assert record.inbox_ready is False
+    assert not (inbox_root / record.slug).exists()
+    listed = bootstrap.list()
+    assert listed[0].id == record.id
+
+
+@pytest.mark.integration
+def test_financial_account_bootstrap_rejects_deposit_kind(
+    database: Database,
+    tmp_path: Path,
+) -> None:
+    bootstrap = FinancialAccountBootstrap(
+        database,
+        inbox_root=tmp_path / "inbox",
+        password_root=tmp_path / "passwords",
+        adapters={"synthetic-card": "synthetic"},
+    )
+    with pytest.raises(FinancialAccountSetupError, match="paylah"):
+        bootstrap.bootstrap(
+            FinancialAccountBootstrapCommand(
+                slug="synthetic-deposit",
+                display_name="Synthetic Deposit",
+                institution="dbs",
+                kind=FinancialAccountKind.DEPOSIT,
+                default_currency="SGD",
+            )
+        )

@@ -2,27 +2,51 @@ import { useCallback, useEffect, useState } from "react";
 
 import {
   categorizeTransaction,
+  createCategory,
+  createFinancialAccount,
+  createWalletAlias,
   decideReview,
   getCategories,
+  getFinancialAccounts,
   getReviews,
+  getStatementAdapters,
+  getTokens,
   getTransactions,
+  getWhoami,
+  issueToken,
+  revokeToken,
+  rotateToken,
   type Category,
+  type CreateFinancialAccountInput,
+  type FinancialAccount,
+  type IssuedToken,
+  type IntegrationToken,
+  type OwnerIdentity,
   type Review,
+  type StatementAdapter,
   type Transaction,
   type TransactionPage,
 } from "../api";
 import { messageFor } from "../lib/labels";
 
 export type WorkspaceSnapshot = {
+  identity: OwnerIdentity | null;
   transactions: TransactionPage;
   reviews: Review[];
   categories: Category[];
+  accounts: FinancialAccount[];
+  adapters: StatementAdapter[];
+  tokens: IntegrationToken[];
 };
 
 const emptyWorkspace: WorkspaceSnapshot = {
+  identity: null,
   transactions: { items: [], next_cursor: null },
   reviews: [],
   categories: [],
+  accounts: [],
+  adapters: [],
+  tokens: [],
 };
 
 export function useWorkspace() {
@@ -31,6 +55,7 @@ export function useWorkspace() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [issuedToken, setIssuedToken] = useState<IssuedToken | null>(null);
 
   const loadWorkspace = useCallback(async () => {
     setLoading(true);
@@ -143,28 +168,185 @@ export function useWorkspace() {
     }
   }
 
+  async function addAccount(input: CreateFinancialAccountInput): Promise<void> {
+    setSaving("account");
+    setError(null);
+    try {
+      const account = await createFinancialAccount(input);
+      setWorkspace((current) => ({
+        ...current,
+        accounts: [...current.accounts, account],
+      }));
+    } catch (requestError) {
+      setError(messageFor(requestError));
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function addWalletAlias(
+    accountId: string,
+    cardLabel: string,
+  ): Promise<void> {
+    setSaving("alias");
+    setError(null);
+    try {
+      const alias = await createWalletAlias(accountId, cardLabel);
+      setWorkspace((current) => ({
+        ...current,
+        accounts: current.accounts.map((account) =>
+          account.id === accountId
+            ? { ...account, aliases: [...account.aliases, alias] }
+            : account,
+        ),
+      }));
+    } catch (requestError) {
+      setError(messageFor(requestError));
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function addCategory(name: string, parentId?: string): Promise<void> {
+    setSaving("category");
+    setError(null);
+    try {
+      const category = await createCategory(name, parentId);
+      setWorkspace((current) => ({
+        ...current,
+        categories: [...current.categories, category],
+      }));
+    } catch (requestError) {
+      setError(messageFor(requestError));
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function addToken(): Promise<void> {
+    setSaving("token");
+    setError(null);
+    try {
+      const issued = await issueToken({
+        name: "Apple Shortcut",
+        kind: "integration",
+        scopes: ["shortcut:claims:create"],
+      });
+      setIssuedToken(issued);
+      setWorkspace((current) => ({
+        ...current,
+        tokens: [
+          ...current.tokens,
+          {
+            id: issued.id,
+            name: issued.name,
+            prefix: issued.prefix,
+            scopes: issued.scopes,
+            created_at: issued.created_at,
+            last_used_at: issued.last_used_at,
+          },
+        ],
+      }));
+    } catch (requestError) {
+      setError(messageFor(requestError));
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function replaceToken(tokenId: string): Promise<void> {
+    setSaving(tokenId);
+    setError(null);
+    try {
+      const issued = await rotateToken(tokenId);
+      setIssuedToken(issued);
+      setWorkspace((current) => ({
+        ...current,
+        tokens: current.tokens.map((token) =>
+          token.id === tokenId
+            ? {
+                id: issued.id,
+                name: issued.name,
+                prefix: issued.prefix,
+                scopes: issued.scopes,
+                created_at: issued.created_at,
+                last_used_at: issued.last_used_at,
+              }
+            : token,
+        ),
+      }));
+    } catch (requestError) {
+      setError(messageFor(requestError));
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function removeToken(tokenId: string): Promise<void> {
+    setSaving(tokenId);
+    setError(null);
+    try {
+      await revokeToken(tokenId);
+      setIssuedToken((current) => (current?.id === tokenId ? null : current));
+      setWorkspace((current) => ({
+        ...current,
+        tokens: current.tokens.filter((token) => token.id !== tokenId),
+      }));
+    } catch (requestError) {
+      setError(messageFor(requestError));
+    } finally {
+      setSaving(null);
+    }
+  }
+
   return {
     workspace,
     loading,
     error,
     saving,
     loadingMore,
+    issuedToken,
     loadWorkspace,
     loadMoreTransactions,
     saveCategory,
     resolveReview,
+    addAccount,
+    addWalletAlias,
+    addCategory,
+    addToken,
+    replaceToken,
+    removeToken,
+    dismissIssuedToken: () => {
+      setIssuedToken(null);
+    },
   };
 }
 
 async function fetchWorkspace(): Promise<WorkspaceSnapshot> {
-  const [transactions, reviews, categories] = await Promise.all([
+  const [
+    identity,
+    transactions,
+    reviews,
+    categories,
+    accounts,
+    adapters,
+    tokens,
+  ] = await Promise.all([
+    getWhoami(),
     getTransactions(),
     getReviews(),
     getCategories(),
+    getFinancialAccounts(),
+    getStatementAdapters(),
+    getTokens(),
   ]);
   return {
+    identity,
     transactions,
     reviews: reviews.items,
     categories: categories.items,
+    accounts: accounts.items,
+    adapters: adapters.items,
+    tokens: tokens.items,
   };
 }

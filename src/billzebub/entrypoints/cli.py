@@ -62,6 +62,15 @@ def parser() -> argparse.ArgumentParser:
     apple_wallet_alias.add_argument("--slug", required=True)
     apple_wallet_alias.add_argument("--card-label-file", required=True, type=Path)
 
+    create_paylah = account_commands.add_parser(
+        "create-paylah",
+        help="create a Shortcut-backed PayLah Financial Account",
+    )
+    create_paylah.add_argument("--slug", required=True)
+    create_paylah.add_argument("--display-name", required=True)
+    create_paylah.add_argument("--institution", default="dbs")
+    create_paylah.add_argument("--currency", default="SGD")
+
     apple_wallet = commands.add_parser(
         "apple-wallet", help="operate the local Apple Wallet ingestion"
     )
@@ -142,6 +151,29 @@ def main(argv: Sequence[str] | None = None) -> None:
                 )
             else:
                 print("Financial Account created and its statement inbox folder is ready.")
+            return
+        if arguments.command == "account" and arguments.account_command == "create-paylah":
+            try:
+                FinancialAccountBootstrap(
+                    database,
+                    inbox_root=settings.statement_inbox_root,
+                    password_root=settings.statement_password_root,
+                ).bootstrap(
+                    FinancialAccountBootstrapCommand(
+                        slug=arguments.slug,
+                        display_name=arguments.display_name,
+                        institution=arguments.institution,
+                        kind=FinancialAccountKind.PAYLAH,
+                        default_currency=arguments.currency,
+                    )
+                )
+            except (FinancialAccountSetupError, OSError, UnicodeError):
+                raise SystemExit(
+                    "PayLah Financial Account setup failed; inspect local configuration."
+                ) from None
+            print(
+                "PayLah Financial Account created. Shortcut ingest does not use a statement inbox."
+            )
             return
         if arguments.command == "account" and arguments.account_command == "apple-wallet-alias":
             try:

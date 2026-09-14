@@ -36,13 +36,13 @@ class ReviewConfigurationRequiredError(ReviewActionError):
         *,
         next_step: str,
         command: str,
+        problem_code: str,
     ) -> None:
-        super().__init__(
-            "configure the Apple Wallet card alias via CLI or Settings before this Review can close"
-        )
+        super().__init__("owner configuration is required before this Review can close")
         self.review = review
         self.next_step = next_step
         self.command = command
+        self.problem_code = problem_code
 
 
 class ReviewActions:
@@ -52,8 +52,12 @@ class ReviewActions:
     _EXTRACTION_DECISIONS = frozenset({"retry_after_adapter_update", "exclude_source_artifact"})
     _REPROCESS_DECISIONS = frozenset({"approve_exact_diff", "keep_previous_extraction"})
     _UNMAPPED_CARD_CONDITION = "apple_wallet_unmapped_card"
+    _MISSING_PAYLAH_CONDITION = "paylah_account_missing"
+    _AMBIGUOUS_PAYLAH_CONDITION = "paylah_account_ambiguous"
     _CONFIGURE_CARD_ALIAS = "configure_card_alias"
+    _CONFIGURE_PAYLAH_ACCOUNT = "configure_paylah_account"
     _CARD_ALIAS_COMMAND = "billzebub account apple-wallet-alias"
+    _PAYLAH_COMMAND = "billzebub account create-paylah"
 
     def __init__(
         self,
@@ -83,7 +87,23 @@ class ReviewActions:
         if condition_code.startswith("statement_reprocess:"):
             return self._decide_reprocess(command)
         if condition_code == self._UNMAPPED_CARD_CONDITION:
-            raise self._card_alias_configuration(command)
+            raise self._configuration_required(
+                command,
+                permitted=frozenset({self._CONFIGURE_CARD_ALIAS}),
+                expected_choice=self._CONFIGURE_CARD_ALIAS,
+                next_step="configure_via_setup",
+                cli_command=self._CARD_ALIAS_COMMAND,
+                problem_code="card_alias_configuration_required",
+            )
+        if condition_code in {self._MISSING_PAYLAH_CONDITION, self._AMBIGUOUS_PAYLAH_CONDITION}:
+            raise self._configuration_required(
+                command,
+                permitted=frozenset({self._CONFIGURE_PAYLAH_ACCOUNT}),
+                expected_choice=self._CONFIGURE_PAYLAH_ACCOUNT,
+                next_step="configure_via_setup",
+                cli_command=self._PAYLAH_COMMAND,
+                problem_code="paylah_account_configuration_required",
+            )
         raise ReviewActionError("Pending Review requires a specialized workflow")
 
     def _decide_extraction_failure(self, command: ReviewDecision) -> PendingReviewRecord:
@@ -130,16 +150,24 @@ class ReviewActions:
         self._enqueue_reconciliation(account_id)
         return self._resolved_or_current(command)
 
-    def _card_alias_configuration(
-        self, command: ReviewDecision
+    def _configuration_required(
+        self,
+        decision: ReviewDecision,
+        *,
+        permitted: frozenset[str],
+        expected_choice: str,
+        next_step: str,
+        cli_command: str,
+        problem_code: str,
     ) -> ReviewConfigurationRequiredError:
-        review = self._require_open_decision(command, frozenset({self._CONFIGURE_CARD_ALIAS}))
-        if command.choice != self._CONFIGURE_CARD_ALIAS:
+        review = self._require_open_decision(decision, permitted)
+        if decision.choice != expected_choice:
             raise ReviewError("decision is not permitted for this Pending Review")
         return ReviewConfigurationRequiredError(
             review,
-            next_step="configure_via_cli_or_settings",
-            command=self._CARD_ALIAS_COMMAND,
+            next_step=next_step,
+            command=cli_command,
+            problem_code=problem_code,
         )
 
     def _require_open_decision(

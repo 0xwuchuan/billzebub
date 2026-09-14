@@ -37,8 +37,8 @@ class FinancialAccountBootstrapCommand:
     institution: str
     kind: FinancialAccountKind
     default_currency: str
-    statement_adapter_key: str
-    statement_account_identifier: str
+    statement_adapter_key: str | None = None
+    statement_account_identifier: str | None = None
     statement_password_secret: str | None = None
 
 
@@ -48,8 +48,15 @@ class FinancialAccountBootstrapPlan:
     institution: str
     kind: FinancialAccountKind
     default_currency: str
-    statement_adapter_key: str
+    statement_adapter_key: str | None
     password_configured: bool
+
+
+@dataclass(frozen=True, slots=True)
+class StatementAdapterRecord:
+    key: str
+    institution: str
+    kind: FinancialAccountKind
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,12 +67,14 @@ class FinancialAccountRecord:
     institution: str
     kind: FinancialAccountKind
     default_currency: str
-    statement_adapter_key: str
+    statement_adapter_key: str | None
     active: bool
+    password_configured: bool
+    inbox_ready: bool
 
 
 class FinancialAccountBootstrap:
-    """Create one statement-backed Financial Account without accepting unsafe defaults."""
+    """Create one owner Financial Account without accepting unsafe defaults."""
 
     def __init__(
         self,
@@ -80,6 +89,32 @@ class FinancialAccountBootstrap:
         self._password_root = password_root.expanduser().resolve()
         self._adapters = dict(adapters or self._configured_adapters())
 
+    def accepted_adapters(self) -> tuple[StatementAdapterRecord, ...]:
+        return tuple(
+            StatementAdapterRecord(
+                key=key,
+                institution=institution,
+                kind=FinancialAccountKind.CREDIT_CARD,
+            )
+            for key, institution in self._adapters.items()
+        )
+
+    def list(self) -> tuple[FinancialAccountRecord, ...]:
+        with self._database.transaction() as session:
+            accounts = session.scalars(
+                select(FinancialAccount).order_by(
+                    FinancialAccount.created_at, FinancialAccount.slug, FinancialAccount.id
+                )
+            ).all()
+            return tuple(self._record(account) for account in accounts)
+
+    def get(self, account_id: UUID) -> FinancialAccountRecord:
+        with self._database.transaction() as session:
+            account = session.get(FinancialAccount, account_id)
+            if account is None:
+                raise FinancialAccountSetupError("Financial Account was not found")
+            return self._record(account)
+
     def plan(self, command: FinancialAccountBootstrapCommand) -> FinancialAccountBootstrapPlan:
         return self._plan(self._validate(command))
 
@@ -87,8 +122,9 @@ class FinancialAccountBootstrap:
         self,
         command: FinancialAccountBootstrapCommand,
     ) -> FinancialAccountBootstrapPlan:
-        self._validate_password_secret(command.statement_password_secret)
-        self._validate_inbox_target(command.slug)
+        if command.kind is FinancialAccountKind.CREDIT_CARD:
+            self._validate_password_secret(command.statement_password_secret)
+            self._validate_inbox_target(command.slug)
         with self._database.transaction() as session:
             existing = session.scalar(
                 select(FinancialAccount.id).where(FinancialAccount.slug == command.slug)
@@ -130,32 +166,43 @@ class FinancialAccountBootstrap:
         plan = self._plan(normalized)
         if dry_run:
             return plan
-
+        if plan.kind is FinancialAccountKind.PAYLAH:
+            return self._insert(normalized, plan)
         folder = self._inbox_root / plan.slug
         self._create_inbox_target(folder)
         try:
-            with self._database.transaction() as session:
-                account = FinancialAccount(
-                    id=uuid7(),
-                    slug=plan.slug,
-                    display_name=normalized.display_name,
-                    institution=plan.institution,
-                    kind=plan.kind,
-                    default_currency=plan.default_currency,
-                    statement_adapter_key=plan.statement_adapter_key,
-                    statement_account_identifier=normalized.statement_account_identifier,
-                    statement_password_secret=normalized.statement_password_secret,
-                    active=True,
-                )
-                session.add(account)
-                session.flush()
-                return self._record(account)
+            return self._insert(normalized, plan)
         except IntegrityError as error:
             folder.rmdir()
             raise FinancialAccountSetupError("Financial Account slug already exists") from error
         except Exception:
             folder.rmdir()
             raise
+
+    def _insert(
+        self,
+        command: FinancialAccountBootstrapCommand,
+        plan: FinancialAccountBootstrapPlan,
+    ) -> FinancialAccountRecord:
+        try:
+            with self._database.transaction() as session:
+                account = FinancialAccount(
+                    id=uuid7(),
+                    slug=plan.slug,
+                    display_name=command.display_name,
+                    institution=plan.institution,
+                    kind=plan.kind,
+                    default_currency=plan.default_currency,
+                    statement_adapter_key=plan.statement_adapter_key,
+                    statement_account_identifier=command.statement_account_identifier,
+                    statement_password_secret=command.statement_password_secret,
+                    active=True,
+                )
+                session.add(account)
+                session.flush()
+                return self._record(account)
+        except IntegrityError as error:
+            raise FinancialAccountSetupError("Financial Account slug already exists") from error
 
     def _validate(
         self,
@@ -171,18 +218,35 @@ class FinancialAccountBootstrap:
         currency = command.default_currency.strip().upper()
         if _CURRENCY_PATTERN.fullmatch(currency) is None:
             raise FinancialAccountSetupError("default currency must be an ISO 4217 code")
+        if command.kind is FinancialAccountKind.PAYLAH:
+            if (
+                command.statement_adapter_key is not None
+                or command.statement_account_identifier is not None
+                or command.statement_password_secret is not None
+            ):
+                raise FinancialAccountSetupError(
+                    "PayLah Financial Accounts do not use statement adapters or password secrets"
+                )
+            return FinancialAccountBootstrapCommand(
+                slug=slug,
+                display_name=display_name,
+                institution=institution,
+                kind=command.kind,
+                default_currency=currency,
+            )
         if command.kind is not FinancialAccountKind.CREDIT_CARD:
             raise FinancialAccountSetupError(
-                "only credit_card Financial Accounts are supported currently"
+                "only credit_card and paylah Financial Accounts are supported currently"
             )
-        adapter_institution = self._adapters.get(command.statement_adapter_key)
+        adapter_key = (command.statement_adapter_key or "").strip()
+        adapter_institution = self._adapters.get(adapter_key)
         if adapter_institution is None:
             raise FinancialAccountSetupError(
                 "statement adapter is not accepted for this deployment"
             )
         if adapter_institution != institution:
             raise FinancialAccountSetupError("statement adapter does not match institution")
-        identifier = command.statement_account_identifier.strip()
+        identifier = (command.statement_account_identifier or "").strip()
         if not identifier or len(identifier) > 255:
             raise FinancialAccountSetupError("statement account identifier is required")
         secret = command.statement_password_secret
@@ -196,7 +260,7 @@ class FinancialAccountBootstrap:
             institution=institution,
             kind=command.kind,
             default_currency=currency,
-            statement_adapter_key=command.statement_adapter_key,
+            statement_adapter_key=adapter_key,
             statement_account_identifier=identifier,
             statement_password_secret=secret,
         )
@@ -238,6 +302,30 @@ class FinancialAccountBootstrap:
             raise FinancialAccountSetupError("Financial Account inbox folder is unsafe")
         folder.chmod(0o700)
 
+    def _secret_is_configured(self, secret: str | None) -> bool:
+        if secret is None:
+            return False
+        path = self._password_root / secret
+        try:
+            metadata = path.lstat()
+        except OSError:
+            return False
+        return (
+            stat.S_ISREG(metadata.st_mode)
+            and not path.is_symlink()
+            and metadata.st_mode & 0o077 == 0
+        )
+
+    def _inbox_is_ready(self, slug: str, kind: FinancialAccountKind) -> bool:
+        if kind is not FinancialAccountKind.CREDIT_CARD:
+            return False
+        folder = self._inbox_root / slug
+        try:
+            metadata = folder.lstat()
+        except OSError:
+            return False
+        return stat.S_ISDIR(metadata.st_mode) and not folder.is_symlink()
+
     @staticmethod
     def _configured_adapters() -> dict[str, str]:
         from billzebub.statement_adapters import configured_statement_adapters
@@ -251,10 +339,7 @@ class FinancialAccountBootstrap:
             raise FinancialAccountSetupError(f"{name} is required")
         return normalized
 
-    @staticmethod
-    def _record(account: FinancialAccount) -> FinancialAccountRecord:
-        if account.statement_adapter_key is None:
-            raise FinancialAccountSetupError("statement adapter is required")
+    def _record(self, account: FinancialAccount) -> FinancialAccountRecord:
         return FinancialAccountRecord(
             id=account.id,
             slug=account.slug,
@@ -264,4 +349,6 @@ class FinancialAccountBootstrap:
             default_currency=account.default_currency,
             statement_adapter_key=account.statement_adapter_key,
             active=account.active,
+            password_configured=self._secret_is_configured(account.statement_password_secret),
+            inbox_ready=self._inbox_is_ready(account.slug, account.kind),
         )

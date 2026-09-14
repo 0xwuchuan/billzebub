@@ -20,6 +20,15 @@ export function reviewTitle(condition: string): string {
   if (condition === "extraction_failed") {
     return "Failed Extraction";
   }
+  if (condition === "apple_wallet_unmapped_card") {
+    return "Wallet card unmapped";
+  }
+  if (condition === "paylah_account_missing") {
+    return "PayLah account missing";
+  }
+  if (condition === "paylah_account_ambiguous") {
+    return "PayLah account ambiguous";
+  }
   return condition
     .replaceAll("_", " ")
     .replace(/\b\w/g, (character) => character.toUpperCase());
@@ -28,13 +37,19 @@ export function reviewTitle(condition: string): string {
 export function decisionLabel(choice: string): string {
   const known: Record<string, string> = {
     retry: "Retry Extraction",
+    retry_after_adapter_update: "Retry Extraction",
     keep_quarantine: "Keep quarantined",
+    exclude_source_artifact: "Keep quarantined",
     mark_unconfirmed: "Mark Unconfirmed",
     keep_waiting: "Keep waiting",
     exclude: "Exclude Claim",
     confirm_match: "Confirm match",
     keep_separate: "Keep separate",
     exclude_realtime: "Exclude Real-time Claim",
+    configure_card_alias: "Map Wallet card in Setup",
+    configure_paylah_account: "Create PayLah account in Setup",
+    approve_exact_diff: "Approve reprocess",
+    keep_previous_extraction: "Keep previous Extraction",
   };
   return (
     known[choice] ??
