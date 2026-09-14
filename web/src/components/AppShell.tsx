@@ -183,23 +183,25 @@ function RailContent({
 }) {
   return (
     <>
-      <div className="brand">
-        <span className="mark">B</span>
-        <div>
-          <strong>Billzebub</strong>
-          <span>Quiet Rail · local</span>
+      <div className="rail-body">
+        <div className="brand">
+          <span className="mark">B</span>
+          <div>
+            <strong>Billzebub</strong>
+            <span>Quiet Rail · local</span>
+          </div>
         </div>
-      </div>
-      <div className="rail-group">
-        <p className="rail-label">Daily</p>
-        {dailyItems.map((item) => (
-          <RailItem
-            key={item.id}
-            item={item}
-            current={current}
-            onNavigate={onNavigate}
-          />
-        ))}
+        <div className="rail-group">
+          <p className="rail-label">Daily</p>
+          {dailyItems.map((item) => (
+            <RailItem
+              key={item.id}
+              item={item}
+              current={current}
+              onNavigate={onNavigate}
+            />
+          ))}
+        </div>
       </div>
       <div className="rail-foot">
         <p className="rail-label">Workspace</p>
