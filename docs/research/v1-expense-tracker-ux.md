@@ -63,7 +63,7 @@ Actual Budget similarly separates imported payee text from a cleaned Payee and u
    - Financial Accounts and aliases.
    - Categories.
    - Ingestion folder and Financial Account configuration.
-   - Configured/not-configured status for host-managed statement and mailbox secrets; secret values are changed through NAS setup commands, not the web UI.
+   - Configured/not-configured status for host-managed statement secrets; secret values are changed through NAS setup commands, not the web UI. Shortcut (Wallet and PayLah) access uses scoped tokens, not mailbox secrets.
    - Apple Shortcut and API/MCP token creation, scope, rotation, and revocation.
 
 ## V1 design language
