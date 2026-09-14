@@ -369,13 +369,17 @@ button.statement-cell:hover {
 
 .onboard {
   display: grid;
-  place-items: center;
-  min-height: 100vh;
+  place-items: start center;
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: var(--bz-space-8) var(--bz-space-5);
 }
 
 .onboard-card {
-  width: min(36rem, 100%);
+  width: min(42rem, 100%);
   padding: var(--bz-space-8);
 }
 
@@ -451,6 +455,7 @@ button.statement-cell:hover {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.75rem;
   color: var(--bz-muted);
+  overflow-wrap: anywhere;
 }
 
 .probe {
@@ -492,6 +497,15 @@ button.statement-cell:hover {
   text-align: right;
 }
 
+.token-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bz-space-3);
+  flex-wrap: wrap;
+  font-size: var(--bz-text-sm);
+}
+
 @media (max-width: 64rem) {
   .split,
   .desk {
@@ -517,7 +531,7 @@ button.statement-cell:hover {
 
 @media (max-width: 52rem) {
   .statement {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .statement-cell {
@@ -529,7 +543,7 @@ button.statement-cell:hover {
   }
 
   .row {
-    grid-template-columns: 1fr auto;
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .row .when {
@@ -538,5 +552,49 @@ button.statement-cell:hover {
 
   .hero-value {
     font-size: 1.85rem;
+  }
+
+  .btn,
+  .field,
+  .select,
+  .icon-btn,
+  .queue-item,
+  .account-toggle {
+    min-height: 2.75rem;
+  }
+
+  .chip {
+    min-height: 2.25rem;
+    padding: 0 var(--bz-space-3);
+  }
+
+  .filters .field,
+  .filters .select,
+  .review-actions .select {
+    max-width: 100%;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .onboard {
+    padding: var(--bz-space-4);
+  }
+
+  .onboard-card {
+    padding: var(--bz-space-5);
+  }
+
+  .onboard-nav {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .onboard-nav-actions {
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+
+  .kv {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

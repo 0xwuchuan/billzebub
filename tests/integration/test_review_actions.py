@@ -509,8 +509,9 @@ def test_configure_card_alias_does_not_resolve_and_points_at_cli(
                 choice="configure_card_alias",
             )
         )
-    assert raised.value.next_step == "configure_via_cli_or_settings"
+    assert raised.value.next_step == "configure_via_setup"
     assert raised.value.command == "billzebub account apple-wallet-alias"
+    assert raised.value.problem_code == "card_alias_configuration_required"
     assert raised.value.review.status is PendingReviewStatus.PENDING
 
     app = create_app(
@@ -539,7 +540,7 @@ def test_configure_card_alias_does_not_resolve_and_points_at_cli(
         "title": "Card alias configuration required",
         "status": 409,
         "detail": "card_alias_configuration_required",
-        "next_step": "configure_via_cli_or_settings",
+        "next_step": "configure_via_setup",
         "command": "billzebub account apple-wallet-alias",
     }
     with database.transaction() as session:

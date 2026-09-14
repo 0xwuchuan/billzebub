@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal, Protocol
+from typing import Any, Literal, Protocol, cast
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -31,7 +31,18 @@ from billzebub.artifact_capture import ArtifactCapture
 from billzebub.artifacts import ArtifactStoreError, ContentAddressedStore
 from billzebub.categories import CategoryCatalog, CategoryError, CategoryRecord
 from billzebub.config import Settings
-from billzebub.financial_account_aliases import FinancialAccountAliases
+from billzebub.financial_account_aliases import (
+    FinancialAccountAliasError,
+    FinancialAccountAliases,
+    FinancialAccountAliasRecord,
+)
+from billzebub.financial_accounts import (
+    FinancialAccountBootstrap,
+    FinancialAccountBootstrapCommand,
+    FinancialAccountRecord,
+    FinancialAccountSetupError,
+    StatementAdapterRecord,
+)
 from billzebub.financial_history import TransactionKind
 from billzebub.identity import IdentityError, OwnerIdentity, resolve_owner
 from billzebub.imports import ImportCatalog, ImportNotFoundError, ImportRecord
@@ -43,6 +54,7 @@ from billzebub.owner_transaction_actions import (
 )
 from billzebub.owner_workspace import OwnerWorkspace, OwnerWorkspaceError
 from billzebub.persistence.database import Database
+from billzebub.persistence.models import AuditActorKind, FinancialAccountKind
 from billzebub.review_actions import (
     ReviewActionError,
     ReviewActions,
@@ -51,7 +63,15 @@ from billzebub.review_actions import (
 from billzebub.reviews import PendingReviewStatus, ReviewDecision, ReviewError
 from billzebub.statement_adapters import configured_statement_adapters
 from billzebub.statement_extraction import StatementAdapterRegistry, StatementExtraction
-from billzebub.tokens import TokenAuthenticationError, TokenManager, TokenPrincipal, TokenScope
+from billzebub.tokens import (
+    IssuedToken,
+    TokenAuthenticationError,
+    TokenManager,
+    TokenPrincipal,
+    TokenRecord,
+    TokenRotationError,
+    TokenScope,
+)
 
 
 class ImportCatalogRuntime(Protocol):
@@ -125,6 +145,48 @@ class TokenRuntime(Protocol):
     ) -> TokenPrincipal: ...
 
 
+class OwnerTokenRuntime(Protocol):
+    def list_active(self) -> tuple[TokenRecord, ...]: ...
+
+    def issue(
+        self,
+        *,
+        name: str,
+        actor_kind: AuditActorKind,
+        scopes: frozenset[TokenScope],
+    ) -> IssuedToken: ...
+
+    def rotate(self, token_id: UUID) -> IssuedToken: ...
+
+    def revoke(self, token_id: UUID) -> bool: ...
+
+
+class AccountBootstrapRuntime(Protocol):
+    def accepted_adapters(self) -> tuple[StatementAdapterRecord, ...]: ...
+
+    def list(self) -> tuple[FinancialAccountRecord, ...]: ...
+
+    def get(self, account_id: UUID) -> FinancialAccountRecord: ...
+
+    def bootstrap(
+        self,
+        command: FinancialAccountBootstrapCommand,
+        *,
+        dry_run: bool = False,
+    ) -> Any: ...
+
+
+class AccountAliasRuntime(Protocol):
+    def list(self) -> tuple[FinancialAccountAliasRecord, ...]: ...
+
+    def add_apple_wallet_card_for_account(
+        self,
+        account_id: UUID,
+        *,
+        card_label: str,
+    ) -> FinancialAccountAliasRecord: ...
+
+
 class DatabaseRuntime(Protocol):
     def ping(self) -> None: ...
 
@@ -160,6 +222,34 @@ class OwnerCategoryPayload(BaseModel):
     parent_id: UUID | None = None
 
 
+class OwnerFinancialAccountPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    slug: str = Field(min_length=1, max_length=80)
+    display_name: str = Field(min_length=1, max_length=160)
+    institution: str = Field(min_length=1, max_length=80)
+    kind: Literal["credit_card", "paylah"]
+    default_currency: str = Field(min_length=3, max_length=3)
+    statement_adapter_key: str | None = None
+    statement_account_identifier: str | None = None
+    statement_password_secret: str | None = None
+
+
+class OwnerAliasPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["apple_wallet_card"]
+    card_label: str = Field(min_length=1, max_length=160)
+
+
+class OwnerTokenIssuePayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=120)
+    kind: Literal["integration", "agent"]
+    scopes: list[TokenScope] = Field(min_length=1)
+
+
 class OwnerReviewDecisionPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -192,6 +282,62 @@ class OwnerCategoryWire(BaseModel):
 
 class OwnerCategoryPageWire(BaseModel):
     items: list[OwnerCategoryWire]
+
+
+class OwnerAliasWire(BaseModel):
+    id: UUID
+    alias_kind: str
+    masked_value: str
+
+
+class OwnerFinancialAccountWire(BaseModel):
+    id: UUID
+    slug: str
+    display_name: str
+    institution: str
+    kind: str
+    default_currency: str
+    statement_adapter_key: str | None
+    active: bool
+    password_configured: bool
+    inbox_ready: bool
+    aliases: list[OwnerAliasWire]
+
+
+class OwnerFinancialAccountPageWire(BaseModel):
+    items: list[OwnerFinancialAccountWire]
+
+
+class OwnerStatementAdapterWire(BaseModel):
+    key: str
+    institution: str
+    kind: str
+
+
+class OwnerStatementAdapterPageWire(BaseModel):
+    items: list[OwnerStatementAdapterWire]
+
+
+class OwnerTokenWire(BaseModel):
+    id: UUID
+    name: str
+    prefix: str
+    scopes: list[str]
+    created_at: str
+    last_used_at: str | None
+
+
+class OwnerTokenPageWire(BaseModel):
+    items: list[OwnerTokenWire]
+
+
+class OwnerIssuedTokenWire(OwnerTokenWire):
+    plaintext: str
+
+
+class OwnerRevokedTokenWire(BaseModel):
+    id: UUID
+    revoked: bool
 
 
 class OwnerAccountWire(BaseModel):
@@ -331,6 +477,9 @@ class Runtime:
     owner_workspace: OwnerWorkspaceRuntime | None
     agent_facade: AgentFacadeRuntime | None
     token_manager: TokenRuntime | None
+    owner_tokens: OwnerTokenRuntime | None
+    account_bootstrap: AccountBootstrapRuntime | None
+    account_aliases: AccountAliasRuntime | None
     apple_wallet_ingestion: AppleWalletRuntime | None
 
 
@@ -345,6 +494,9 @@ def create_app(
     owner_workspace: OwnerWorkspaceRuntime | None = None,
     agent_facade: AgentFacadeRuntime | None = None,
     token_manager: TokenRuntime | None = None,
+    owner_tokens: OwnerTokenRuntime | None = None,
+    account_bootstrap: AccountBootstrapRuntime | None = None,
+    account_aliases: AccountAliasRuntime | None = None,
     apple_wallet_ingestion: AppleWalletRuntime | None = None,
 ) -> FastAPI:
     """Build the HTTP process without creating hidden global dependencies."""
@@ -358,6 +510,9 @@ def create_app(
     resolved_owner_workspace = owner_workspace
     resolved_agent_facade = agent_facade
     resolved_token_manager = token_manager
+    resolved_owner_tokens = owner_tokens
+    resolved_account_bootstrap = account_bootstrap
+    resolved_account_aliases = account_aliases
     resolved_apple_wallet_ingestion = apple_wallet_ingestion
     if isinstance(resolved_database, Database):
         resolved_catalog = resolved_catalog or ImportCatalog(resolved_database)
@@ -381,6 +536,19 @@ def create_app(
         resolved_owner_workspace = resolved_owner_workspace or OwnerWorkspace(resolved_database)
         resolved_agent_facade = resolved_agent_facade or AgentFacade(resolved_database)
         resolved_token_manager = resolved_token_manager or TokenManager(resolved_database)
+        if resolved_owner_tokens is None and isinstance(resolved_token_manager, TokenManager):
+            resolved_owner_tokens = resolved_token_manager
+        if resolved_account_bootstrap is None:
+            resolved_account_bootstrap = cast(
+                AccountBootstrapRuntime,
+                FinancialAccountBootstrap(
+                    resolved_database,
+                    inbox_root=resolved_settings.statement_inbox_root,
+                    password_root=resolved_settings.statement_password_root,
+                ),
+            )
+        if resolved_account_aliases is None:
+            resolved_account_aliases = FinancialAccountAliases(resolved_database)
         if (
             resolved_apple_wallet_ingestion is None
             and resolved_settings.apple_wallet_timezone is not None
@@ -408,6 +576,9 @@ def create_app(
         owner_workspace=resolved_owner_workspace,
         agent_facade=resolved_agent_facade,
         token_manager=resolved_token_manager,
+        owner_tokens=resolved_owner_tokens,
+        account_bootstrap=resolved_account_bootstrap,
+        account_aliases=resolved_account_aliases,
         apple_wallet_ingestion=resolved_apple_wallet_ingestion,
     )
 
@@ -609,6 +780,33 @@ def create_app(
             )
         return runtime.apple_wallet_ingestion
 
+    def account_bootstrap_resource() -> AccountBootstrapRuntime:
+        if runtime.account_bootstrap is None:
+            raise ProblemError(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "financial_account_setup_unavailable",
+                "Financial Account setup unavailable",
+            )
+        return runtime.account_bootstrap
+
+    def account_aliases_resource() -> AccountAliasRuntime:
+        if runtime.account_aliases is None:
+            raise ProblemError(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "financial_account_alias_unavailable",
+                "Financial Account alias service unavailable",
+            )
+        return runtime.account_aliases
+
+    def owner_tokens_resource() -> OwnerTokenRuntime:
+        if runtime.owner_tokens is None:
+            raise ProblemError(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "owner_tokens_unavailable",
+                "Owner token service unavailable",
+            )
+        return runtime.owner_tokens
+
     owner_dependency = Depends(owner)
     browser_mutation_dependency = Depends(browser_mutation)
     imports_dependency = Depends(imports)
@@ -617,6 +815,9 @@ def create_app(
     owner_actors_dependency = Depends(owner_actors_resource)
     review_actions_dependency = Depends(review_actions_resource)
     owner_workspace_dependency = Depends(owner_workspace_resource)
+    account_bootstrap_dependency = Depends(account_bootstrap_resource)
+    account_aliases_dependency = Depends(account_aliases_resource)
+    owner_tokens_dependency = Depends(owner_tokens_resource)
     agent_dependency = Depends(agent)
     agent_reader_dependency = Depends(agent_reader)
     agent_categorizer_dependency = Depends(agent_categorizer)
@@ -727,6 +928,184 @@ def create_app(
                 "category_request_invalid",
                 "Category request invalid",
             ) from error
+
+    @app.get(
+        "/api/v1/statement-adapters",
+        tags=["owner"],
+        response_model=OwnerStatementAdapterPageWire,
+    )
+    def list_statement_adapters(
+        _identity: OwnerIdentity = owner_dependency,
+        bootstrap: AccountBootstrapRuntime = account_bootstrap_dependency,
+    ) -> OwnerStatementAdapterPageWire:
+        return OwnerStatementAdapterPageWire(
+            items=[
+                OwnerStatementAdapterWire(
+                    key=adapter.key,
+                    institution=adapter.institution,
+                    kind=adapter.kind.value,
+                )
+                for adapter in bootstrap.accepted_adapters()
+            ]
+        )
+
+    @app.get(
+        "/api/v1/financial-accounts",
+        tags=["owner"],
+        response_model=OwnerFinancialAccountPageWire,
+    )
+    def list_owner_financial_accounts(
+        _identity: OwnerIdentity = owner_dependency,
+        bootstrap: AccountBootstrapRuntime = account_bootstrap_dependency,
+        aliases: AccountAliasRuntime = account_aliases_dependency,
+    ) -> OwnerFinancialAccountPageWire:
+        grouped = _aliases_by_account(aliases.list())
+        return OwnerFinancialAccountPageWire(
+            items=[
+                _owner_financial_account(account, grouped.get(account.id, ()))
+                for account in bootstrap.list()
+            ]
+        )
+
+    @app.post(
+        "/api/v1/financial-accounts",
+        tags=["owner"],
+        status_code=status.HTTP_201_CREATED,
+        response_model=OwnerFinancialAccountWire,
+    )
+    def create_owner_financial_account(
+        payload: OwnerFinancialAccountPayload,
+        _identity: OwnerIdentity = browser_mutation_dependency,
+        bootstrap: AccountBootstrapRuntime = account_bootstrap_dependency,
+    ) -> OwnerFinancialAccountWire:
+        try:
+            account = bootstrap.bootstrap(
+                FinancialAccountBootstrapCommand(
+                    slug=payload.slug,
+                    display_name=payload.display_name,
+                    institution=payload.institution,
+                    kind=FinancialAccountKind(payload.kind),
+                    default_currency=payload.default_currency,
+                    statement_adapter_key=payload.statement_adapter_key,
+                    statement_account_identifier=payload.statement_account_identifier,
+                    statement_password_secret=payload.statement_password_secret,
+                )
+            )
+        except FinancialAccountSetupError as error:
+            raise ProblemError(
+                status.HTTP_400_BAD_REQUEST,
+                "financial_account_setup_invalid",
+                "Financial Account setup invalid",
+            ) from error
+        if not isinstance(account, FinancialAccountRecord):
+            raise ProblemError(
+                status.HTTP_400_BAD_REQUEST,
+                "financial_account_setup_invalid",
+                "Financial Account setup invalid",
+            )
+        return _owner_financial_account(account, ())
+
+    @app.post(
+        "/api/v1/financial-accounts/{account_id}/aliases",
+        tags=["owner"],
+        status_code=status.HTTP_201_CREATED,
+        response_model=OwnerAliasWire,
+    )
+    def create_owner_financial_account_alias(
+        account_id: UUID,
+        payload: OwnerAliasPayload,
+        _identity: OwnerIdentity = browser_mutation_dependency,
+        bootstrap: AccountBootstrapRuntime = account_bootstrap_dependency,
+        aliases: AccountAliasRuntime = account_aliases_dependency,
+    ) -> OwnerAliasWire:
+        try:
+            bootstrap.get(account_id)
+            alias = aliases.add_apple_wallet_card_for_account(
+                account_id, card_label=payload.card_label
+            )
+        except FinancialAccountSetupError as error:
+            raise ProblemError(
+                status.HTTP_404_NOT_FOUND,
+                "financial_account_not_found",
+                "Financial Account not found",
+            ) from error
+        except FinancialAccountAliasError as error:
+            raise ProblemError(
+                status.HTTP_400_BAD_REQUEST,
+                "financial_account_alias_invalid",
+                "Financial Account alias invalid",
+            ) from error
+        return _owner_alias(alias)
+
+    @app.get("/api/v1/tokens", tags=["owner"], response_model=OwnerTokenPageWire)
+    def list_owner_tokens(
+        _identity: OwnerIdentity = owner_dependency,
+        tokens: OwnerTokenRuntime = owner_tokens_dependency,
+    ) -> OwnerTokenPageWire:
+        return OwnerTokenPageWire(items=[_owner_token(token) for token in tokens.list_active()])
+
+    @app.post(
+        "/api/v1/tokens",
+        tags=["owner"],
+        status_code=status.HTTP_201_CREATED,
+        response_model=OwnerIssuedTokenWire,
+    )
+    def issue_owner_token(
+        payload: OwnerTokenIssuePayload,
+        _identity: OwnerIdentity = browser_mutation_dependency,
+        tokens: OwnerTokenRuntime = owner_tokens_dependency,
+    ) -> OwnerIssuedTokenWire:
+        try:
+            issued = tokens.issue(
+                name=payload.name,
+                actor_kind=AuditActorKind(payload.kind),
+                scopes=frozenset(payload.scopes),
+            )
+        except ValueError as error:
+            raise ProblemError(
+                status.HTTP_400_BAD_REQUEST,
+                "token_request_invalid",
+                "Token request invalid",
+            ) from error
+        return _owner_issued_token(issued)
+
+    @app.post(
+        "/api/v1/tokens/{token_id}/rotate",
+        tags=["owner"],
+        response_model=OwnerIssuedTokenWire,
+    )
+    def rotate_owner_token(
+        token_id: UUID,
+        _identity: OwnerIdentity = browser_mutation_dependency,
+        tokens: OwnerTokenRuntime = owner_tokens_dependency,
+    ) -> OwnerIssuedTokenWire:
+        try:
+            issued = tokens.rotate(token_id)
+        except TokenRotationError as error:
+            raise ProblemError(
+                status.HTTP_404_NOT_FOUND,
+                "token_not_found",
+                "Token not found",
+            ) from error
+        return _owner_issued_token(issued)
+
+    @app.post(
+        "/api/v1/tokens/{token_id}/revoke",
+        tags=["owner"],
+        response_model=OwnerRevokedTokenWire,
+    )
+    def revoke_owner_token(
+        token_id: UUID,
+        _identity: OwnerIdentity = browser_mutation_dependency,
+        tokens: OwnerTokenRuntime = owner_tokens_dependency,
+    ) -> OwnerRevokedTokenWire:
+        if not tokens.revoke(token_id):
+            raise ProblemError(
+                status.HTTP_404_NOT_FOUND,
+                "token_not_found",
+                "Token not found",
+            )
+        return OwnerRevokedTokenWire(id=token_id, revoked=True)
 
     @app.get("/api/v1/transactions", tags=["owner"], response_model=OwnerTransactionPageWire)
     def list_owner_transactions(
@@ -1054,6 +1433,65 @@ def _owner_category(category: CategoryRecord) -> OwnerCategoryWire:
     )
 
 
+def _owner_alias(alias: FinancialAccountAliasRecord) -> OwnerAliasWire:
+    return OwnerAliasWire(
+        id=alias.id,
+        alias_kind=alias.alias_kind,
+        masked_value=alias.masked_value,
+    )
+
+
+def _aliases_by_account(
+    aliases: tuple[FinancialAccountAliasRecord, ...],
+) -> dict[UUID, tuple[FinancialAccountAliasRecord, ...]]:
+    grouped: dict[UUID, list[FinancialAccountAliasRecord]] = {}
+    for alias in aliases:
+        grouped.setdefault(alias.financial_account_id, []).append(alias)
+    return {account_id: tuple(items) for account_id, items in grouped.items()}
+
+
+def _owner_financial_account(
+    account: FinancialAccountRecord,
+    aliases: tuple[FinancialAccountAliasRecord, ...],
+) -> OwnerFinancialAccountWire:
+    return OwnerFinancialAccountWire(
+        id=account.id,
+        slug=account.slug,
+        display_name=account.display_name,
+        institution=account.institution,
+        kind=account.kind.value,
+        default_currency=account.default_currency,
+        statement_adapter_key=account.statement_adapter_key,
+        active=account.active,
+        password_configured=account.password_configured,
+        inbox_ready=account.inbox_ready,
+        aliases=[_owner_alias(alias) for alias in aliases],
+    )
+
+
+def _owner_token(token: TokenRecord) -> OwnerTokenWire:
+    return OwnerTokenWire(
+        id=token.id,
+        name=token.name,
+        prefix=token.prefix,
+        scopes=list(token.scopes),
+        created_at=token.created_at.isoformat(),
+        last_used_at=None if token.last_used_at is None else token.last_used_at.isoformat(),
+    )
+
+
+def _owner_issued_token(issued: IssuedToken) -> OwnerIssuedTokenWire:
+    return OwnerIssuedTokenWire(
+        id=issued.id,
+        name=issued.name,
+        prefix=issued.prefix,
+        scopes=sorted(scope.value for scope in issued.scopes),
+        created_at=datetime.now(UTC).isoformat(),
+        last_used_at=None,
+        plaintext=issued.plaintext,
+    )
+
+
 def _owner_workspace_problem(error: OwnerWorkspaceError) -> ProblemError:
     if str(error) == "Transaction was not found":
         return ProblemError(
@@ -1096,10 +1534,15 @@ def _owner_transaction_action_problem(error: OwnerTransactionActionError) -> Pro
 
 def _review_action_problem(error: ReviewActionError | ReviewError) -> ProblemError:
     if isinstance(error, ReviewConfigurationRequiredError):
+        title = (
+            "PayLah Financial Account configuration required"
+            if error.problem_code == "paylah_account_configuration_required"
+            else "Card alias configuration required"
+        )
         return ProblemError(
             status.HTTP_409_CONFLICT,
-            "card_alias_configuration_required",
-            "Card alias configuration required",
+            error.problem_code,
+            title,
             extras={"next_step": error.next_step, "command": error.command},
         )
     if str(error) == "Pending Review was not found":

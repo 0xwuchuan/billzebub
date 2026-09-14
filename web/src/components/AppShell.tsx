@@ -1,11 +1,26 @@
-import type { ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 
 import type { Route, RoutePage } from "../lib/route";
 import { titleFor } from "../lib/route";
 import { Badge } from "./ui/Badge";
-import { OverviewIcon, ReviewIcon, SetupIcon, TransactionsIcon } from "./icons";
+import {
+  CloseIcon,
+  MenuIcon,
+  OverviewIcon,
+  ReviewIcon,
+  SetupIcon,
+  TransactionsIcon,
+} from "./icons";
 
 type NavId = "overview" | "review" | "transactions" | "setup";
+
+type NavItem = {
+  id: NavId;
+  label: string;
+  icon: ReactNode;
+  count?: number;
+  blocking?: boolean;
+};
 
 type AppShellProps = {
   route: Route;
@@ -28,21 +43,45 @@ export function AppShell({
   onNavigate,
   children,
 }: AppShellProps) {
-  const items = [
-    { id: "overview" as const, label: "Overview", icon: <OverviewIcon /> },
+  const [navOpen, setNavOpen] = useState(false);
+  const titleId = useId();
+  const dailyItems: NavItem[] = [
+    { id: "overview", label: "Overview", icon: <OverviewIcon /> },
     {
-      id: "review" as const,
+      id: "review",
       label: "Review",
       icon: <ReviewIcon />,
       count: reviewCount,
       blocking: reviewBlocking,
     },
     {
-      id: "transactions" as const,
+      id: "transactions",
       label: "Transactions",
       icon: <TransactionsIcon />,
     },
   ];
+  const setupItem: NavItem = {
+    id: "setup",
+    label: "Setup",
+    icon: <SetupIcon />,
+  };
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setNavOpen(false);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+    };
+  }, []);
+
+  function go(page: RoutePage) {
+    setNavOpen(false);
+    onNavigate(page);
+  }
 
   return (
     <div className="app">
@@ -50,50 +89,27 @@ export function AppShell({
         Skip to content
       </a>
       <aside className="rail" aria-label="Daily navigation">
-        <div className="brand">
-          <span className="mark">B</span>
-          <div>
-            <strong>Billzebub</strong>
-            <span>Quiet Rail · local</span>
-          </div>
-        </div>
-        <div className="rail-group">
-          <p className="rail-label">Daily</p>
-          {items.map((item) => (
-            <RailItem
-              key={item.id}
-              item={item}
-              current={route.page}
-              onNavigate={onNavigate}
-            />
-          ))}
-        </div>
-        <div className="rail-foot">
-          <p className="rail-label">Workspace</p>
-          <RailItem
-            item={{ id: "setup", label: "Setup", icon: <SetupIcon /> }}
-            current={route.page}
-            onNavigate={onNavigate}
-          />
-        </div>
+        <RailContent
+          dailyItems={dailyItems}
+          setupItem={setupItem}
+          current={route.page}
+          onNavigate={go}
+        />
       </aside>
       <div className="main">
-        <nav className="mobile-nav" aria-label="Daily navigation">
-          {items.map((item) => (
-            <RailItem
-              key={`mobile-${item.id}`}
-              item={item}
-              current={route.page}
-              onNavigate={onNavigate}
-            />
-          ))}
-          <RailItem
-            item={{ id: "setup", label: "Setup", icon: <SetupIcon /> }}
-            current={route.page}
-            onNavigate={onNavigate}
-          />
-        </nav>
         <header className="topbar">
+          <button
+            className="icon-btn menu-btn"
+            type="button"
+            aria-expanded={navOpen}
+            aria-controls="mobile-nav"
+            onClick={() => {
+              setNavOpen(true);
+            }}
+          >
+            <MenuIcon />
+            <span className="sr-only">Open navigation</span>
+          </button>
           <div>
             <p className="eyebrow">{periodLabel}</p>
             <h1>{titleFor(route.page)}</h1>
@@ -111,7 +127,85 @@ export function AppShell({
           {children}
         </main>
       </div>
+      {navOpen ? (
+        <>
+          <button
+            className="nav-backdrop open"
+            type="button"
+            aria-label="Close navigation"
+            onClick={() => {
+              setNavOpen(false);
+            }}
+          />
+          <nav
+            className="nav-drawer open"
+            id="mobile-nav"
+            aria-labelledby={titleId}
+          >
+            <div className="nav-drawer-head">
+              <p id={titleId} className="eyebrow">
+                Navigation
+              </p>
+              <button
+                className="icon-btn"
+                type="button"
+                onClick={() => {
+                  setNavOpen(false);
+                }}
+              >
+                <CloseIcon />
+                <span className="sr-only">Close navigation</span>
+              </button>
+            </div>
+            <RailContent
+              dailyItems={dailyItems}
+              setupItem={setupItem}
+              current={route.page}
+              onNavigate={go}
+            />
+          </nav>
+        </>
+      ) : null}
     </div>
+  );
+}
+
+function RailContent({
+  dailyItems,
+  setupItem,
+  current,
+  onNavigate,
+}: {
+  dailyItems: NavItem[];
+  setupItem: NavItem;
+  current: RoutePage;
+  onNavigate: (page: RoutePage) => void;
+}) {
+  return (
+    <>
+      <div className="brand">
+        <span className="mark">B</span>
+        <div>
+          <strong>Billzebub</strong>
+          <span>Quiet Rail · local</span>
+        </div>
+      </div>
+      <div className="rail-group">
+        <p className="rail-label">Daily</p>
+        {dailyItems.map((item) => (
+          <RailItem
+            key={item.id}
+            item={item}
+            current={current}
+            onNavigate={onNavigate}
+          />
+        ))}
+      </div>
+      <div className="rail-foot">
+        <p className="rail-label">Workspace</p>
+        <RailItem item={setupItem} current={current} onNavigate={onNavigate} />
+      </div>
+    </>
   );
 }
 
@@ -120,13 +214,7 @@ function RailItem({
   current,
   onNavigate,
 }: {
-  item: {
-    id: NavId;
-    label: string;
-    icon: ReactNode;
-    count?: number;
-    blocking?: boolean;
-  };
+  item: NavItem;
   current: RoutePage;
   onNavigate: (page: RoutePage) => void;
 }) {

@@ -37,6 +37,7 @@ class TokenRotationError(Exception):
 @dataclass(frozen=True, slots=True)
 class IssuedToken:
     id: UUID
+    name: str
     plaintext: str
     prefix: str
     scopes: frozenset[TokenScope]
@@ -47,6 +48,16 @@ class TokenPrincipal:
     token_id: UUID
     actor_id: UUID
     scopes: frozenset[TokenScope]
+
+
+@dataclass(frozen=True, slots=True)
+class TokenRecord:
+    id: UUID
+    name: str
+    prefix: str
+    scopes: tuple[str, ...]
+    created_at: datetime
+    last_used_at: datetime | None
 
 
 class TokenManager:
@@ -90,7 +101,18 @@ class TokenManager:
                 )
             )
 
-        return IssuedToken(id=token_id, plaintext=plaintext, prefix=prefix, scopes=scopes)
+        return IssuedToken(
+            id=token_id, name=name, plaintext=plaintext, prefix=prefix, scopes=scopes
+        )
+
+    def list_active(self) -> tuple[TokenRecord, ...]:
+        with self._database.transaction() as session:
+            tokens = session.scalars(
+                select(IntegrationToken)
+                .where(IntegrationToken.revoked_at.is_(None))
+                .order_by(IntegrationToken.created_at, IntegrationToken.id)
+            ).all()
+            return tuple(self._record(token) for token in tokens)
 
     def rotate(self, token_id: UUID) -> IssuedToken:
         """Issue a replacement and revoke the prior token in one transaction."""
@@ -122,9 +144,11 @@ class TokenManager:
                     scopes=sorted(scope.value for scope in scopes),
                 )
             )
+            name = prior.name
 
         return IssuedToken(
             id=replacement_id,
+            name=name,
             plaintext=plaintext,
             prefix=prefix,
             scopes=scopes,
@@ -178,6 +202,17 @@ class TokenManager:
                 ),
             )
             return result.rowcount == 1
+
+    @staticmethod
+    def _record(token: IntegrationToken) -> TokenRecord:
+        return TokenRecord(
+            id=token.id,
+            name=token.name,
+            prefix=token.token_prefix,
+            scopes=tuple(token.scopes),
+            created_at=token.created_at,
+            last_used_at=token.last_used_at,
+        )
 
     @classmethod
     def _generate_token(cls) -> tuple[UUID, str, str, bytes]:

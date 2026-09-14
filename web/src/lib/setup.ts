@@ -1,36 +1,15 @@
-import {
-  SETUP_CATEGORIES,
-  WATCH_ACCOUNTS,
-  type WatchAccount,
-} from "./accounts";
-
-export const SETUP_STORAGE_KEY = "bz.quietRail.setup.v1";
+export const SETUP_STORAGE_KEY = "bz.quietRail.setup.v2";
 
 export const SETUP_STEP_COUNT = 5;
-
-export type ProbeStatus = "idle" | "running" | "ok";
-export type ExtractStatus = "idle" | "running" | "done";
 
 export type SetupState = {
   onboarded: boolean;
   step: number;
-  selectedAccountIds: string[];
-  shortcut: boolean;
-  extraCategory: string;
-  enabledCategories: string[];
-  probe: ProbeStatus;
-  extract: ExtractStatus;
 };
 
 export const defaultSetupState: SetupState = {
   onboarded: false,
   step: 0,
-  selectedAccountIds: WATCH_ACCOUNTS.map((account) => account.id),
-  shortcut: true,
-  extraCategory: "",
-  enabledCategories: [...SETUP_CATEGORIES],
-  probe: "idle",
-  extract: "idle",
 };
 
 export type SetupAction =
@@ -38,51 +17,36 @@ export type SetupAction =
   | { type: "goStep"; step: number }
   | { type: "back" }
   | { type: "advance" }
-  | { type: "finish" }
-  | { type: "toggleAccount"; id: string }
-  | { type: "toggleCategory"; name: string }
-  | { type: "setExtraCategory"; name: string }
-  | { type: "toggleShortcut" }
-  | { type: "probeStart" }
-  | { type: "probeOk" }
-  | { type: "extractStart" }
-  | { type: "extractDone" };
+  | { type: "finish" };
 
-export function activeCategoryNames(state: SetupState): string[] {
-  const extra = state.extraCategory.trim();
-  const allowed = new Set<string>(SETUP_CATEGORIES);
-  const base = state.enabledCategories.filter((name) => allowed.has(name));
-  return extra !== "" && !base.includes(extra) ? [...base, extra] : base;
+export type SetupGates = {
+  accountCount: number;
+  categoryCount: number;
+};
+
+export function stepValid(state: SetupState, gates: SetupGates): boolean {
+  return stepIndexValid(state.step, gates);
 }
 
-export function watchedAccounts(state: SetupState): WatchAccount[] {
-  return WATCH_ACCOUNTS.filter((account) =>
-    state.selectedAccountIds.includes(account.id),
-  );
-}
-
-export function stepValid(state: SetupState, step: number): boolean {
+export function stepIndexValid(step: number, gates: SetupGates): boolean {
   if (step === 0) {
     return true;
   }
-  if (step === 1) {
-    return state.selectedAccountIds.length >= 1;
-  }
-  if (step === 2) {
-    return state.probe === "ok";
+  if (step === 1 || step === 2) {
+    return gates.accountCount >= 1;
   }
   if (step === 3) {
-    return activeCategoryNames(state).length >= 1;
+    return gates.categoryCount >= 1;
   }
   if (step === 4) {
-    return state.extract === "done";
+    return gates.accountCount >= 1 && gates.categoryCount >= 1;
   }
   return false;
 }
 
-export function firstBlockedStep(state: SetupState): number {
+export function firstBlockedStep(state: SetupState, gates: SetupGates): number {
   for (let index = 0; index < SETUP_STEP_COUNT; index += 1) {
-    if (!stepValid(state, index)) {
+    if (!stepIndexValid(index, gates)) {
       return index;
     }
   }
@@ -92,19 +56,20 @@ export function firstBlockedStep(state: SetupState): number {
 export function reduceSetup(
   state: SetupState,
   action: SetupAction,
+  gates: SetupGates,
 ): SetupState {
   switch (action.type) {
     case "hydrate":
       return action.state;
     case "goStep":
-      if (action.step < 0 || action.step > firstBlockedStep(state)) {
+      if (action.step < 0 || action.step > firstBlockedStep(state, gates)) {
         return state;
       }
       return { ...state, step: action.step };
     case "back":
       return { ...state, step: Math.max(0, state.step - 1) };
     case "advance":
-      if (!stepValid(state, state.step)) {
+      if (!stepIndexValid(state.step, gates)) {
         return state;
       }
       if (state.step >= SETUP_STEP_COUNT - 1) {
@@ -113,48 +78,11 @@ export function reduceSetup(
       return { ...state, step: state.step + 1 };
     case "finish":
       return { ...state, onboarded: true };
-    case "toggleAccount": {
-      const selected = state.selectedAccountIds.includes(action.id)
-        ? state.selectedAccountIds.filter((id) => id !== action.id)
-        : [...state.selectedAccountIds, action.id];
-      return {
-        ...state,
-        selectedAccountIds: selected,
-        probe: "idle",
-        extract: "idle",
-      };
-    }
-    case "toggleCategory": {
-      const enabled = state.enabledCategories.includes(action.name)
-        ? state.enabledCategories.filter((name) => name !== action.name)
-        : [...state.enabledCategories, action.name];
-      return { ...state, enabledCategories: enabled };
-    }
-    case "setExtraCategory":
-      return { ...state, extraCategory: action.name };
-    case "toggleShortcut":
-      return { ...state, shortcut: !state.shortcut };
-    case "probeStart":
-      return { ...state, probe: "running" };
-    case "probeOk":
-      return { ...state, probe: "ok" };
-    case "extractStart":
-      return { ...state, extract: "running" };
-    case "extractDone":
-      return { ...state, extract: "done" };
     default: {
       const _exhaustive: never = action;
       return _exhaustive;
     }
   }
-}
-
-export function persistableSetup(state: SetupState): SetupState {
-  return {
-    ...state,
-    probe: state.probe === "ok" ? "ok" : "idle",
-    extract: state.extract === "done" ? "done" : "idle",
-  };
 }
 
 export function loadSetup(): SetupState {
@@ -172,7 +100,7 @@ export function loadSetup(): SetupState {
 export function saveSetup(state: SetupState): void {
   window.localStorage.setItem(
     SETUP_STORAGE_KEY,
-    JSON.stringify(persistableSetup(state)),
+    JSON.stringify({ onboarded: state.onboarded, step: state.step }),
   );
 }
 
@@ -181,18 +109,6 @@ function parseSetup(value: unknown): SetupState {
     return defaultSetupState;
   }
   const record = value as Record<string, unknown>;
-  const selected = Array.isArray(record.selectedAccountIds)
-    ? record.selectedAccountIds.filter(
-        (id): id is string =>
-          typeof id === "string" &&
-          WATCH_ACCOUNTS.some((account) => account.id === id),
-      )
-    : defaultSetupState.selectedAccountIds;
-  const enabled = Array.isArray(record.enabledCategories)
-    ? record.enabledCategories.filter(
-        (name): name is string => typeof name === "string",
-      )
-    : defaultSetupState.enabledCategories;
   const step =
     typeof record.step === "number" && Number.isInteger(record.step)
       ? Math.min(Math.max(record.step, 0), SETUP_STEP_COUNT - 1)
@@ -200,13 +116,6 @@ function parseSetup(value: unknown): SetupState {
   return {
     onboarded: record.onboarded === true,
     step,
-    selectedAccountIds: selected,
-    shortcut: record.shortcut !== false,
-    extraCategory:
-      typeof record.extraCategory === "string" ? record.extraCategory : "",
-    enabledCategories: enabled,
-    probe: record.probe === "ok" ? "ok" : "idle",
-    extract: record.extract === "done" ? "done" : "idle",
   };
 }
 
@@ -214,20 +123,20 @@ export const SETUP_STEPS = [
   {
     id: "workspace",
     title: "This machine keeps the history",
-    lede: "Billzebub builds a local financial history from statements, PayLah mail, and Apple Pay. Reporting Currency is SGD. Nothing on this screen talks to a NAS wizard or a compose file.",
+    lede: "Billzebub builds a local financial history from statements and Shortcut Real-time Claims. Reporting Currency is SGD. Owner identity comes from Tailscale.",
     hint: "",
   },
   {
     id: "accounts",
     title: "Watch these Financial Accounts",
-    lede: "Each card is its own Financial Account. PayLah is a wallet. v1 reads DBS, Citi, and UOB statements plus PayLah mail.",
-    hint: "Watch at least one Financial Account.",
+    lede: "Each card is its own Financial Account. PayLah is a wallet, kind paylah — not a deposit account.",
+    hint: "Create at least one Financial Account.",
   },
   {
     id: "sources",
     title: "Where Source Artifacts land",
-    lede: "Drop statements into an inbox folder per Financial Account. A failed Extraction creates a Pending Review and no Claims.",
-    hint: "Read the inbox folders once so Billzebub can see the Source Artifacts.",
+    lede: "Credit-card statements drop into an inbox folder per Financial Account. Wallet card labels map privately. Shortcut tokens are revealed once.",
+    hint: "Create at least one Financial Account before mapping sources.",
   },
   {
     id: "categories",
@@ -237,8 +146,8 @@ export const SETUP_STEPS = [
   },
   {
     id: "ready",
-    title: "September is already on disk",
-    lede: "The next screen is Overview. Review stays one click away with a badge. Setup remains in the rail if you need to replay it.",
-    hint: "Run the first Extraction so September has Claims and Transactions.",
+    title: "Setup is the owner workspace",
+    lede: "Overview is home. Review stays one click away. Setup remains in the rail when you need to add an account, alias, Category, or token.",
+    hint: "Create at least one Financial Account and one Category.",
   },
 ] as const;

@@ -15,7 +15,9 @@ import {
   defaultSetupState,
   firstBlockedStep,
   reduceSetup,
+  stepIndexValid,
   stepValid,
+  type SetupGates,
   type SetupState,
 } from "./lib/setup";
 
@@ -174,6 +176,167 @@ describe("App", () => {
     ).toBeInTheDocument();
   });
 
+  it("categorizes a Transaction from the Review queue", async () => {
+    seedOnboarded();
+    window.location.hash = "#/review";
+    const fetchMock = mockWorkspace({
+      transactions: [transaction],
+      reviews: [pendingReview],
+      categories: [
+        {
+          id: "00000000-0000-0000-0000-000000000099",
+          name: "Synthetic Food",
+          parent_id: null,
+          active: true,
+        },
+      ],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Category needed" }),
+    ).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Category for Synthetic Coffee"), {
+      target: { value: "00000000-0000-0000-0000-000000000099" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Assign Category" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/transactions/00000000-0000-0000-0000-000000000010/category",
+        expect.objectContaining({
+          method: "PUT",
+          body: JSON.stringify({
+            category_id: "00000000-0000-0000-0000-000000000099",
+          }),
+        }),
+      );
+    });
+  });
+
+  it("creates a PayLah Financial Account and Wallet alias from Setup", async () => {
+    window.location.hash = "#/setup";
+    const created = {
+      id: "00000000-0000-0000-0000-000000000021",
+      slug: "synthetic-paylah",
+      display_name: "Synthetic PayLah",
+      institution: "dbs",
+      kind: "paylah",
+      default_currency: "SGD",
+      statement_adapter_key: null,
+      active: true,
+      password_configured: false,
+      inbox_ready: false,
+      aliases: [],
+    };
+    const fetchMock = mockWorkspace({
+      transactions: [],
+      reviews: [],
+      categories: [],
+      accounts: [],
+    });
+    fetchMock.mockImplementation(
+      async (raw: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(raw);
+        if (url === "/api/v1/financial-accounts" && init?.method === "POST") {
+          return json(created, 201);
+        }
+        if (url.endsWith("/aliases") && init?.method === "POST") {
+          const body = JSON.parse(String(init.body)) as { card_label: string };
+          expect(body.card_label).toBe("Synthetic Wallet Card");
+          return json(
+            {
+              id: "00000000-0000-0000-0000-000000000022",
+              alias_kind: "apple_wallet_card",
+              masked_value: "Sy••••••rd",
+            },
+            201,
+          );
+        }
+        return mockWorkspace({
+          transactions: [],
+          reviews: [],
+          categories: [],
+          accounts: [created],
+        })(raw, init);
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", {
+        name: "This machine keeps the history",
+      }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(
+      await screen.findByRole("heading", {
+        name: "Watch these Financial Accounts",
+      }),
+    ).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Kind"), {
+      target: { value: "paylah" },
+    });
+    fireEvent.change(screen.getByLabelText("Slug"), {
+      target: { value: "synthetic-paylah" },
+    });
+    fireEvent.change(screen.getByLabelText("Display name"), {
+      target: { value: "Synthetic PayLah" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Create Financial Account" }),
+    );
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/financial-accounts",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            slug: "synthetic-paylah",
+            display_name: "Synthetic PayLah",
+            institution: "dbs",
+            kind: "paylah",
+            default_currency: "SGD",
+          }),
+        }),
+      );
+    });
+    expect(window.localStorage.getItem(SETUP_STORAGE_KEY)).not.toContain(
+      "bzb_v1_",
+    );
+  });
+
+  it("exposes a mobile navigation control on the Quiet Rail shell", async () => {
+    seedOnboarded();
+    window.location.hash = "#/overview";
+    vi.stubGlobal(
+      "fetch",
+      mockWorkspace({ transactions: [], reviews: [], categories: [] }),
+    );
+
+    render(<App />);
+
+    expect(await screen.findByText("Billzebub")).toBeInTheDocument();
+    expect(document.querySelector(".rail")).not.toBeNull();
+    expect(document.querySelector("main.stage")).not.toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open navigation", hidden: true }),
+    );
+    const drawer = screen.getByRole("navigation", { name: "Navigation" });
+    expect(drawer).toBeVisible();
+    fireEvent.click(
+      within(drawer).getByRole("button", { name: "Close navigation" }),
+    );
+    expect(
+      screen.queryByRole("navigation", { name: "Navigation" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("posts a permitted Review decision from the two-pane desk", async () => {
     seedOnboarded();
     window.location.hash = "#/review";
@@ -228,27 +391,21 @@ describe("parseHash", () => {
 
 describe("setup gates", () => {
   it("blocks Continue until each Setup gate is met", () => {
-    let state: SetupState = {
-      ...defaultSetupState,
-      selectedAccountIds: [],
-      enabledCategories: [],
-      probe: "idle",
-      extract: "idle",
-    };
-    expect(stepValid(state, 0)).toBe(true);
-    expect(stepValid(state, 1)).toBe(false);
-    state = reduceSetup(state, { type: "toggleAccount", id: "dbs" });
-    expect(stepValid(state, 1)).toBe(true);
-    expect(stepValid(state, 2)).toBe(false);
-    state = reduceSetup(state, { type: "probeOk" });
-    expect(stepValid(state, 2)).toBe(true);
-    expect(stepValid(state, 3)).toBe(false);
-    state = reduceSetup(state, { type: "toggleCategory", name: "Dining" });
-    expect(stepValid(state, 3)).toBe(true);
-    expect(stepValid(state, 4)).toBe(false);
-    state = reduceSetup(state, { type: "extractDone" });
-    expect(stepValid(state, 4)).toBe(true);
-    expect(firstBlockedStep(state)).toBe(4);
+    const empty: SetupGates = { accountCount: 0, categoryCount: 0 };
+    const accounts: SetupGates = { accountCount: 1, categoryCount: 0 };
+    const ready: SetupGates = { accountCount: 1, categoryCount: 1 };
+    let state: SetupState = defaultSetupState;
+    expect(stepValid(state, empty)).toBe(true);
+    expect(stepIndexValid(1, empty)).toBe(false);
+    expect(stepIndexValid(1, accounts)).toBe(true);
+    expect(stepIndexValid(3, accounts)).toBe(false);
+    expect(stepIndexValid(3, ready)).toBe(true);
+    expect(stepIndexValid(4, ready)).toBe(true);
+    expect(firstBlockedStep(state, empty)).toBe(1);
+    state = reduceSetup(state, { type: "advance" }, empty);
+    expect(state.step).toBe(1);
+    state = reduceSetup(state, { type: "advance" }, accounts);
+    expect(state.step).toBe(2);
   });
 });
 
@@ -258,19 +415,6 @@ function seedOnboarded(): void {
     JSON.stringify({
       onboarded: true,
       step: 0,
-      selectedAccountIds: ["dbs", "citi", "uob", "paylah"],
-      shortcut: true,
-      extraCategory: "",
-      enabledCategories: [
-        "Groceries",
-        "Dining",
-        "Transport",
-        "Utilities",
-        "Health",
-        "Shopping",
-      ],
-      probe: "ok",
-      extract: "done",
     }),
   );
 }
@@ -279,9 +423,21 @@ function mockWorkspace(input: {
   transactions: unknown[];
   reviews: unknown[];
   categories: unknown[];
+  accounts?: unknown[];
+  tokens?: unknown[];
+  adapters?: unknown[];
+  identity?: { login: string; name: string };
 }) {
   return vi.fn(async (raw: RequestInfo | URL, init?: RequestInit) => {
     const url = String(raw);
+    if (url === "/api/v1/whoami") {
+      return json(
+        input.identity ?? {
+          login: "owner@example.test",
+          name: "Owner",
+        },
+      );
+    }
     if (url === "/api/v1/transactions") {
       return json({ items: input.transactions, next_cursor: null });
     }
@@ -290,6 +446,19 @@ function mockWorkspace(input: {
     }
     if (url === "/api/v1/categories") {
       return json({ items: input.categories });
+    }
+    if (url === "/api/v1/financial-accounts") {
+      return json({ items: input.accounts ?? [] });
+    }
+    if (url === "/api/v1/statement-adapters") {
+      return json({
+        items: input.adapters ?? [
+          { key: "dbs-credit-card", institution: "dbs", kind: "credit_card" },
+        ],
+      });
+    }
+    if (url === "/api/v1/tokens") {
+      return json({ items: input.tokens ?? [] });
     }
     if (url.endsWith("/category") && init?.method === "PUT") {
       return json({
@@ -312,9 +481,9 @@ function mockWorkspace(input: {
   });
 }
 
-function json(body: unknown): Response {
+function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
-    status: 200,
+    status,
     headers: { "Content-Type": "application/json" },
   });
 }

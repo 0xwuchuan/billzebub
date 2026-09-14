@@ -1,51 +1,35 @@
 import { useEffect, useReducer } from "react";
 
-import { prefersReducedMotion } from "../lib/motion";
 import {
   loadSetup,
   reduceSetup,
   saveSetup,
+  type SetupAction,
+  type SetupGates,
   type SetupState,
 } from "../lib/setup";
 
-export function useSetup() {
-  const [state, dispatch] = useReducer(reduceSetup, undefined, loadSetup);
+const emptyGates: SetupGates = { accountCount: 0, categoryCount: 0 };
+
+export function useSetup(gates: SetupGates = emptyGates) {
+  const [state, dispatchState] = useReducer(
+    (current: SetupState, action: SetupAction) =>
+      reduceSetup(current, action, gates),
+    undefined,
+    loadSetup,
+  );
 
   useEffect(() => {
     saveSetup(state);
   }, [state]);
 
   useEffect(() => {
-    if (state.probe !== "running") {
-      return;
+    if (gates.accountCount >= 1 && !state.onboarded) {
+      dispatchState({ type: "finish" });
     }
-    const timer = window.setTimeout(
-      () => {
-        dispatch({ type: "probeOk" });
-      },
-      prefersReducedMotion() ? 120 : 900,
-    );
-    return () => {
-      window.clearTimeout(timer);
-    };
-  }, [state.probe]);
+  }, [gates.accountCount, state.onboarded]);
 
-  useEffect(() => {
-    if (state.extract !== "running") {
-      return;
-    }
-    const timer = window.setTimeout(
-      () => {
-        dispatch({ type: "extractDone" });
-      },
-      prefersReducedMotion() ? 160 : 1400,
-    );
-    return () => {
-      window.clearTimeout(timer);
-    };
-  }, [state.extract]);
-
-  return { state, dispatch };
+  return { state, dispatch: dispatchState };
 }
 
 export type { SetupState };

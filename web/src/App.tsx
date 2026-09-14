@@ -13,9 +13,16 @@ import { SetupPage } from "./pages/SetupPage";
 import { TransactionsPage } from "./pages/TransactionsPage";
 
 export function App() {
-  const { state: setup, dispatch: setupDispatch } = useSetup();
-  const { route, go } = useRoute(setup.onboarded);
   const workspace = useWorkspace();
+  const ownerCategories = workspace.workspace.categories.filter(
+    (category) => category.active && category.name !== "Uncategorized",
+  );
+  const gates = {
+    accountCount: workspace.workspace.accounts.length,
+    categoryCount: ownerCategories.length,
+  };
+  const { state: setup, dispatch: setupDispatch } = useSetup(gates);
+  const { route, go } = useRoute(setup.onboarded);
   const [categoryDraft, setCategoryDraft] = useState<Record<string, string>>(
     {},
   );
@@ -48,9 +55,6 @@ export function App() {
     };
   }, [go, route]);
 
-  const availableCategories = workspace.workspace.categories.filter(
-    (category) => category.active && category.name !== "Uncategorized",
-  );
   const blockingCount = workspace.workspace.reviews.filter(
     (review) => review.severity === "blocking",
   ).length;
@@ -118,9 +122,24 @@ export function App() {
       <SetupPage
         state={setup}
         dispatch={setupDispatch}
+        gates={gates}
+        identity={workspace.workspace.identity}
+        accounts={workspace.workspace.accounts}
+        adapters={workspace.workspace.adapters}
+        categories={workspace.workspace.categories}
+        tokens={workspace.workspace.tokens}
+        issuedToken={workspace.issuedToken}
+        saving={workspace.saving}
         transactionCount={workspace.workspace.transactions.items.length}
         reviewCount={workspace.workspace.reviews.length}
         blockingCount={blockingCount}
+        onCreateAccount={workspace.addAccount}
+        onAddAlias={workspace.addWalletAlias}
+        onCreateCategory={workspace.addCategory}
+        onIssueToken={workspace.addToken}
+        onRotateToken={workspace.replaceToken}
+        onRevokeToken={workspace.removeToken}
+        onDismissIssuedToken={workspace.dismissIssuedToken}
         onReturn={() => {
           go({
             page: "overview",
@@ -138,7 +157,7 @@ export function App() {
       <AppShell
         route={route}
         periodLabel={monthYearLabel(isoDate(today))}
-        accountCount={setup.selectedAccountIds.length}
+        accountCount={workspace.workspace.accounts.length}
         reviewCount={workspace.workspace.reviews.length}
         reviewBlocking={blockingCount > 0}
         error={workspace.error}
@@ -172,7 +191,7 @@ export function App() {
           <ReviewPage
             reviews={workspace.workspace.reviews}
             transactions={workspace.workspace.transactions.items}
-            categories={availableCategories}
+            categories={ownerCategories}
             filter={route.reviewFilter}
             selectedId={reviewSelection}
             drafts={categoryDraft}
@@ -195,12 +214,15 @@ export function App() {
               });
             }}
             onOpenTransaction={openDrawer}
+            onOpenSetup={() => {
+              navigate("setup");
+            }}
           />
         ) : null}
         {route.page === "transactions" ? (
           <TransactionsPage
             transactions={workspace.workspace.transactions.items}
-            categories={availableCategories}
+            categories={ownerCategories}
             accounts={accounts}
             confirmation={route.confirmation}
             category={listCategory}
@@ -225,7 +247,7 @@ export function App() {
       </AppShell>
       <TransactionDrawer
         transaction={drawerTransaction}
-        categories={availableCategories}
+        categories={ownerCategories}
         draft={
           drawerTransaction === null
             ? ""

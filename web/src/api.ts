@@ -10,6 +10,50 @@ export type Category = {
   active: boolean;
 };
 
+export type OwnerIdentity = {
+  login: string;
+  name: string;
+};
+
+export type FinancialAccountAlias = {
+  id: string;
+  alias_kind: string;
+  masked_value: string;
+};
+
+export type FinancialAccount = {
+  id: string;
+  slug: string;
+  display_name: string;
+  institution: string;
+  kind: "credit_card" | "paylah" | string;
+  default_currency: string;
+  statement_adapter_key: string | null;
+  active: boolean;
+  password_configured: boolean;
+  inbox_ready: boolean;
+  aliases: FinancialAccountAlias[];
+};
+
+export type StatementAdapter = {
+  key: string;
+  institution: string;
+  kind: string;
+};
+
+export type IntegrationToken = {
+  id: string;
+  name: string;
+  prefix: string;
+  scopes: string[];
+  created_at: string;
+  last_used_at: string | null;
+};
+
+export type IssuedToken = IntegrationToken & {
+  plaintext: string;
+};
+
 export type TransactionReview = {
   id: string;
   condition_code: string;
@@ -55,11 +99,26 @@ export type ReviewPage = {
   next_cursor: string | null;
 };
 
+export type CreateFinancialAccountInput = {
+  slug: string;
+  display_name: string;
+  institution: string;
+  kind: "credit_card" | "paylah";
+  default_currency: string;
+  statement_adapter_key?: string;
+  statement_account_identifier?: string;
+  statement_password_secret?: string;
+};
+
 export class ApiError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "ApiError";
   }
+}
+
+export async function getWhoami(): Promise<OwnerIdentity> {
+  return request<OwnerIdentity>("/api/v1/whoami");
 }
 
 export async function getTransactions(
@@ -76,6 +135,96 @@ export async function getReviews(): Promise<ReviewPage> {
 
 export async function getCategories(): Promise<{ items: Category[] }> {
   return request<{ items: Category[] }>("/api/v1/categories");
+}
+
+export async function createCategory(
+  name: string,
+  parentId?: string,
+): Promise<Category> {
+  return request<Category>("/api/v1/categories", {
+    method: "POST",
+    headers: mutationHeaders(),
+    body: JSON.stringify({
+      name,
+      parent_id: parentId === undefined ? null : parentId,
+    }),
+  });
+}
+
+export async function getFinancialAccounts(): Promise<{
+  items: FinancialAccount[];
+}> {
+  return request<{ items: FinancialAccount[] }>("/api/v1/financial-accounts");
+}
+
+export async function createFinancialAccount(
+  input: CreateFinancialAccountInput,
+): Promise<FinancialAccount> {
+  return request<FinancialAccount>("/api/v1/financial-accounts", {
+    method: "POST",
+    headers: mutationHeaders(),
+    body: JSON.stringify(input),
+  });
+}
+
+export async function createWalletAlias(
+  accountId: string,
+  cardLabel: string,
+): Promise<FinancialAccountAlias> {
+  return request<FinancialAccountAlias>(
+    `/api/v1/financial-accounts/${accountId}/aliases`,
+    {
+      method: "POST",
+      headers: mutationHeaders(),
+      body: JSON.stringify({
+        kind: "apple_wallet_card",
+        card_label: cardLabel,
+      }),
+    },
+  );
+}
+
+export async function getStatementAdapters(): Promise<{
+  items: StatementAdapter[];
+}> {
+  return request<{ items: StatementAdapter[] }>("/api/v1/statement-adapters");
+}
+
+export async function getTokens(): Promise<{ items: IntegrationToken[] }> {
+  return request<{ items: IntegrationToken[] }>("/api/v1/tokens");
+}
+
+export async function issueToken(input: {
+  name: string;
+  kind: "integration" | "agent";
+  scopes: string[];
+}): Promise<IssuedToken> {
+  return request<IssuedToken>("/api/v1/tokens", {
+    method: "POST",
+    headers: mutationHeaders(),
+    body: JSON.stringify(input),
+  });
+}
+
+export async function rotateToken(tokenId: string): Promise<IssuedToken> {
+  return request<IssuedToken>(`/api/v1/tokens/${tokenId}/rotate`, {
+    method: "POST",
+    headers: mutationHeaders(),
+    body: JSON.stringify({}),
+  });
+}
+
+export async function revokeToken(
+  tokenId: string,
+): Promise<{ id: string; revoked: boolean }> {
+  return request<{ id: string; revoked: boolean }>(
+    `/api/v1/tokens/${tokenId}/revoke`,
+    {
+      method: "POST",
+      headers: mutationHeaders(),
+      body: JSON.stringify({}),
+    },
+  );
 }
 
 export async function categorizeTransaction(
@@ -103,12 +252,15 @@ export async function decideReview(
   });
 }
 
-function mutationHeaders(ifMatch: string): HeadersInit {
-  return {
+function mutationHeaders(ifMatch?: string): HeadersInit {
+  const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    "If-Match": ifMatch,
     "X-Billzebub-CSRF": "bzb-spa",
   };
+  if (ifMatch !== undefined) {
+    headers["If-Match"] = ifMatch;
+  }
+  return headers;
 }
 
 function transactionEtag(transaction: Transaction): string {
@@ -126,9 +278,29 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers: { Accept: "application/json", ...init?.headers },
   });
   if (!response.ok) {
-    throw new ApiError(
+    throw await apiErrorFrom(response);
+  }
+  return (await response.json()) as T;
+}
+
+async function apiErrorFrom(response: Response): Promise<ApiError> {
+  try {
+    const body = (await response.json()) as {
+      title?: unknown;
+      next_step?: unknown;
+    };
+    if (typeof body.title === "string" && body.title !== "") {
+      if (body.next_step === "configure_via_setup") {
+        return new ApiError(`${body.title}. Open Setup to continue.`);
+      }
+      return new ApiError(body.title);
+    }
+  } catch {
+    return new ApiError(
       "The workspace could not complete that request. Refresh and try again.",
     );
   }
-  return (await response.json()) as T;
+  return new ApiError(
+    "The workspace could not complete that request. Refresh and try again.",
+  );
 }

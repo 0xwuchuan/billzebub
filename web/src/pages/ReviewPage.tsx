@@ -27,6 +27,7 @@ export function ReviewPage({
   onAssign,
   onDecide,
   onOpenTransaction,
+  onOpenSetup,
 }: {
   reviews: Review[];
   transactions: Transaction[];
@@ -42,6 +43,7 @@ export function ReviewPage({
   onAssign: (transaction: Transaction) => void;
   onDecide: (review: Review, choice: string) => void;
   onOpenTransaction: (id: string) => void;
+  onOpenSetup: () => void;
 }) {
   const fresh = useEntrance("review");
   const items = filterReviews(reviews, filter);
@@ -119,6 +121,7 @@ export function ReviewPage({
               onAssign={onAssign}
               onDecide={onDecide}
               onOpenTransaction={onOpenTransaction}
+              onOpenSetup={onOpenSetup}
             />
           )}
         </section>
@@ -183,6 +186,7 @@ function Evidence({
   onAssign,
   onDecide,
   onOpenTransaction,
+  onOpenSetup,
 }: {
   review: Review;
   transaction: Transaction | undefined;
@@ -194,6 +198,7 @@ function Evidence({
   onAssign: (transaction: Transaction) => void;
   onDecide: (review: Review, choice: string) => void;
   onOpenTransaction: (id: string) => void;
+  onOpenSetup: () => void;
 }) {
   const fresh = useEntrance(`review:${review.id}`);
   const blocking = review.severity === "blocking";
@@ -207,6 +212,10 @@ function Evidence({
     transaction?.financial_account.name ??
     review.subject_type;
   const categorization = review.condition_code === "categorization_needed";
+  const needsSetup =
+    review.condition_code === "apple_wallet_unmapped_card" ||
+    review.condition_code === "paylah_account_missing" ||
+    review.condition_code === "paylah_account_ambiguous";
   return (
     <>
       <div className="panel-head">
@@ -302,7 +311,14 @@ function Evidence({
             {categorization && transaction === undefined ? (
               <span className="muted">Transaction action required</span>
             ) : null}
-            {!categorization
+            {needsSetup
+              ? review.allowed_decisions.map((choice) => (
+                  <Button key={choice} variant="primary" onClick={onOpenSetup}>
+                    {decisionLabel(choice)}
+                  </Button>
+                ))
+              : null}
+            {!categorization && !needsSetup
               ? review.allowed_decisions.map((choice) => (
                   <Button
                     key={choice}
