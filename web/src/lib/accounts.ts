@@ -19,7 +19,7 @@ export const SETUP_ACCOUNT_EXAMPLES = [
     institution: "citi",
   },
   {
-    slug: "citi-womans-world",
+    slug: "dbs-womans-world",
     displayName: "DBS Woman's World",
     institution: "dbs",
   },

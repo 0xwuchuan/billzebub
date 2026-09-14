@@ -286,6 +286,14 @@ describe("App", () => {
     expect(screen.getByLabelText("Statement adapter")).toHaveValue(
       "citi-credit-card",
     );
+    fireEvent.click(screen.getByRole("button", { name: "DBS Woman's World" }));
+    expect(screen.getByLabelText("Slug")).toHaveValue("dbs-womans-world");
+    expect(screen.getByLabelText("Display name")).toHaveValue(
+      "DBS Woman's World",
+    );
+    expect(screen.getByLabelText("Statement adapter")).toHaveValue(
+      "dbs-credit-card",
+    );
     fireEvent.change(screen.getByLabelText("Kind"), {
       target: { value: "paylah" },
     });
