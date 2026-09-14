@@ -278,6 +278,14 @@ describe("App", () => {
         name: "Watch these Financial Accounts",
       }),
     ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Citi PremierMiles" }));
+    expect(screen.getByLabelText("Slug")).toHaveValue("citi-premiermiles");
+    expect(screen.getByLabelText("Display name")).toHaveValue(
+      "Citi PremierMiles",
+    );
+    expect(screen.getByLabelText("Statement adapter")).toHaveValue(
+      "citi-credit-card",
+    );
     fireEvent.change(screen.getByLabelText("Kind"), {
       target: { value: "paylah" },
     });
@@ -454,6 +462,8 @@ function mockWorkspace(input: {
       return json({
         items: input.adapters ?? [
           { key: "dbs-credit-card", institution: "dbs", kind: "credit_card" },
+          { key: "citi-credit-card", institution: "citi", kind: "credit_card" },
+          { key: "uob-credit-card", institution: "uob", kind: "credit_card" },
         ],
       });
     }

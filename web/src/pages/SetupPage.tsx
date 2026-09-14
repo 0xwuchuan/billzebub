@@ -12,7 +12,7 @@ import type {
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { useEntrance } from "../hooks/useEntrance";
-import { SETUP_CATEGORIES } from "../lib/accounts";
+import { SETUP_ACCOUNT_EXAMPLES, SETUP_CATEGORIES } from "../lib/accounts";
 import {
   SETUP_STEP_COUNT,
   SETUP_STEPS,
@@ -313,6 +313,20 @@ function AccountsStep({
   const selectedAdapter = adapters.find(
     (adapter) => adapter.key === adapterKey,
   );
+  const suggestedAccounts = SETUP_ACCOUNT_EXAMPLES.filter(
+    (example) => !accounts.some((account) => account.slug === example.slug),
+  );
+
+  function applyExample(example: (typeof SETUP_ACCOUNT_EXAMPLES)[number]) {
+    const adapter =
+      adapters.find((item) => item.institution === example.institution) ??
+      adapters[0];
+    setKind("credit_card");
+    setSlug(example.slug);
+    setDisplayName(example.displayName);
+    setAdapterKey(adapter?.key ?? "");
+    setSecretName(`${example.slug}.password`);
+  }
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -361,6 +375,22 @@ function AccountsStep({
           </div>
         ))
       )}
+      {suggestedAccounts.length > 0 ? (
+        <div className="filters">
+          {suggestedAccounts.map((example) => (
+            <button
+              key={example.slug}
+              className="chip"
+              type="button"
+              onClick={() => {
+                applyExample(example);
+              }}
+            >
+              {example.displayName}
+            </button>
+          ))}
+        </div>
+      ) : null}
       <form className="stack" onSubmit={(event) => void onSubmit(event)}>
         <label className="field-label">
           Kind
