@@ -523,6 +523,118 @@ button.statement-cell:hover {
   letter-spacing: -0.02em;
 }
 
+.imports-stage {
+  display: grid;
+  gap: var(--bz-space-4);
+}
+
+.coverage-panel {
+  padding: 0;
+  overflow: hidden;
+}
+
+.coverage-head {
+  align-items: flex-start;
+  gap: var(--bz-space-3);
+}
+
+.coverage-head h2 {
+  margin: 0;
+}
+
+.coverage-list {
+  display: grid;
+  gap: var(--bz-space-3);
+  padding: var(--bz-space-4) var(--bz-space-5) var(--bz-space-5);
+}
+
+.coverage-row {
+  display: grid;
+  gap: var(--bz-space-2);
+  padding: var(--bz-space-3);
+  border: 1px solid transparent;
+  border-radius: var(--bz-radius-md);
+}
+
+.coverage-row.is-selected {
+  border-color: var(--bz-border-strong);
+  background: var(--bz-surface-hover);
+}
+
+.coverage-account {
+  justify-self: start;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-weight: 500;
+  text-align: left;
+}
+
+.coverage-account:hover,
+.coverage-account[aria-pressed="true"] {
+  color: var(--bz-accent);
+}
+
+.coverage-months {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bz-space-2);
+}
+
+.coverage-chip {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  min-width: 4.25rem;
+  padding: 0.4rem 0.65rem;
+  border: 1px solid var(--bz-border);
+  border-radius: var(--bz-radius-md);
+  background: transparent;
+  color: inherit;
+  font-size: var(--bz-text-sm);
+  line-height: 1.2;
+}
+
+button.coverage-chip {
+  cursor: pointer;
+}
+
+button.coverage-chip:hover {
+  background: var(--bz-surface-hover);
+}
+
+.coverage-status {
+  color: var(--bz-muted);
+  font-size: var(--bz-text-xs);
+  text-transform: lowercase;
+}
+
+.coverage-chip.is-present {
+  border-color: color-mix(in srgb, #879a39 40%, #282726);
+}
+
+.coverage-chip.is-present .coverage-status {
+  color: var(--bz-positive);
+}
+
+.coverage-chip.is-partial {
+  border-color: color-mix(in srgb, #d0a215 40%, #282726);
+}
+
+.coverage-chip.is-partial .coverage-status {
+  color: var(--bz-provisional);
+}
+
+.coverage-chip.is-missing {
+  border-color: color-mix(in srgb, #d14d41 45%, #282726);
+}
+
+.coverage-chip.is-missing .coverage-status {
+  color: var(--bz-danger);
+}
+
 @media (max-width: 64rem) {
   .split,
   .desk {
@@ -580,7 +692,8 @@ button.statement-cell:hover {
     min-height: 2.75rem;
   }
 
-  .chip {
+  .chip,
+  .coverage-chip {
     min-height: 2.25rem;
     padding: 0 var(--bz-space-3);
   }

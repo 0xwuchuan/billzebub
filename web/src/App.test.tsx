@@ -513,6 +513,99 @@ describe("App", () => {
     );
   });
 
+  it("marks missing statement months and deep-links Imports by Financial Account", async () => {
+    seedOnboarded();
+    window.location.hash = "#/imports";
+    const account = configuredAccount();
+    const coveredImport = {
+      id: "00000000-0000-0000-0000-000000000041",
+      source_artifact_id: "00000000-0000-0000-0000-000000000040",
+      financial_account_id: account.id,
+      financial_account_name: account.display_name,
+      status: "accepted",
+      adapter_key: "citi-credit-card",
+      parser_version: "v1",
+      statement_date: "2026-04-30",
+      period_start: "2026-04-01",
+      period_end: "2026-04-30",
+      candidate_row_count: 2,
+      claim_count: 2,
+      failure_code: null,
+      validation_report: {},
+      duplicate_arrivals: 0,
+      active_review_id: null,
+      supersedes_extraction_id: null,
+      created_at: "2026-04-30T00:00:00+00:00",
+      accepted_at: "2026-04-30T00:00:00+00:00",
+    };
+    const otherImport = {
+      ...coveredImport,
+      id: "00000000-0000-0000-0000-000000000042",
+      financial_account_id: "00000000-0000-0000-0000-000000000099",
+      financial_account_name: "Other Card",
+      adapter_key: "dbs-credit-card",
+    };
+    vi.stubGlobal(
+      "fetch",
+      mockWorkspace({
+        transactions: [],
+        reviews: [],
+        categories: [
+          {
+            id: "00000000-0000-0000-0000-000000000099",
+            name: "Dining",
+            parent_id: null,
+            active: true,
+          },
+        ],
+        accounts: [account],
+        imports: [coveredImport, otherImport],
+        coverage: {
+          as_of: "2026-09-15",
+          timezone: "Asia/Singapore",
+          window_months: 6,
+          accounts: [
+            {
+              id: account.id,
+              display_name: account.display_name,
+              slug: account.slug,
+              months: [
+                { month: "2026-04", status: "present" },
+                { month: "2026-05", status: "partial" },
+                { month: "2026-06", status: "missing" },
+                { month: "2026-07", status: "missing" },
+                { month: "2026-08", status: "missing" },
+                { month: "2026-09", status: "missing" },
+              ],
+            },
+          ],
+        },
+      }),
+    );
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Statement coverage" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("present")).toBeInTheDocument();
+    expect(screen.getByText("partial")).toBeInTheDocument();
+    expect(screen.getAllByText("missing").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("citi-credit-card").length).toBeGreaterThan(0);
+    expect(screen.getByText("dbs-credit-card")).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Citi PremierMiles Jun missing",
+      }),
+    );
+    expect(window.location.hash).toBe(`#/imports?account=${account.id}`);
+    await waitFor(() => {
+      expect(screen.queryByText("dbs-credit-card")).not.toBeInTheDocument();
+    });
+    expect(screen.getAllByText("citi-credit-card").length).toBeGreaterThan(0);
+  });
+
   it("never shows Onboarding when accounts and Categories already exist", async () => {
     window.location.hash = "";
     vi.stubGlobal(
@@ -762,6 +855,7 @@ describe("parseHash", () => {
         confirmation: "",
         drawerId: null,
         importId: null,
+        accountId: null,
       }),
     ).toBe("#/review/blocking");
     expect(hashFor({ ...parseHash("#/settings", true) })).toBe("#/settings");
@@ -774,7 +868,28 @@ describe("parseHash", () => {
       confirmation: "",
       drawerId: null,
       importId: "00000000-0000-0000-0000-000000000099",
+      accountId: null,
     });
+    expect(
+      parseHash("#/imports?account=00000000-0000-0000-0000-000000000021", true),
+    ).toEqual({
+      page: "imports",
+      reviewFilter: "",
+      confirmation: "",
+      drawerId: null,
+      importId: null,
+      accountId: "00000000-0000-0000-0000-000000000021",
+    });
+    expect(
+      hashFor({
+        page: "imports",
+        reviewFilter: "",
+        confirmation: "",
+        drawerId: null,
+        importId: null,
+        accountId: "00000000-0000-0000-0000-000000000021",
+      }),
+    ).toBe("#/imports?account=00000000-0000-0000-0000-000000000021");
   });
 });
 
@@ -841,6 +956,7 @@ function mockWorkspace(input: {
   tokens?: unknown[];
   adapters?: unknown[];
   imports?: unknown[];
+  coverage?: unknown;
   identity?: { login: string; name: string };
 }) {
   return vi.fn(async (raw: RequestInfo | URL, init?: RequestInit) => {
@@ -861,6 +977,16 @@ function mockWorkspace(input: {
     }
     if (url === "/api/v1/imports") {
       return json({ items: input.imports ?? [] });
+    }
+    if (url === "/api/v1/statement-coverage") {
+      return json(
+        input.coverage ?? {
+          as_of: "2026-09-15",
+          timezone: "Asia/Singapore",
+          window_months: 6,
+          accounts: [],
+        },
+      );
     }
     if (url.startsWith("/api/v1/imports/")) {
       const extractionId = url.slice("/api/v1/imports/".length);

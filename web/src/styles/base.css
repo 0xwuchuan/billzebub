@@ -55,6 +55,7 @@ p {
 .icon-btn,
 .rail-item,
 .chip,
+.coverage-chip,
 .step-dot,
 .account-toggle,
 .statement-cell,
@@ -70,6 +71,7 @@ p {
 .icon-btn:active,
 .rail-item:active,
 .chip:active,
+.coverage-chip:active,
 .account-toggle:active,
 .statement-cell[data-action]:active,
 .queue-item:active {
@@ -202,6 +204,7 @@ p {
 .icon-btn:focus-visible,
 .rail-item:focus-visible,
 .chip:focus-visible,
+.coverage-chip:focus-visible,
 .row:focus-visible,
 .account-toggle:focus-visible {
   outline: 2px solid var(--bz-accent);
@@ -331,6 +334,7 @@ p {
   .icon-btn:active,
   .rail-item:active,
   .chip:active,
+  .coverage-chip:active,
   .account-toggle:active,
   .statement-cell[data-action]:active,
   .queue-item:active {

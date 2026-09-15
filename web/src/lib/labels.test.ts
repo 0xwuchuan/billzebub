@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatOwnerCardLabel } from "./labels";
+import { formatOwnerCardLabel, shortMonthLabel } from "./labels";
 
 describe("formatOwnerCardLabel", () => {
   it("shows card names without bullet-masking", () => {
@@ -18,5 +18,10 @@ describe("formatOwnerCardLabel", () => {
       "DBS Live Fresh • 1234",
     );
     expect(formatOwnerCardLabel("4321")).not.toMatch(/•/);
+  });
+
+  it("abbreviates calendar months for coverage chips", () => {
+    expect(shortMonthLabel("2026-04")).toBe("Apr");
+    expect(shortMonthLabel("2026-09")).toBe("Sep");
   });
 });

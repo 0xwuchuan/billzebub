@@ -11,6 +11,7 @@ import {
   getImports,
   getReviews,
   getStatementAdapters,
+  getStatementCoverage,
   getTokens,
   getTransactions,
   getWhoami,
@@ -26,6 +27,7 @@ import {
   type OwnerIdentity,
   type Review,
   type StatementAdapter,
+  type StatementCoverageReport,
   type Transaction,
   type TransactionPage,
 } from "../api";
@@ -36,6 +38,7 @@ export type WorkspaceSnapshot = {
   transactions: TransactionPage;
   reviews: Review[];
   imports: ImportRecord[];
+  coverage: StatementCoverageReport | null;
   categories: Category[];
   accounts: FinancialAccount[];
   adapters: StatementAdapter[];
@@ -47,6 +50,7 @@ const emptyWorkspace: WorkspaceSnapshot = {
   transactions: { items: [], next_cursor: null },
   reviews: [],
   imports: [],
+  coverage: null,
   categories: [],
   accounts: [],
   adapters: [],
@@ -332,6 +336,7 @@ async function fetchWorkspace(): Promise<WorkspaceSnapshot> {
     transactions,
     reviews,
     imports,
+    coverage,
     categories,
     accounts,
     adapters,
@@ -341,6 +346,7 @@ async function fetchWorkspace(): Promise<WorkspaceSnapshot> {
     getTransactions(),
     getReviews(),
     getImports(),
+    getStatementCoverage(),
     getCategories(),
     getFinancialAccounts(),
     getStatementAdapters(),
@@ -351,6 +357,7 @@ async function fetchWorkspace(): Promise<WorkspaceSnapshot> {
     transactions,
     reviews: reviews.items,
     imports: imports.items,
+    coverage,
     categories: categories.items,
     accounts: accounts.items,
     adapters: adapters.items,

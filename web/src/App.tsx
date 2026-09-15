@@ -90,6 +90,7 @@ export function App() {
       confirmation,
       drawerId: null,
       importId: null,
+      accountId: null,
     });
   }
 
@@ -100,6 +101,7 @@ export function App() {
       confirmation: "",
       drawerId: null,
       importId: null,
+      accountId: null,
     });
   }
 
@@ -110,6 +112,7 @@ export function App() {
       confirmation: route.page === "transactions" ? route.confirmation : "",
       drawerId: id,
       importId: null,
+      accountId: null,
     });
   }
 
@@ -120,6 +123,15 @@ export function App() {
       confirmation: "",
       drawerId: null,
       importId: id,
+      accountId: route.accountId,
+    });
+  }
+
+  function openAccountImports(accountId: string) {
+    go({
+      page: "imports",
+      ...emptyRoute,
+      accountId,
     });
   }
 
@@ -255,9 +267,19 @@ export function App() {
         {route.page === "imports" ? (
           <ImportsPage
             imports={workspace.workspace.imports}
+            coverage={workspace.workspace.coverage}
             selectedId={route.importId}
+            accountId={route.accountId}
             today={today}
             onSelect={openImport}
+            onSelectAccount={openAccountImports}
+            onClearAccount={() => {
+              go({
+                page: "imports",
+                ...emptyRoute,
+                importId: route.importId,
+              });
+            }}
             onOpenReview={(reviewId) => {
               setReviewSelection(reviewId);
               go({
@@ -284,6 +306,7 @@ export function App() {
                 confirmation: value,
                 drawerId: null,
                 importId: null,
+                accountId: null,
               });
             }}
             onCategory={setListCategory}
@@ -301,6 +324,7 @@ export function App() {
             categories={workspace.workspace.categories}
             tokens={workspace.workspace.tokens}
             issuedToken={workspace.issuedToken}
+            coverage={workspace.workspace.coverage}
             saving={workspace.saving}
             onCreateAccount={workspace.addAccount}
             onAddAlias={workspace.addWalletAlias}
@@ -309,6 +333,7 @@ export function App() {
             onRotateToken={workspace.replaceToken}
             onRevokeToken={workspace.removeToken}
             onDismissIssuedToken={workspace.dismissIssuedToken}
+            onOpenAccountImports={openAccountImports}
           />
         ) : null}
       </AppShell>

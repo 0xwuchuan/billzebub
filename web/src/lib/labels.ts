@@ -124,6 +124,10 @@ export function monthYearLabel(isoDate: string): string {
   return `${names[monthIndex] ?? month} ${year}`;
 }
 
+export function shortMonthLabel(yearMonth: string): string {
+  return monthYearLabel(`${yearMonth}-01`).slice(0, 3);
+}
+
 export function formatOwnerCardLabel(value: string): string {
   const compact = value.trim().replace(/\s+/g, " ");
   if (compact === "") {
