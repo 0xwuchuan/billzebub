@@ -2,6 +2,7 @@ import pytest
 
 from billzebub.financial_account_aliases import (
     FinancialAccountAliasError,
+    FinancialAccountAliases,
     normalize_apple_wallet_card_label,
 )
 
@@ -45,3 +46,12 @@ def test_normalize_keeps_distinct_card_labels_unmapped() -> None:
 def test_normalize_rejects_blank_labels() -> None:
     with pytest.raises(FinancialAccountAliasError, match="invalid"):
         normalize_apple_wallet_card_label("  \n")
+
+
+def test_owner_card_label_keeps_names_and_last4_readable() -> None:
+    assert FinancialAccountAliases.owner_card_label("  Synthetic Wallet Card  ") == (
+        "Synthetic Wallet Card"
+    )
+    assert FinancialAccountAliases.owner_card_label("4321") == "4321"
+    assert "•" not in FinancialAccountAliases.owner_card_label("Citi PremierMiles")
+    assert "•" not in FinancialAccountAliases.owner_card_label("4321")

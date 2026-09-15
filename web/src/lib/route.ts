@@ -1,5 +1,10 @@
 export type RoutePage =
-  "overview" | "review" | "transactions" | "imports" | "setup";
+  | "overview"
+  | "review"
+  | "transactions"
+  | "imports"
+  | "onboarding"
+  | "settings";
 
 export type ReviewFilter = "" | "blocking" | "attention";
 
@@ -13,7 +18,7 @@ export type Route = {
   importId: string | null;
 };
 
-const emptyRoute = {
+export const emptyRoute = {
   reviewFilter: "" as const,
   confirmation: "" as const,
   drawerId: null,
@@ -22,7 +27,7 @@ const emptyRoute = {
 
 export function defaultRoute(onboarded: boolean): Route {
   return {
-    page: onboarded ? "overview" : "setup",
+    page: onboarded ? "overview" : "onboarding",
     ...emptyRoute,
   };
 }
@@ -32,7 +37,13 @@ export function parseHash(hash: string, onboarded: boolean): Route {
   const [page, ...restParts] = raw.split("/");
   const rest = restParts.join("/");
   if (page === "onboarding" || page === "setup") {
-    return { page: "setup", ...emptyRoute };
+    return {
+      page: onboarded ? "settings" : "onboarding",
+      ...emptyRoute,
+    };
+  }
+  if (page === "settings") {
+    return { page: "settings", ...emptyRoute };
   }
   if (page === "review") {
     const reviewFilter =
@@ -84,8 +95,11 @@ export function parseHash(hash: string, onboarded: boolean): Route {
 }
 
 export function hashFor(route: Route): string {
-  if (route.page === "setup") {
-    return "#/setup";
+  if (route.page === "onboarding") {
+    return "#/onboarding";
+  }
+  if (route.page === "settings") {
+    return "#/settings";
   }
   if (route.page === "review") {
     return route.reviewFilter === ""
@@ -119,8 +133,11 @@ export function titleFor(page: RoutePage): string {
   if (page === "imports") {
     return "Imports";
   }
-  if (page === "setup") {
-    return "Setup";
+  if (page === "onboarding") {
+    return "Onboarding";
+  }
+  if (page === "settings") {
+    return "Settings";
   }
   return "Overview";
 }

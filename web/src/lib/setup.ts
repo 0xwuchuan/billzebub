@@ -1,6 +1,6 @@
 export const SETUP_STORAGE_KEY = "bz.quietRail.setup.v2";
 
-export const SETUP_STEP_COUNT = 5;
+export const ONBOARDING_STEP_COUNT = 5;
 
 export type SetupState = {
   onboarded: boolean;
@@ -24,6 +24,10 @@ export type SetupGates = {
   categoryCount: number;
 };
 
+export function gatesMet(gates: SetupGates): boolean {
+  return gates.accountCount >= 1 && gates.categoryCount >= 1;
+}
+
 export function stepValid(state: SetupState, gates: SetupGates): boolean {
   return stepIndexValid(state.step, gates);
 }
@@ -39,18 +43,18 @@ export function stepIndexValid(step: number, gates: SetupGates): boolean {
     return gates.categoryCount >= 1;
   }
   if (step === 4) {
-    return gates.accountCount >= 1 && gates.categoryCount >= 1;
+    return gatesMet(gates);
   }
   return false;
 }
 
 export function firstBlockedStep(state: SetupState, gates: SetupGates): number {
-  for (let index = 0; index < SETUP_STEP_COUNT; index += 1) {
+  for (let index = 0; index < ONBOARDING_STEP_COUNT; index += 1) {
     if (!stepIndexValid(index, gates)) {
       return index;
     }
   }
-  return SETUP_STEP_COUNT - 1;
+  return ONBOARDING_STEP_COUNT - 1;
 }
 
 export function reduceSetup(
@@ -72,7 +76,7 @@ export function reduceSetup(
       if (!stepIndexValid(state.step, gates)) {
         return state;
       }
-      if (state.step >= SETUP_STEP_COUNT - 1) {
+      if (state.step >= ONBOARDING_STEP_COUNT - 1) {
         return { ...state, onboarded: true };
       }
       return { ...state, step: state.step + 1 };
@@ -111,7 +115,7 @@ function parseSetup(value: unknown): SetupState {
   const record = value as Record<string, unknown>;
   const step =
     typeof record.step === "number" && Number.isInteger(record.step)
-      ? Math.min(Math.max(record.step, 0), SETUP_STEP_COUNT - 1)
+      ? Math.min(Math.max(record.step, 0), ONBOARDING_STEP_COUNT - 1)
       : 0;
   return {
     onboarded: record.onboarded === true,
@@ -119,7 +123,7 @@ function parseSetup(value: unknown): SetupState {
   };
 }
 
-export const SETUP_STEPS = [
+export const ONBOARDING_STEPS = [
   {
     id: "workspace",
     title: "This machine keeps the history",
@@ -146,8 +150,8 @@ export const SETUP_STEPS = [
   },
   {
     id: "ready",
-    title: "Setup is the owner workspace",
-    lede: "Overview is home. Review stays one click away. Setup remains in the rail when you need to add an account, alias, Category, or token.",
+    title: "Overview is the owner workspace",
+    lede: "Overview is home. Review stays one click away. Settings is in the rail when you need to add an account, alias, Category, or token.",
     hint: "Create at least one Financial Account and one Category.",
   },
 ] as const;

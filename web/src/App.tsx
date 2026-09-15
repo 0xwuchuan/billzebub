@@ -6,11 +6,18 @@ import { useRoute } from "./hooks/useRoute";
 import { useSetup } from "./hooks/useSetup";
 import { useWorkspace } from "./hooks/useWorkspace";
 import { isoDate, monthYearLabel } from "./lib/labels";
-import type { ConfirmationFilter, ReviewFilter, Route } from "./lib/route";
+import {
+  emptyRoute,
+  type ConfirmationFilter,
+  type ReviewFilter,
+  type Route,
+} from "./lib/route";
+import { gatesMet } from "./lib/setup";
 import { ImportsPage } from "./pages/ImportsPage";
+import { OnboardingPage } from "./pages/OnboardingPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { ReviewPage } from "./pages/ReviewPage";
-import { SetupPage } from "./pages/SetupPage";
+import { SettingsPage } from "./pages/SettingsPage";
 import { TransactionsPage } from "./pages/TransactionsPage";
 
 export function App() {
@@ -23,7 +30,10 @@ export function App() {
     categoryCount: ownerCategories.length,
   };
   const { state: setup, dispatch: setupDispatch } = useSetup(gates);
-  const { route, go } = useRoute(setup.onboarded);
+  const configured = gatesMet(gates);
+  const workspaceReady = !workspace.loading;
+  const onboarded = setup.onboarded || (workspaceReady && configured);
+  const { route, go } = useRoute(onboarded);
   const [categoryDraft, setCategoryDraft] = useState<Record<string, string>>(
     {},
   );
@@ -66,15 +76,9 @@ export function App() {
     ) ?? null;
 
   function navigate(page: Route["page"]) {
-    if (page === "setup" && setup.onboarded) {
-      setupDispatch({ type: "goStep", step: 0 });
-    }
     go({
       page,
-      reviewFilter: "",
-      confirmation: "",
-      drawerId: null,
-      importId: null,
+      ...emptyRoute,
     });
   }
 
@@ -132,9 +136,10 @@ export function App() {
     setToast(`Category assigned to ${transaction.counterparty}`);
   }
 
-  if (route.page === "setup") {
+  const showOnboarding = workspaceReady && !setup.onboarded && !configured;
+  if (showOnboarding) {
     return (
-      <SetupPage
+      <OnboardingPage
         state={setup}
         dispatch={setupDispatch}
         gates={gates}
@@ -158,13 +163,23 @@ export function App() {
         onReturn={() => {
           go({
             page: "overview",
-            reviewFilter: "",
-            confirmation: "",
-            drawerId: null,
-            importId: null,
+            ...emptyRoute,
           });
         }}
       />
+    );
+  }
+
+  if (!workspaceReady && !setup.onboarded) {
+    return (
+      <div className="app is-onboarding">
+        <div className="onboard">
+          <article className="card onboard-card">
+            <p className="eyebrow">Billzebub</p>
+            <h1>Loading workspace…</h1>
+          </article>
+        </div>
+      </div>
     );
   }
 
@@ -232,8 +247,8 @@ export function App() {
             }}
             onOpenTransaction={openDrawer}
             onOpenImport={openImport}
-            onOpenSetup={() => {
-              navigate("setup");
+            onOpenSettings={() => {
+              navigate("settings");
             }}
           />
         ) : null}
@@ -247,10 +262,7 @@ export function App() {
               setReviewSelection(reviewId);
               go({
                 page: "review",
-                reviewFilter: "",
-                confirmation: "",
-                drawerId: null,
-                importId: null,
+                ...emptyRoute,
               });
             }}
           />
@@ -279,6 +291,24 @@ export function App() {
             onLoadMore={() => {
               void workspace.loadMoreTransactions();
             }}
+          />
+        ) : null}
+        {route.page === "settings" ? (
+          <SettingsPage
+            identity={workspace.workspace.identity}
+            accounts={workspace.workspace.accounts}
+            adapters={workspace.workspace.adapters}
+            categories={workspace.workspace.categories}
+            tokens={workspace.workspace.tokens}
+            issuedToken={workspace.issuedToken}
+            saving={workspace.saving}
+            onCreateAccount={workspace.addAccount}
+            onAddAlias={workspace.addWalletAlias}
+            onCreateCategory={workspace.addCategory}
+            onIssueToken={workspace.addToken}
+            onRotateToken={workspace.replaceToken}
+            onRevokeToken={workspace.removeToken}
+            onDismissIssuedToken={workspace.dismissIssuedToken}
           />
         ) : null}
       </AppShell>

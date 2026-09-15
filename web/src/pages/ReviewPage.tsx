@@ -31,7 +31,7 @@ export function ReviewPage({
   onDecide,
   onOpenTransaction,
   onOpenImport,
-  onOpenSetup,
+  onOpenSettings,
 }: {
   reviews: Review[];
   transactions: Transaction[];
@@ -49,7 +49,7 @@ export function ReviewPage({
   onDecide: (review: Review, choice: string) => void;
   onOpenTransaction: (id: string) => void;
   onOpenImport: (id: string) => void;
-  onOpenSetup: () => void;
+  onOpenSettings: () => void;
 }) {
   const fresh = useEntrance("review");
   const items = filterReviews(reviews, filter);
@@ -129,7 +129,7 @@ export function ReviewPage({
               onDecide={onDecide}
               onOpenTransaction={onOpenTransaction}
               onOpenImport={onOpenImport}
-              onOpenSetup={onOpenSetup}
+              onOpenSettings={onOpenSettings}
             />
           )}
         </section>
@@ -196,7 +196,7 @@ function Evidence({
   onDecide,
   onOpenTransaction,
   onOpenImport,
-  onOpenSetup,
+  onOpenSettings,
 }: {
   review: Review;
   transaction: Transaction | undefined;
@@ -210,7 +210,7 @@ function Evidence({
   onDecide: (review: Review, choice: string) => void;
   onOpenTransaction: (id: string) => void;
   onOpenImport: (id: string) => void;
-  onOpenSetup: () => void;
+  onOpenSettings: () => void;
 }) {
   const fresh = useEntrance(`review:${review.id}`);
   const blocking = review.severity === "blocking";
@@ -334,7 +334,11 @@ function Evidence({
             ) : null}
             {needsSetup
               ? review.allowed_decisions.map((choice) => (
-                  <Button key={choice} variant="primary" onClick={onOpenSetup}>
+                  <Button
+                    key={choice}
+                    variant="primary"
+                    onClick={onOpenSettings}
+                  >
                     {decisionLabel(choice)}
                   </Button>
                 ))

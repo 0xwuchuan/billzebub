@@ -288,7 +288,7 @@ class OwnerCategoryPageWire(BaseModel):
 class OwnerAliasWire(BaseModel):
     id: UUID
     alias_kind: str
-    masked_value: str
+    display_label: str
 
 
 class OwnerFinancialAccountWire(BaseModel):
@@ -1445,7 +1445,7 @@ def _owner_alias(alias: FinancialAccountAliasRecord) -> OwnerAliasWire:
     return OwnerAliasWire(
         id=alias.id,
         alias_kind=alias.alias_kind,
-        masked_value=alias.masked_value,
+        display_label=alias.display_label,
     )
 
 

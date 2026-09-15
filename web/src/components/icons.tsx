@@ -67,7 +67,7 @@ export function ImportsIcon() {
   );
 }
 
-export function SetupIcon() {
+export function SettingsIcon() {
   return (
     <svg
       width="16"

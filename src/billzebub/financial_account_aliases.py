@@ -67,7 +67,7 @@ class FinancialAccountAliasRecord:
     id: UUID
     financial_account_id: UUID
     alias_kind: str
-    masked_value: str
+    display_label: str
 
 
 class FinancialAccountAliases:
@@ -180,11 +180,9 @@ class FinancialAccountAliases:
         return account
 
     @classmethod
-    def mask_card_label(cls, value: str) -> str:
-        compact = " ".join(value.split())
-        if len(compact) <= 4:
-            return "•" * max(len(compact), 1)
-        return f"{compact[:2]}{'•' * (len(compact) - 4)}{compact[-2:]}"
+    def owner_card_label(cls, value: str) -> str:
+        """Owner-safe Wallet card name or last4. Do not bullet-mask display labels."""
+        return " ".join(value.split())
 
     @classmethod
     def _record(cls, alias: FinancialAccountAlias) -> FinancialAccountAliasRecord:
@@ -192,7 +190,7 @@ class FinancialAccountAliases:
             id=alias.id,
             financial_account_id=alias.financial_account_id,
             alias_kind=alias.alias_kind,
-            masked_value=cls.mask_card_label(alias.value),
+            display_label=cls.owner_card_label(alias.value),
         )
 
     def _matching_alias(self, session: Session, normalized: str) -> FinancialAccountAlias | None:

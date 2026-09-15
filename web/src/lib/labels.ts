@@ -49,8 +49,8 @@ export function decisionLabel(choice: string): string {
     confirm_match: "Confirm match",
     keep_separate: "Keep separate",
     exclude_realtime: "Exclude Real-time Claim",
-    configure_card_alias: "Map Wallet card in Setup",
-    configure_paylah_account: "Create PayLah account in Setup",
+    configure_card_alias: "Map Wallet card in Settings",
+    configure_paylah_account: "Create PayLah account in Settings",
     approve_exact_diff: "Approve reprocess",
     keep_previous_extraction: "Keep previous Extraction",
   };
@@ -122,6 +122,27 @@ export function monthYearLabel(isoDate: string): string {
   ];
   const monthIndex = Number(month) - 1;
   return `${names[monthIndex] ?? month} ${year}`;
+}
+
+export function formatOwnerCardLabel(value: string): string {
+  const compact = value.trim().replace(/\s+/g, " ");
+  if (compact === "") {
+    return compact;
+  }
+  const stripped = compact.replace(/[•*]+/g, " ").replace(/\s+/g, " ").trim();
+  const match = /(\d{4})$/.exec(stripped);
+  if (match === null || match[1] === undefined) {
+    return stripped;
+  }
+  const last4 = match[1];
+  const name = stripped
+    .slice(0, match.index)
+    .replace(/[\s-]+$/u, "")
+    .trim();
+  if (name === "") {
+    return last4;
+  }
+  return `${name} • ${last4}`;
 }
 
 export function isoDate(date: Date): string {

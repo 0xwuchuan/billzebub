@@ -18,7 +18,7 @@ export type OwnerIdentity = {
 export type FinancialAccountAlias = {
   id: string;
   alias_kind: string;
-  masked_value: string;
+  display_label: string;
 };
 
 export type FinancialAccount = {
@@ -327,7 +327,7 @@ async function apiErrorFrom(response: Response): Promise<ApiError> {
     };
     if (typeof body.title === "string" && body.title !== "") {
       if (body.next_step === "configure_via_setup") {
-        return new ApiError(`${body.title}. Open Setup to continue.`);
+        return new ApiError(`${body.title}. Open Settings to continue.`);
       }
       return new ApiError(body.title);
     }
