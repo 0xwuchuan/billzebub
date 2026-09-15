@@ -11,6 +11,7 @@ import { App } from "./App";
 import { SETUP_STORAGE_KEY } from "./lib/setup";
 import { formatMoney } from "./lib/money";
 import { hashFor, parseHash } from "./lib/route";
+import { isoDate } from "./lib/labels";
 import {
   defaultSetupState,
   firstBlockedStep,
@@ -345,6 +346,9 @@ describe("App", () => {
     );
     const drawer = screen.getByRole("navigation", { name: "Navigation" });
     expect(drawer).toBeVisible();
+    expect(
+      within(drawer).getByRole("button", { name: "Imports" }),
+    ).toBeVisible();
     fireEvent.click(
       within(drawer).getByRole("button", { name: "Close navigation" }),
     );
@@ -380,6 +384,127 @@ describe("App", () => {
       );
     });
   });
+
+  it("shows a Provisional Real-time Claim in Overview and Transactions without a statement", async () => {
+    seedOnboarded();
+    window.location.hash = "#/overview";
+    const today = isoDate(new Date());
+    const provisional = {
+      ...transaction,
+      id: "00000000-0000-0000-0000-000000000016",
+      counterparty: "Synthetic Wallet Merchant",
+      posted_amount: { amount: "0", currency: "SGD" },
+      authorized_amount: { amount: "-12.34", currency: "SGD" },
+      effective_date: today,
+      category_splits: [],
+      reviews: [],
+    };
+    vi.stubGlobal(
+      "fetch",
+      mockWorkspace({
+        transactions: [provisional],
+        reviews: [],
+        categories: [],
+      }),
+    );
+
+    render(<App />);
+
+    expect(
+      await screen.findByText("Synthetic Wallet Merchant"),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("−SGD 12.34").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Provisional").length).toBeGreaterThan(0);
+    const provisionalCell = screen.getByRole("button", {
+      name: /1 awaiting a Statement Claim/,
+    });
+    fireEvent.click(provisionalCell);
+    expect(
+      await screen.findByRole("heading", { name: "Transactions" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Synthetic Wallet Merchant")).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: /Synthetic Wallet Merchant/ }),
+    );
+    expect(
+      await screen.findByText("Provisional Real-time Claim"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Categorize" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("lists Extractions on Imports and opens them from a Blocking review", async () => {
+    seedOnboarded();
+    window.location.hash = "#/imports";
+    const failedImport = {
+      id: "00000000-0000-0000-0000-000000000017",
+      source_artifact_id: "00000000-0000-0000-0000-000000000015",
+      financial_account_id: "00000000-0000-0000-0000-000000000018",
+      financial_account_name: "Synthetic Statement Card",
+      status: "failed",
+      adapter_key: "dbs-credit-card",
+      parser_version: "v1",
+      statement_date: "2026-08-31",
+      period_start: "2026-08-01",
+      period_end: "2026-08-31",
+      candidate_row_count: 0,
+      claim_count: 0,
+      failure_code: "account_mismatch",
+      validation_report: { failure: { code: "account_mismatch" } },
+      duplicate_arrivals: 0,
+      active_review_id: "00000000-0000-0000-0000-000000000019",
+      supersedes_extraction_id: null,
+      created_at: "2026-08-31T00:00:00+00:00",
+      accepted_at: null,
+    };
+    const extractionReview = {
+      ...blockingReview,
+      id: "00000000-0000-0000-0000-000000000019",
+      subject_type: "extraction",
+      subject_id: failedImport.id,
+      condition_code: "statement_extraction:account_mismatch",
+    };
+    vi.stubGlobal(
+      "fetch",
+      mockWorkspace({
+        transactions: [],
+        reviews: [extractionReview],
+        categories: [],
+        imports: [failedImport],
+      }),
+    );
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Imports" }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("dbs-credit-card").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("account_mismatch").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: /dbs-credit-card/ }));
+    expect(await screen.findByText("Failure code")).toBeInTheDocument();
+    expect(screen.getAllByText("account_mismatch").length).toBeGreaterThan(0);
+    expect(window.location.hash).toBe(
+      "#/imports/00000000-0000-0000-0000-000000000017",
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open navigation", hidden: true }),
+    );
+    const drawer = screen.getByRole("navigation", { name: "Navigation" });
+    fireEvent.click(within(drawer).getByRole("button", { name: /Review/ }));
+    expect(
+      await screen.findByRole("heading", { name: "Pending Review" }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open Import" }));
+    expect(
+      await screen.findByRole("heading", { name: "Imports" }),
+    ).toBeInTheDocument();
+    expect(window.location.hash).toBe(
+      "#/imports/00000000-0000-0000-0000-000000000017",
+    );
+  });
 });
 
 describe("formatMoney", () => {
@@ -400,8 +525,19 @@ describe("parseHash", () => {
         reviewFilter: "blocking",
         confirmation: "",
         drawerId: null,
+        importId: null,
       }),
     ).toBe("#/review/blocking");
+    expect(parseHash("#/imports", true).page).toBe("imports");
+    expect(
+      parseHash("#/imports/00000000-0000-0000-0000-000000000099", true),
+    ).toEqual({
+      page: "imports",
+      reviewFilter: "",
+      confirmation: "",
+      drawerId: null,
+      importId: "00000000-0000-0000-0000-000000000099",
+    });
   });
 });
 
@@ -442,6 +578,7 @@ function mockWorkspace(input: {
   accounts?: unknown[];
   tokens?: unknown[];
   adapters?: unknown[];
+  imports?: unknown[];
   identity?: { login: string; name: string };
 }) {
   return vi.fn(async (raw: RequestInfo | URL, init?: RequestInit) => {
@@ -459,6 +596,23 @@ function mockWorkspace(input: {
     }
     if (url === "/api/v1/reviews") {
       return json({ items: input.reviews, next_cursor: null });
+    }
+    if (url === "/api/v1/imports") {
+      return json({ items: input.imports ?? [] });
+    }
+    if (url.startsWith("/api/v1/imports/")) {
+      const extractionId = url.slice("/api/v1/imports/".length);
+      const match = (input.imports ?? []).find((item) => {
+        return (
+          typeof item === "object" &&
+          item !== null &&
+          "id" in item &&
+          item.id === extractionId
+        );
+      });
+      if (match !== undefined) {
+        return json(match);
+      }
     }
     if (url === "/api/v1/categories") {
       return json({ items: input.categories });

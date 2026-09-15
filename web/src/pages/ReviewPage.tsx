@@ -1,11 +1,13 @@
-import type { Category, Review, Transaction } from "../api";
+import type { Category, ImportRecord, Review, Transaction } from "../api";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { useEntrance } from "../hooks/useEntrance";
 import {
+  activityAmount,
   contextString,
   contextStrings,
   filterReviews,
+  importForReview,
   transactionForReview,
 } from "../lib/workspace";
 import { decisionLabel, openedLabel, reviewTitle } from "../lib/labels";
@@ -15,6 +17,7 @@ import type { ReviewFilter } from "../lib/route";
 export function ReviewPage({
   reviews,
   transactions,
+  imports,
   categories,
   filter,
   selectedId,
@@ -27,10 +30,12 @@ export function ReviewPage({
   onAssign,
   onDecide,
   onOpenTransaction,
+  onOpenImport,
   onOpenSetup,
 }: {
   reviews: Review[];
   transactions: Transaction[];
+  imports: ImportRecord[];
   categories: Category[];
   filter: ReviewFilter;
   selectedId: string;
@@ -43,6 +48,7 @@ export function ReviewPage({
   onAssign: (transaction: Transaction) => void;
   onDecide: (review: Review, choice: string) => void;
   onOpenTransaction: (id: string) => void;
+  onOpenImport: (id: string) => void;
   onOpenSetup: () => void;
 }) {
   const fresh = useEntrance("review");
@@ -109,6 +115,7 @@ export function ReviewPage({
             <Evidence
               review={selected}
               transaction={transactionForReview(selected, transactions)}
+              importRecord={importForReview(selected, imports)}
               categories={categories}
               draft={
                 selected.subject_type === "transaction"
@@ -121,6 +128,7 @@ export function ReviewPage({
               onAssign={onAssign}
               onDecide={onDecide}
               onOpenTransaction={onOpenTransaction}
+              onOpenImport={onOpenImport}
               onOpenSetup={onOpenSetup}
             />
           )}
@@ -165,7 +173,7 @@ function QueueItem({
         <span className="amount">
           {transaction === undefined
             ? "Source Artifact"
-            : formatUnsigned(transaction.posted_amount)}
+            : formatUnsigned(activityAmount(transaction))}
         </span>
         <span className="queue-age">
           {openedLabel(review.created_at, today)}
@@ -178,6 +186,7 @@ function QueueItem({
 function Evidence({
   review,
   transaction,
+  importRecord,
   categories,
   draft,
   saving,
@@ -186,10 +195,12 @@ function Evidence({
   onAssign,
   onDecide,
   onOpenTransaction,
+  onOpenImport,
   onOpenSetup,
 }: {
   review: Review;
   transaction: Transaction | undefined;
+  importRecord: ImportRecord | undefined;
   categories: Category[];
   draft: string;
   saving: string | null;
@@ -198,6 +209,7 @@ function Evidence({
   onAssign: (transaction: Transaction) => void;
   onDecide: (review: Review, choice: string) => void;
   onOpenTransaction: (id: string) => void;
+  onOpenImport: (id: string) => void;
   onOpenSetup: () => void;
 }) {
   const fresh = useEntrance(`review:${review.id}`);
@@ -234,6 +246,15 @@ function Evidence({
           >
             Open Transaction
           </Button>
+        ) : importRecord !== undefined ? (
+          <Button
+            variant="ghost"
+            onClick={() => {
+              onOpenImport(importRecord.id);
+            }}
+          >
+            Open Import
+          </Button>
         ) : null}
       </div>
       <div className={`evidence-body${fresh ? " stage-enter" : ""}`}>
@@ -247,7 +268,7 @@ function Evidence({
           <dd>
             {transaction === undefined
               ? "No Claims created"
-              : formatUnsigned(transaction.posted_amount)}
+              : formatUnsigned(activityAmount(transaction))}
           </dd>
           <dt>Raw source</dt>
           <dd>{raw}</dd>

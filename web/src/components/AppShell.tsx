@@ -5,6 +5,7 @@ import { titleFor } from "../lib/route";
 import { Badge } from "./ui/Badge";
 import {
   CloseIcon,
+  ImportsIcon,
   MenuIcon,
   OverviewIcon,
   ReviewIcon,
@@ -12,7 +13,7 @@ import {
   TransactionsIcon,
 } from "./icons";
 
-type NavId = "overview" | "review" | "transactions" | "setup";
+type NavId = "overview" | "review" | "transactions" | "imports" | "setup";
 
 type NavItem = {
   id: NavId;
@@ -58,6 +59,11 @@ export function AppShell({
       id: "transactions",
       label: "Transactions",
       icon: <TransactionsIcon />,
+    },
+    {
+      id: "imports",
+      label: "Imports",
+      icon: <ImportsIcon />,
     },
   ];
   const setupItem: NavItem = {

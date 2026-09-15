@@ -1,4 +1,5 @@
-export type RoutePage = "overview" | "review" | "transactions" | "setup";
+export type RoutePage =
+  "overview" | "review" | "transactions" | "imports" | "setup";
 
 export type ReviewFilter = "" | "blocking" | "attention";
 
@@ -9,12 +10,14 @@ export type Route = {
   reviewFilter: ReviewFilter;
   confirmation: ConfirmationFilter;
   drawerId: string | null;
+  importId: string | null;
 };
 
 const emptyRoute = {
   reviewFilter: "" as const,
   confirmation: "" as const,
   drawerId: null,
+  importId: null,
 };
 
 export function defaultRoute(onboarded: boolean): Route {
@@ -34,7 +37,22 @@ export function parseHash(hash: string, onboarded: boolean): Route {
   if (page === "review") {
     const reviewFilter =
       rest === "blocking" || rest === "attention" ? rest : "";
-    return { page: "review", reviewFilter, confirmation: "", drawerId: null };
+    return {
+      page: "review",
+      reviewFilter,
+      confirmation: "",
+      drawerId: null,
+      importId: null,
+    };
+  }
+  if (page === "imports") {
+    return {
+      page: "imports",
+      reviewFilter: "",
+      confirmation: "",
+      drawerId: null,
+      importId: rest === "" ? null : rest,
+    };
   }
   if (page === "transactions") {
     if (rest.startsWith("open/")) {
@@ -44,6 +62,7 @@ export function parseHash(hash: string, onboarded: boolean): Route {
         reviewFilter: "",
         confirmation: "",
         drawerId: drawerId === "" ? null : drawerId,
+        importId: null,
       };
     }
     const confirmation =
@@ -55,6 +74,7 @@ export function parseHash(hash: string, onboarded: boolean): Route {
       reviewFilter: "",
       confirmation,
       drawerId: null,
+      importId: null,
     };
   }
   if (page === "overview") {
@@ -71,6 +91,11 @@ export function hashFor(route: Route): string {
     return route.reviewFilter === ""
       ? "#/review"
       : `#/review/${route.reviewFilter}`;
+  }
+  if (route.page === "imports") {
+    return route.importId === null
+      ? "#/imports"
+      : `#/imports/${route.importId}`;
   }
   if (route.page === "transactions") {
     if (route.drawerId !== null) {
@@ -90,6 +115,9 @@ export function titleFor(page: RoutePage): string {
   }
   if (page === "transactions") {
     return "Transactions";
+  }
+  if (page === "imports") {
+    return "Imports";
   }
   if (page === "setup") {
     return "Setup";

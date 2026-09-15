@@ -5,8 +5,10 @@ import { Button } from "./ui/Button";
 import { categoryLabel, kindLabel } from "../lib/labels";
 import { formatUnsigned } from "../lib/money";
 import {
+  activityAmount,
   confirmationState,
   isExpense,
+  isProvisional,
   needsCategorization,
 } from "../lib/workspace";
 
@@ -78,7 +80,9 @@ function DrawerBody({
   onClose: () => void;
 }) {
   const confirmed = confirmationState(transaction) === "confirmed";
-  const categorize = isExpense(transaction);
+  const provisional = isProvisional(transaction);
+  const categorize = isExpense(transaction) && confirmed;
+  const amount = activityAmount(transaction);
   return (
     <>
       <div className="drawer-head">
@@ -91,7 +95,7 @@ function DrawerBody({
             className="hero-value amount"
             style={{ fontSize: "1.6rem", marginTop: 12 }}
           >
-            {formatUnsigned(transaction.posted_amount)}
+            {formatUnsigned(amount)}
           </p>
         </div>
         <button
@@ -105,8 +109,8 @@ function DrawerBody({
       </div>
       <div className="drawer-body">
         <dl className="kv">
-          <dt>Posted Amount</dt>
-          <dd>{formatUnsigned(transaction.posted_amount)} SGD</dd>
+          <dt>{provisional ? "Authorized Amount" : "Posted Amount"}</dt>
+          <dd>{formatUnsigned(amount)} SGD</dd>
           <dt>Financial Account</dt>
           <dd>{transaction.financial_account.name}</dd>
           <dt>Transaction Kind</dt>
