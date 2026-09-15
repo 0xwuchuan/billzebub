@@ -126,7 +126,7 @@ uv run billzebub account apple-wallet-alias \
   --slug <account-slug> --card-label-file /private/path/wallet-card-label
 ```
 
-Issue an `integration` token with `shortcut:claims:create`, put it only in the Shortcut Authorization header, and send JSON to `/api/v1/ingestions/apple-wallet`. Exact replay bodies share one Source Artifact and one Claim. Unknown Wallet instruments create a Blocking Review and no Claim. Invalid Shortcut JSON creates an Attention Review (`shortcut_payload_invalid`) and no Claim.
+Issue an `integration` token with `shortcut:claims:create`, put it only in the Shortcut Authorization header, and send JSON to `/api/v1/ingestions/apple-wallet`. Exact replay bodies share one Source Artifact and one Claim. Unknown Wallet instruments create a Blocking Review and no Claim. Card labels match after NFKC, folding typographic apostrophes to ASCII `'`, collapsing whitespace (including trailing newlines), and casefolding; genuinely different names still fail closed. Invalid Shortcut JSON creates an Attention Review (`shortcut_payload_invalid`) and no Claim.
 
 Wallet `realtime-1` also accepts `source` aliases `apple-pay`, `apple_pay`, and `Apple Pay`, which normalize to `apple_wallet` before field checks. After deploy, re-ingest stored failed `apple_wallet_shortcut` Extractions by id without changing the Shortcut:
 

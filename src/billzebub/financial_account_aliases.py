@@ -16,9 +16,44 @@ from billzebub.persistence.models import FinancialAccount, FinancialAccountAlias
 if TYPE_CHECKING:
     from billzebub.persistence.database import Database
 
+# Typographic single quotes that iOS / smart punctuation emit instead of U+0027.
+# Applied after NFKC (which already folds fullwidth U+FF07 to apostrophe).
+_APOSTROPHE_FOLD = str.maketrans(
+    {
+        "\u00b4": "'",  # ACUTE ACCENT
+        "\u02b9": "'",  # MODIFIER LETTER PRIME
+        "\u02bc": "'",  # MODIFIER LETTER APOSTROPHE
+        "\u2018": "'",  # LEFT SINGLE QUOTATION MARK
+        "\u2019": "'",  # RIGHT SINGLE QUOTATION MARK
+        "\u201a": "'",  # SINGLE LOW-9 QUOTATION MARK
+        "\u201b": "'",  # SINGLE HIGH-REVERSED-9 QUOTATION MARK
+        "\u2032": "'",  # PRIME
+    }
+)
+
 
 class FinancialAccountAliasError(ValueError):
     """A local Financial Account alias is invalid or ambiguous."""
+
+
+def normalize_apple_wallet_card_label(value: str) -> str:
+    """Canonical form used to compare Shortcut labels with stored aliases.
+
+    Folds, in order:
+
+    1. Unicode NFKC compatibility composition
+    2. Typographic / smart single quotes to ASCII apostrophe U+0027
+    3. Trim and collapse Unicode whitespace, including newlines
+    4. Casefold
+
+    Distinct card names stay distinct. Blank labels are invalid.
+    """
+    compact = " ".join(
+        unicodedata.normalize("NFKC", value).translate(_APOSTROPHE_FOLD).split()
+    ).casefold()
+    if not compact or len(compact) > 160:
+        raise FinancialAccountAliasError("Apple Wallet card label is invalid")
+    return compact
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,10 +104,14 @@ class FinancialAccountAliases:
         return self._add_apple_wallet_card(card_label, account_id=account_id)
 
     def resolve_apple_wallet_card(self, card_label: str) -> AppleWalletAccountRecord | None:
-        normalized = self._normalize(card_label)
+        normalized = normalize_apple_wallet_card_label(card_label)
         with self._database.transaction() as session:
-            row = session.execute(
-                select(FinancialAccount.id, FinancialAccount.default_currency)
+            rows = session.execute(
+                select(
+                    FinancialAccount.id,
+                    FinancialAccount.default_currency,
+                    FinancialAccountAlias.value,
+                )
                 .join(
                     FinancialAccountAlias,
                     FinancialAccountAlias.financial_account_id == FinancialAccount.id,
@@ -80,12 +119,17 @@ class FinancialAccountAliases:
                 .where(
                     FinancialAccount.active.is_(True),
                     FinancialAccountAlias.alias_kind == self._APPLE_WALLET_CARD,
-                    FinancialAccountAlias.normalized_value == normalized,
                 )
-            ).one_or_none()
-        if row is None:
+            ).all()
+        accounts = {
+            row.id: row.default_currency
+            for row in rows
+            if _stored_alias_matches(row.value, normalized)
+        }
+        if len(accounts) != 1:
             return None
-        return AppleWalletAccountRecord(id=row.id, default_currency=row.default_currency)
+        account_id, currency = next(iter(accounts.items()))
+        return AppleWalletAccountRecord(id=account_id, default_currency=currency)
 
     def _add_apple_wallet_card(
         self,
@@ -94,19 +138,15 @@ class FinancialAccountAliases:
         account_slug: str | None = None,
         account_id: UUID | None = None,
     ) -> FinancialAccountAliasRecord:
-        normalized = self._normalize(card_label)
+        normalized = normalize_apple_wallet_card_label(card_label)
         with self._database.transaction() as session:
             account = self._active_account(
                 session, account_slug=account_slug, account_id=account_id
             )
-            existing = session.scalar(
-                select(FinancialAccountAlias).where(
-                    FinancialAccountAlias.alias_kind == self._APPLE_WALLET_CARD,
-                    FinancialAccountAlias.normalized_value == normalized,
-                )
-            )
+            existing = self._matching_alias(session, normalized)
             if existing is not None:
                 if existing.financial_account_id == account.id:
+                    self._heal_normalized_value(session, existing, normalized)
                     return self._record(existing)
                 raise FinancialAccountAliasError("Apple Wallet card label is already mapped")
             alias = FinancialAccountAlias(
@@ -155,9 +195,41 @@ class FinancialAccountAliases:
             masked_value=cls.mask_card_label(alias.value),
         )
 
-    @staticmethod
-    def _normalize(value: str) -> str:
-        normalized = " ".join(unicodedata.normalize("NFKC", value).split()).casefold()
-        if not normalized or len(normalized) > 160:
-            raise FinancialAccountAliasError("Apple Wallet card label is invalid")
-        return normalized
+    def _matching_alias(self, session: Session, normalized: str) -> FinancialAccountAlias | None:
+        aliases = session.scalars(
+            select(FinancialAccountAlias).where(
+                FinancialAccountAlias.alias_kind == self._APPLE_WALLET_CARD
+            )
+        ).all()
+        matches = [alias for alias in aliases if _stored_alias_matches(alias.value, normalized)]
+        if not matches:
+            return None
+        account_ids = {alias.financial_account_id for alias in matches}
+        if len(account_ids) > 1:
+            raise FinancialAccountAliasError("Apple Wallet card label is already mapped")
+        return matches[0]
+
+    def _heal_normalized_value(
+        self,
+        session: Session,
+        alias: FinancialAccountAlias,
+        normalized: str,
+    ) -> None:
+        if alias.normalized_value == normalized:
+            return
+        occupied = session.scalar(
+            select(FinancialAccountAlias.id).where(
+                FinancialAccountAlias.alias_kind == self._APPLE_WALLET_CARD,
+                FinancialAccountAlias.normalized_value == normalized,
+                FinancialAccountAlias.id != alias.id,
+            )
+        )
+        if occupied is None:
+            alias.normalized_value = normalized
+
+
+def _stored_alias_matches(stored_value: str, normalized: str) -> bool:
+    try:
+        return normalize_apple_wallet_card_label(stored_value) == normalized
+    except FinancialAccountAliasError:
+        return False
