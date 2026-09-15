@@ -35,3 +35,7 @@ Owner (not agent, not auto) categorization upserts `counterparty_category_map`:
 - **Source:** `owner_categorization`.
 
 Later passes look up that key first. A later owner correction overwrites the mapping. Auto-assignment does not write the map, so the system cannot train on its own guesses.
+
+## External Codex runner
+
+Unknowns stay as Reviews. The optional host-side script `scripts/agent/codex_categorize.py` calls Codex ChatGPT (`codex exec -m gpt-5.6-luna`, fallback `gpt-5.6-terra`) against the agent API. It is not a Grok Bot and is not part of the NAS app image. Invoke, token issuance, and cron notes are in [`docs/codex-categorizer.md`](codex-categorizer.md).
