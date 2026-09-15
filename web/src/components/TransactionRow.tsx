@@ -2,6 +2,7 @@ import type { Transaction } from "../api";
 import { categoryLabel, dayMonthLabel } from "../lib/labels";
 import { formatMoney, formatUnsigned } from "../lib/money";
 import {
+  activityAmount,
   confirmationState,
   isExpense,
   needsCategorization,
@@ -20,8 +21,8 @@ export function TransactionRow({
   const state = confirmationState(transaction);
   const transfer = !isExpense(transaction) && transaction.kind === "transfer";
   const amount = transfer
-    ? formatUnsigned(transaction.posted_amount)
-    : formatMoney(transaction.posted_amount, true);
+    ? formatUnsigned(activityAmount(transaction))
+    : formatMoney(activityAmount(transaction), true);
   return (
     <button
       className="row"

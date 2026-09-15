@@ -7,6 +7,7 @@ import { useSetup } from "./hooks/useSetup";
 import { useWorkspace } from "./hooks/useWorkspace";
 import { isoDate, monthYearLabel } from "./lib/labels";
 import type { ConfirmationFilter, ReviewFilter, Route } from "./lib/route";
+import { ImportsPage } from "./pages/ImportsPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { ReviewPage } from "./pages/ReviewPage";
 import { SetupPage } from "./pages/SetupPage";
@@ -73,6 +74,7 @@ export function App() {
       reviewFilter: "",
       confirmation: "",
       drawerId: null,
+      importId: null,
     });
   }
 
@@ -83,6 +85,7 @@ export function App() {
       reviewFilter: "",
       confirmation,
       drawerId: null,
+      importId: null,
     });
   }
 
@@ -92,6 +95,7 @@ export function App() {
       reviewFilter: filter,
       confirmation: "",
       drawerId: null,
+      importId: null,
     });
   }
 
@@ -101,6 +105,17 @@ export function App() {
       reviewFilter: "",
       confirmation: route.page === "transactions" ? route.confirmation : "",
       drawerId: id,
+      importId: null,
+    });
+  }
+
+  function openImport(id: string | null = null) {
+    go({
+      page: "imports",
+      reviewFilter: "",
+      confirmation: "",
+      drawerId: null,
+      importId: id,
     });
   }
 
@@ -146,6 +161,7 @@ export function App() {
             reviewFilter: "",
             confirmation: "",
             drawerId: null,
+            importId: null,
           });
         }}
       />
@@ -191,6 +207,7 @@ export function App() {
           <ReviewPage
             reviews={workspace.workspace.reviews}
             transactions={workspace.workspace.transactions.items}
+            imports={workspace.workspace.imports}
             categories={ownerCategories}
             filter={route.reviewFilter}
             selectedId={reviewSelection}
@@ -214,8 +231,27 @@ export function App() {
               });
             }}
             onOpenTransaction={openDrawer}
+            onOpenImport={openImport}
             onOpenSetup={() => {
               navigate("setup");
+            }}
+          />
+        ) : null}
+        {route.page === "imports" ? (
+          <ImportsPage
+            imports={workspace.workspace.imports}
+            selectedId={route.importId}
+            today={today}
+            onSelect={openImport}
+            onOpenReview={(reviewId) => {
+              setReviewSelection(reviewId);
+              go({
+                page: "review",
+                reviewFilter: "",
+                confirmation: "",
+                drawerId: null,
+                importId: null,
+              });
             }}
           />
         ) : null}
@@ -235,6 +271,7 @@ export function App() {
                 reviewFilter: "",
                 confirmation: value,
                 drawerId: null,
+                importId: null,
               });
             }}
             onCategory={setListCategory}

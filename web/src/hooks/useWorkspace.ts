@@ -8,6 +8,7 @@ import {
   decideReview,
   getCategories,
   getFinancialAccounts,
+  getImports,
   getReviews,
   getStatementAdapters,
   getTokens,
@@ -20,6 +21,7 @@ import {
   type CreateFinancialAccountInput,
   type FinancialAccount,
   type IssuedToken,
+  type ImportRecord,
   type IntegrationToken,
   type OwnerIdentity,
   type Review,
@@ -33,6 +35,7 @@ export type WorkspaceSnapshot = {
   identity: OwnerIdentity | null;
   transactions: TransactionPage;
   reviews: Review[];
+  imports: ImportRecord[];
   categories: Category[];
   accounts: FinancialAccount[];
   adapters: StatementAdapter[];
@@ -43,6 +46,7 @@ const emptyWorkspace: WorkspaceSnapshot = {
   identity: null,
   transactions: { items: [], next_cursor: null },
   reviews: [],
+  imports: [],
   categories: [],
   accounts: [],
   adapters: [],
@@ -327,6 +331,7 @@ async function fetchWorkspace(): Promise<WorkspaceSnapshot> {
     identity,
     transactions,
     reviews,
+    imports,
     categories,
     accounts,
     adapters,
@@ -335,6 +340,7 @@ async function fetchWorkspace(): Promise<WorkspaceSnapshot> {
     getWhoami(),
     getTransactions(),
     getReviews(),
+    getImports(),
     getCategories(),
     getFinancialAccounts(),
     getStatementAdapters(),
@@ -344,6 +350,7 @@ async function fetchWorkspace(): Promise<WorkspaceSnapshot> {
     identity,
     transactions,
     reviews: reviews.items,
+    imports: imports.items,
     categories: categories.items,
     accounts: accounts.items,
     adapters: adapters.items,

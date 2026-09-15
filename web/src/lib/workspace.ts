@@ -1,4 +1,4 @@
-import type { Review, Transaction } from "../api";
+import type { ImportRecord, Review, Transaction } from "../api";
 import { amountToCents, centsToMoney } from "./money";
 import { isoDate } from "./labels";
 
@@ -43,6 +43,15 @@ export function isProvisional(transaction: Transaction): boolean {
     transaction.authorized_amount !== null &&
     amountToCents(transaction.posted_amount.amount) === 0
   );
+}
+
+export function activityAmount(
+  transaction: Transaction,
+): Transaction["posted_amount"] {
+  if (isProvisional(transaction) && transaction.authorized_amount !== null) {
+    return transaction.authorized_amount;
+  }
+  return transaction.posted_amount;
 }
 
 export function confirmationState(
@@ -135,7 +144,7 @@ export function weekBars(transactions: Transaction[], today: Date): WeekBar[] {
       )
       .reduce(
         (sum, transaction) =>
-          sum + Math.abs(amountToCents(transaction.posted_amount.amount)),
+          sum + Math.abs(amountToCents(activityAmount(transaction).amount)),
         0,
       );
   });
@@ -242,8 +251,8 @@ export function sortTransactions(items: Transaction[]): Transaction[] {
       return left.effective_date < right.effective_date ? 1 : -1;
     }
     return (
-      Math.abs(amountToCents(right.posted_amount.amount)) -
-      Math.abs(amountToCents(left.posted_amount.amount))
+      Math.abs(amountToCents(activityAmount(right).amount)) -
+      Math.abs(amountToCents(activityAmount(left).amount))
     );
   });
 }
@@ -278,12 +287,30 @@ export function transactionForReview(
   review: Review,
   transactions: Transaction[],
 ): Transaction | undefined {
-  if (review.subject_type !== "transaction") {
+  if (
+    review.subject_type !== "transaction" &&
+    review.subject_type !== "claim"
+  ) {
     return undefined;
   }
   return transactions.find(
     (transaction) => transaction.id === review.subject_id,
   );
+}
+
+export function importForReview(
+  review: Review,
+  imports: ImportRecord[],
+): ImportRecord | undefined {
+  if (review.subject_type === "extraction") {
+    return imports.find((item) => item.id === review.subject_id);
+  }
+  if (review.subject_type === "source_artifact") {
+    return imports.find(
+      (item) => item.source_artifact_id === review.subject_id,
+    );
+  }
+  return undefined;
 }
 
 export function contextString(

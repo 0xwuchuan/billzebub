@@ -99,6 +99,32 @@ export type ReviewPage = {
   next_cursor: string | null;
 };
 
+export type ImportRecord = {
+  id: string;
+  source_artifact_id: string;
+  financial_account_id: string | null;
+  financial_account_name: string | null;
+  status: string;
+  adapter_key: string | null;
+  parser_version: string;
+  statement_date: string | null;
+  period_start: string | null;
+  period_end: string | null;
+  candidate_row_count: number | null;
+  claim_count: number;
+  failure_code: string | null;
+  validation_report: Record<string, unknown>;
+  duplicate_arrivals: number;
+  active_review_id: string | null;
+  supersedes_extraction_id: string | null;
+  created_at: string;
+  accepted_at: string | null;
+};
+
+export type ImportPage = {
+  items: ImportRecord[];
+};
+
 export type CreateFinancialAccountInput = {
   slug: string;
   display_name: string;
@@ -131,6 +157,16 @@ export async function getTransactions(
 
 export async function getReviews(): Promise<ReviewPage> {
   return request<ReviewPage>("/api/v1/reviews");
+}
+
+export async function getImports(): Promise<ImportPage> {
+  return request<ImportPage>("/api/v1/imports");
+}
+
+export async function getImport(extractionId: string): Promise<ImportRecord> {
+  return request<ImportRecord>(
+    `/api/v1/imports/${encodeURIComponent(extractionId)}`,
+  );
 }
 
 export async function getCategories(): Promise<{ items: Category[] }> {

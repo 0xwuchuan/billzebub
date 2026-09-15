@@ -50,6 +50,23 @@ export function TransactionsIcon() {
   );
 }
 
+export function ImportsIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+    >
+      <path d="M3 12.5h10v-7H3z" />
+      <path d="M8 3.5v5M5.5 6.5L8 8.5 10.5 6.5" />
+    </svg>
+  );
+}
+
 export function SetupIcon() {
   return (
     <svg

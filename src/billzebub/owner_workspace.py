@@ -7,28 +7,37 @@ import json
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import and_, or_, select
 from sqlalchemy.engine import Row
 from sqlalchemy.orm import Session
 
+from billzebub.claims import ClaimDisposition, ClaimType
 from billzebub.financial_history import CategorySplitRecord, TransactionKind
 from billzebub.money import Money
 from billzebub.persistence.models import (
     Category,
     CategorySplit,
+    Claim,
+    ClaimDispositionEvent,
     FinancialAccount,
     FinancialTransaction,
     PendingReview,
+    TransactionClaim,
     TransactionVersion,
 )
 from billzebub.reviews import PendingReviewStatus, ReviewSeverity
 
 if TYPE_CHECKING:
     from billzebub.persistence.database import Database
+
+_ELIGIBLE_REAL_TIME_DISPOSITIONS = frozenset(
+    {ClaimDisposition.PROVISIONAL.value, ClaimDisposition.UNCONFIRMED.value}
+)
 
 
 class OwnerWorkspaceError(ValueError):
@@ -89,8 +98,14 @@ class OwnerReviewPage:
 class OwnerWorkspace:
     """Own compact, current-state browser projections without exposing a table API."""
 
-    def __init__(self, database: Database) -> None:
+    def __init__(
+        self,
+        database: Database,
+        *,
+        reporting_timezone: str = "Asia/Singapore",
+    ) -> None:
         self._database = database
+        self._reporting_timezone = ZoneInfo(reporting_timezone)
 
     def list_transactions(
         self,
@@ -105,62 +120,29 @@ class OwnerWorkspace:
             raise OwnerWorkspaceError("Transaction page limit must be between 1 and 100")
         position = self._decode_transaction_cursor(cursor) if cursor is not None else None
         with self._database.transaction() as session:
-            statement = (
-                select(FinancialTransaction, TransactionVersion, FinancialAccount)
-                .join(
-                    TransactionVersion,
-                    and_(
-                        TransactionVersion.transaction_id == FinancialTransaction.id,
-                        TransactionVersion.version == FinancialTransaction.current_version,
-                    ),
-                )
-                .join(
-                    FinancialAccount,
-                    FinancialAccount.id == FinancialTransaction.financial_account_id,
-                )
-                .order_by(TransactionVersion.effective_date.desc(), FinancialTransaction.id.desc())
-                .limit(limit + 1)
+            confirmed = self._confirmed_transactions(
+                session,
+                position=position,
+                limit=limit + 1,
+                financial_account_id=financial_account_id,
+                kind=kind,
+                needs_review=needs_review,
             )
-            if financial_account_id is not None:
-                statement = statement.where(
-                    FinancialTransaction.financial_account_id == financial_account_id
-                )
-            if kind is not None:
-                statement = statement.where(TransactionVersion.kind == kind.value)
-            if needs_review is not None:
-                has_pending_review = (
-                    select(PendingReview.id)
-                    .where(
-                        PendingReview.subject_type == "transaction",
-                        PendingReview.subject_id == FinancialTransaction.id,
-                        PendingReview.status == PendingReviewStatus.PENDING.value,
-                    )
-                    .exists()
-                )
-                statement = statement.where(
-                    has_pending_review if needs_review else ~has_pending_review
-                )
-            if position is not None:
-                effective_date, transaction_id = position
-                statement = statement.where(
-                    or_(
-                        TransactionVersion.effective_date < effective_date,
-                        and_(
-                            TransactionVersion.effective_date == effective_date,
-                            FinancialTransaction.id < transaction_id,
-                        ),
-                    )
-                )
-            rows = session.execute(statement).all()
-            page_rows = rows[:limit]
-            items = self._transactions_from_models(session, page_rows)
+            provisional = self._provisional_claims(
+                session,
+                position=position,
+                limit=limit + 1,
+                financial_account_id=financial_account_id,
+                kind=kind,
+                needs_review=needs_review,
+            )
+            combined = _sort_activity((*confirmed, *provisional))
+            page_items = combined[:limit]
             next_cursor = None
-            if len(rows) > limit and page_rows:
-                last_transaction, last_version, _last_account = page_rows[-1]
-                next_cursor = self._encode_transaction_cursor(
-                    last_version.effective_date.isoformat(), last_transaction.id
-                )
-            return OwnerTransactionPage(items=items, next_cursor=next_cursor)
+            if len(combined) > limit and page_items:
+                last = page_items[-1]
+                next_cursor = self._encode_transaction_cursor(last.effective_date, last.id)
+            return OwnerTransactionPage(items=page_items, next_cursor=next_cursor)
 
     def get_transaction(self, transaction_id: UUID) -> OwnerTransaction:
         with self._database.transaction() as session:
@@ -179,9 +161,12 @@ class OwnerWorkspace:
                 )
                 .where(FinancialTransaction.id == transaction_id)
             ).one_or_none()
-            if row is None:
-                raise OwnerWorkspaceError("Transaction was not found")
-            return self._transactions_from_models(session, [row])[0]
+            if row is not None:
+                return self._transactions_from_models(session, [row])[0]
+            provisional = self._provisional_claims(session, claim_id=transaction_id, limit=1)
+            if provisional:
+                return provisional[0]
+            raise OwnerWorkspaceError("Transaction was not found")
 
     def list_reviews(
         self,
@@ -228,6 +213,188 @@ class OwnerWorkspace:
             if review is None:
                 raise OwnerWorkspaceError("Pending Review was not found")
             return self._review(review)
+
+    def _confirmed_transactions(
+        self,
+        session: Session,
+        *,
+        position: tuple[date, UUID] | None = None,
+        limit: int,
+        financial_account_id: UUID | None = None,
+        kind: TransactionKind | None = None,
+        needs_review: bool | None = None,
+    ) -> tuple[OwnerTransaction, ...]:
+        statement = (
+            select(FinancialTransaction, TransactionVersion, FinancialAccount)
+            .join(
+                TransactionVersion,
+                and_(
+                    TransactionVersion.transaction_id == FinancialTransaction.id,
+                    TransactionVersion.version == FinancialTransaction.current_version,
+                ),
+            )
+            .join(
+                FinancialAccount,
+                FinancialAccount.id == FinancialTransaction.financial_account_id,
+            )
+            .order_by(TransactionVersion.effective_date.desc(), FinancialTransaction.id.desc())
+            .limit(limit)
+        )
+        if financial_account_id is not None:
+            statement = statement.where(
+                FinancialTransaction.financial_account_id == financial_account_id
+            )
+        if kind is not None:
+            statement = statement.where(TransactionVersion.kind == kind.value)
+        if needs_review is not None:
+            has_pending_review = (
+                select(PendingReview.id)
+                .where(
+                    PendingReview.subject_type == "transaction",
+                    PendingReview.subject_id == FinancialTransaction.id,
+                    PendingReview.status == PendingReviewStatus.PENDING.value,
+                )
+                .exists()
+            )
+            statement = statement.where(has_pending_review if needs_review else ~has_pending_review)
+        if position is not None:
+            effective_date, transaction_id = position
+            statement = statement.where(
+                or_(
+                    TransactionVersion.effective_date < effective_date,
+                    and_(
+                        TransactionVersion.effective_date == effective_date,
+                        FinancialTransaction.id < transaction_id,
+                    ),
+                )
+            )
+        return self._transactions_from_models(session, session.execute(statement).all())
+
+    def _provisional_claims(
+        self,
+        session: Session,
+        *,
+        position: tuple[date, UUID] | None = None,
+        limit: int,
+        financial_account_id: UUID | None = None,
+        kind: TransactionKind | None = None,
+        needs_review: bool | None = None,
+        claim_id: UUID | None = None,
+    ) -> tuple[OwnerTransaction, ...]:
+        latest_disposition = (
+            select(
+                ClaimDispositionEvent.claim_id.label("claim_id"),
+                ClaimDispositionEvent.disposition.label("disposition"),
+            )
+            .distinct(ClaimDispositionEvent.claim_id)
+            .order_by(
+                ClaimDispositionEvent.claim_id,
+                ClaimDispositionEvent.occurred_at.desc(),
+                ClaimDispositionEvent.id.desc(),
+            )
+            .subquery()
+        )
+        statement = (
+            select(Claim, FinancialAccount)
+            .join(FinancialAccount, FinancialAccount.id == Claim.financial_account_id)
+            .join(latest_disposition, latest_disposition.c.claim_id == Claim.id)
+            .where(
+                Claim.claim_type == ClaimType.REAL_TIME.value,
+                latest_disposition.c.disposition.in_(_ELIGIBLE_REAL_TIME_DISPOSITIONS),
+                Claim.authorized_amount.is_not(None),
+                Claim.authorized_currency.is_not(None),
+                Claim.occurrence_at.is_not(None),
+                ~Claim.id.in_(select(TransactionClaim.claim_id)),
+            )
+        )
+        if claim_id is not None:
+            statement = statement.where(Claim.id == claim_id)
+        if financial_account_id is not None:
+            statement = statement.where(Claim.financial_account_id == financial_account_id)
+        if needs_review is not None:
+            has_pending_review = (
+                select(PendingReview.id)
+                .where(
+                    PendingReview.subject_type == "claim",
+                    PendingReview.subject_id == Claim.id,
+                    PendingReview.status == PendingReviewStatus.PENDING.value,
+                )
+                .exists()
+            )
+            statement = statement.where(has_pending_review if needs_review else ~has_pending_review)
+        rows = session.execute(statement).all()
+        items = self._claims_from_models(session, rows)
+        if kind is not None:
+            items = tuple(item for item in items if item.kind == kind)
+        if position is not None:
+            effective_date, item_id = position
+            cursor_date = effective_date.isoformat()
+            items = tuple(
+                item
+                for item in items
+                if item.effective_date < cursor_date
+                or (item.effective_date == cursor_date and item.id < item_id)
+            )
+        return _sort_activity(items)[:limit]
+
+    def _claims_from_models(
+        self,
+        session: Session,
+        rows: Sequence[Row[tuple[Claim, FinancialAccount]]],
+    ) -> tuple[OwnerTransaction, ...]:
+        if not rows:
+            return ()
+        claim_ids = [claim.id for claim, _account in rows]
+        reviews_by_claim: dict[UUID, list[OwnerReviewSummary]] = defaultdict(list)
+        reviews = session.scalars(
+            select(PendingReview)
+            .where(
+                PendingReview.subject_type == "claim",
+                PendingReview.subject_id.in_(claim_ids),
+                PendingReview.status == PendingReviewStatus.PENDING.value,
+            )
+            .order_by(PendingReview.created_at, PendingReview.id)
+        ).all()
+        for review in reviews:
+            reviews_by_claim[review.subject_id].append(
+                OwnerReviewSummary(
+                    id=review.id,
+                    condition_code=review.condition_code,
+                    severity=ReviewSeverity(review.severity),
+                    version=review.version,
+                    allowed_decisions=tuple(review.allowed_decisions),
+                )
+            )
+        items: list[OwnerTransaction] = []
+        for claim, account in rows:
+            if (
+                claim.authorized_amount is None
+                or claim.authorized_currency is None
+                or claim.occurrence_at is None
+            ):
+                continue
+            authorized = Money(claim.authorized_amount, claim.authorized_currency)
+            items.append(
+                OwnerTransaction(
+                    id=claim.id,
+                    version=1,
+                    financial_account_id=account.id,
+                    financial_account_name=account.display_name,
+                    counterparty=_counterparty(claim.raw_description),
+                    posted_amount=Money.parse("0", authorized.currency),
+                    authorized_amount=authorized,
+                    effective_date=self._claim_effective_date(claim).isoformat(),
+                    kind=_claim_kind(claim.transaction_kind_hint),
+                    category_splits=(),
+                    reviews=tuple(reviews_by_claim[claim.id]),
+                )
+            )
+        return tuple(items)
+
+    def _claim_effective_date(self, claim: Claim) -> date:
+        if claim.occurrence_at is None:
+            raise OwnerWorkspaceError("Real-time Claim is missing occurrence time")
+        return claim.occurrence_at.astimezone(self._reporting_timezone).date()
 
     @classmethod
     def _transactions_from_models(
@@ -322,8 +489,6 @@ class OwnerWorkspace:
     def _decode_transaction_cursor(cursor: str) -> tuple[Any, UUID]:
         payload = _decode_cursor(cursor)
         try:
-            from datetime import date
-
             return date.fromisoformat(payload["effective_date"]), UUID(payload["transaction_id"])
         except (KeyError, TypeError, ValueError) as error:
             raise OwnerWorkspaceError("Transaction cursor is invalid") from error
@@ -342,6 +507,23 @@ class OwnerWorkspace:
             return created_at, UUID(payload["review_id"])
         except (KeyError, TypeError, ValueError) as error:
             raise OwnerWorkspaceError("Pending Review cursor is invalid") from error
+
+
+def _sort_activity(items: Sequence[OwnerTransaction]) -> tuple[OwnerTransaction, ...]:
+    return tuple(sorted(items, key=lambda item: (item.effective_date, item.id), reverse=True))
+
+
+def _counterparty(raw_description: str) -> str:
+    return " ".join(raw_description.split())[:300]
+
+
+def _claim_kind(hint: str | None) -> TransactionKind:
+    if hint is None:
+        return TransactionKind.EXPENSE
+    try:
+        return TransactionKind(hint)
+    except ValueError:
+        return TransactionKind.EXPENSE
 
 
 def _encode_cursor(payload: dict[str, str]) -> str:
