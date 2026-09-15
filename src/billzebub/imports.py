@@ -17,6 +17,12 @@ from billzebub.persistence.models import (
     FinancialAccount,
     PendingReview,
 )
+from billzebub.statement_coverage import (
+    DEFAULT_WINDOW_MONTHS,
+    StatementCoverageReport,
+    report_for_session,
+    reporting_today,
+)
 
 
 class ImportNotFoundError(LookupError):
@@ -65,6 +71,17 @@ class ImportCatalog:
             if extraction is None:
                 raise ImportNotFoundError(str(extraction_id))
             return self._record(session, extraction)
+
+    def coverage(
+        self,
+        *,
+        months: int = DEFAULT_WINDOW_MONTHS,
+        as_of: date | None = None,
+    ) -> StatementCoverageReport:
+        """Project calendar-month coverage from accepted Extraction periods."""
+        as_of_date = as_of if as_of is not None else reporting_today()
+        with self._database.transaction() as session:
+            return report_for_session(session, as_of=as_of_date, months=months)
 
     @staticmethod
     def _record(session: Session, extraction: Extraction) -> ImportRecord:

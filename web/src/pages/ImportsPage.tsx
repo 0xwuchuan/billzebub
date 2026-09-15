@@ -1,4 +1,5 @@
-import type { ImportRecord } from "../api";
+import type { ImportRecord, StatementCoverageReport } from "../api";
+import { StatementCoveragePanel } from "../components/StatementCoveragePanel";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { useEntrance } from "../hooks/useEntrance";
@@ -6,60 +7,82 @@ import { openedLabel } from "../lib/labels";
 
 export function ImportsPage({
   imports,
+  coverage,
   selectedId,
+  accountId,
   today,
   onSelect,
+  onSelectAccount,
+  onClearAccount,
   onOpenReview,
 }: {
   imports: ImportRecord[];
+  coverage: StatementCoverageReport | null;
   selectedId: string | null;
+  accountId: string | null;
   today: Date;
   onSelect: (id: string) => void;
+  onSelectAccount: (accountId: string) => void;
+  onClearAccount: () => void;
   onOpenReview: (reviewId: string) => void;
 }) {
   const fresh = useEntrance("imports");
+  const visible =
+    accountId === null
+      ? imports
+      : imports.filter((item) => item.financial_account_id === accountId);
   const selected =
-    imports.find((item) => item.id === selectedId) ?? imports[0] ?? null;
+    visible.find((item) => item.id === selectedId) ?? visible[0] ?? null;
   return (
-    <div className={`desk${fresh ? " stage-enter" : ""}`}>
-      <section className="card queue-pane" aria-label="Import history">
-        <div className="panel-head">
-          <h2>Extractions</h2>
-          <span className="muted" style={{ fontSize: "var(--bz-text-sm)" }}>
-            {imports.length} recorded
-          </span>
-        </div>
-        {imports.length === 0 ? (
-          <p className="empty">
-            No Extractions yet. Accepted statements and Shortcut ingest appear
-            here.
-          </p>
-        ) : (
-          <div className="queue-list">
-            {imports.map((item) => (
-              <ImportRow
-                key={item.id}
-                item={item}
-                current={selected !== null && selected.id === item.id}
-                onSelect={onSelect}
-              />
-            ))}
+    <div className={`imports-stage${fresh ? " stage-enter" : ""}`}>
+      <StatementCoveragePanel
+        coverage={coverage}
+        selectedAccountId={accountId}
+        onSelectAccount={onSelectAccount}
+        onClearAccount={onClearAccount}
+      />
+      <div className="desk">
+        <section className="card queue-pane" aria-label="Import history">
+          <div className="panel-head">
+            <h2>Extractions</h2>
+            <span className="muted" style={{ fontSize: "var(--bz-text-sm)" }}>
+              {visible.length} recorded
+            </span>
           </div>
-        )}
-      </section>
-      <section className="card evidence-pane" aria-live="polite">
-        {selected === null ? (
-          <p className="empty">
-            Process a statement or Shortcut ingest to inspect Extraction status.
-          </p>
-        ) : (
-          <ImportDetail
-            item={selected}
-            today={today}
-            onOpenReview={onOpenReview}
-          />
-        )}
-      </section>
+          {visible.length === 0 ? (
+            <p className="empty">
+              {accountId === null
+                ? "No Extractions yet. Accepted statements and Shortcut ingest appear here."
+                : "No Extractions for this Financial Account yet."}
+            </p>
+          ) : (
+            <div className="queue-list">
+              {visible.map((item) => (
+                <ImportRow
+                  key={item.id}
+                  item={item}
+                  current={selected !== null && selected.id === item.id}
+                  onSelect={onSelect}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+        <section className="card evidence-pane" aria-live="polite">
+          {selected === null ? (
+            <p className="empty">
+              Process a statement or Shortcut ingest to inspect Extraction
+              status.
+            </p>
+          ) : (
+            <ImportDetail
+              item={selected}
+              today={today}
+              onOpenReview={onOpenReview}
+            />
+          )}
+        </section>
+      </div>
     </div>
   );
 }

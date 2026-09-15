@@ -6,10 +6,12 @@ import type {
   IntegrationToken,
   OwnerIdentity,
   StatementAdapter,
+  StatementCoverageReport,
 } from "../api";
 import { AccountsPanel } from "../components/settings/AccountsPanel";
 import { CategoriesPanel } from "../components/settings/CategoriesPanel";
 import { SourcesPanel } from "../components/settings/SourcesPanel";
+import { StatementCoveragePanel } from "../components/StatementCoveragePanel";
 import { TokensPanel } from "../components/settings/TokensPanel";
 import { useEntrance } from "../hooks/useEntrance";
 
@@ -20,6 +22,7 @@ export function SettingsPage({
   categories,
   tokens,
   issuedToken,
+  coverage,
   saving,
   onCreateAccount,
   onAddAlias,
@@ -28,6 +31,7 @@ export function SettingsPage({
   onRotateToken,
   onRevokeToken,
   onDismissIssuedToken,
+  onOpenAccountImports,
 }: {
   identity: OwnerIdentity | null;
   accounts: FinancialAccount[];
@@ -35,6 +39,7 @@ export function SettingsPage({
   categories: Category[];
   tokens: IntegrationToken[];
   issuedToken: IssuedToken | null;
+  coverage: StatementCoverageReport | null;
   saving: string | null;
   onCreateAccount: (input: CreateFinancialAccountInput) => Promise<void>;
   onAddAlias: (accountId: string, cardLabel: string) => Promise<void>;
@@ -43,6 +48,7 @@ export function SettingsPage({
   onRotateToken: (tokenId: string) => Promise<void>;
   onRevokeToken: (tokenId: string) => Promise<void>;
   onDismissIssuedToken: () => void;
+  onOpenAccountImports: (accountId: string) => void;
 }) {
   const fresh = useEntrance("settings");
   const inboxReady = accounts.filter(
@@ -77,6 +83,11 @@ export function SettingsPage({
           onCreateAccount={onCreateAccount}
         />
       </section>
+      <StatementCoveragePanel
+        coverage={coverage}
+        selectedAccountId={null}
+        onSelectAccount={onOpenAccountImports}
+      />
       <section className="card settings-section">
         <h2>Wallet aliases</h2>
         <SourcesPanel

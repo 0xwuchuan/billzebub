@@ -16,6 +16,7 @@ export type Route = {
   confirmation: ConfirmationFilter;
   drawerId: string | null;
   importId: string | null;
+  accountId: string | null;
 };
 
 export const emptyRoute = {
@@ -23,6 +24,7 @@ export const emptyRoute = {
   confirmation: "" as const,
   drawerId: null,
   importId: null,
+  accountId: null,
 };
 
 export function defaultRoute(onboarded: boolean): Route {
@@ -34,7 +36,13 @@ export function defaultRoute(onboarded: boolean): Route {
 
 export function parseHash(hash: string, onboarded: boolean): Route {
   const raw = hash.replace(/^#\/?/, "");
-  const [page, ...restParts] = raw.split("/");
+  const [pathPart, queryPart] = raw.split("?");
+  const path = pathPart ?? "";
+  const params = new URLSearchParams(queryPart ?? "");
+  const accountParam = params.get("account");
+  const accountId =
+    accountParam !== null && accountParam !== "" ? accountParam : null;
+  const [page, ...restParts] = path.split("/");
   const rest = restParts.join("/");
   if (page === "onboarding" || page === "setup") {
     return {
@@ -54,6 +62,7 @@ export function parseHash(hash: string, onboarded: boolean): Route {
       confirmation: "",
       drawerId: null,
       importId: null,
+      accountId: null,
     };
   }
   if (page === "imports") {
@@ -63,6 +72,7 @@ export function parseHash(hash: string, onboarded: boolean): Route {
       confirmation: "",
       drawerId: null,
       importId: rest === "" ? null : rest,
+      accountId,
     };
   }
   if (page === "transactions") {
@@ -74,6 +84,7 @@ export function parseHash(hash: string, onboarded: boolean): Route {
         confirmation: "",
         drawerId: drawerId === "" ? null : drawerId,
         importId: null,
+        accountId: null,
       };
     }
     const confirmation =
@@ -86,6 +97,7 @@ export function parseHash(hash: string, onboarded: boolean): Route {
       confirmation,
       drawerId: null,
       importId: null,
+      accountId: null,
     };
   }
   if (page === "overview") {
@@ -107,9 +119,12 @@ export function hashFor(route: Route): string {
       : `#/review/${route.reviewFilter}`;
   }
   if (route.page === "imports") {
-    return route.importId === null
-      ? "#/imports"
-      : `#/imports/${route.importId}`;
+    const path =
+      route.importId === null ? "#/imports" : `#/imports/${route.importId}`;
+    if (route.accountId === null) {
+      return path;
+    }
+    return `${path}?account=${encodeURIComponent(route.accountId)}`;
   }
   if (route.page === "transactions") {
     if (route.drawerId !== null) {

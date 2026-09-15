@@ -7,7 +7,7 @@ import tempfile
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any, Literal, Protocol, cast
 from uuid import UUID
@@ -63,6 +63,11 @@ from billzebub.review_actions import (
 )
 from billzebub.reviews import PendingReviewStatus, ReviewDecision, ReviewError
 from billzebub.statement_adapters import configured_statement_adapters
+from billzebub.statement_coverage import (
+    DEFAULT_WINDOW_MONTHS,
+    StatementCoverageError,
+    StatementCoverageReport,
+)
 from billzebub.statement_extraction import StatementAdapterRegistry, StatementExtraction
 from billzebub.tokens import (
     IssuedToken,
@@ -79,6 +84,13 @@ class ImportCatalogRuntime(Protocol):
     def list(self) -> tuple[ImportRecord, ...]: ...
 
     def get(self, extraction_id: UUID) -> ImportRecord: ...
+
+    def coverage(
+        self,
+        *,
+        months: int = DEFAULT_WINDOW_MONTHS,
+        as_of: date | None = None,
+    ) -> StatementCoverageReport: ...
 
 
 class CategoryCatalogRuntime(Protocol):
@@ -317,6 +329,25 @@ class OwnerStatementAdapterWire(BaseModel):
 
 class OwnerStatementAdapterPageWire(BaseModel):
     items: list[OwnerStatementAdapterWire]
+
+
+class StatementCoverageMonthWire(BaseModel):
+    month: str
+    status: Literal["present", "missing", "partial"]
+
+
+class StatementCoverageAccountWire(BaseModel):
+    id: UUID
+    display_name: str
+    slug: str
+    months: list[StatementCoverageMonthWire]
+
+
+class StatementCoverageWire(BaseModel):
+    as_of: date
+    timezone: str
+    window_months: int
+    accounts: list[StatementCoverageAccountWire]
 
 
 class OwnerTokenWire(BaseModel):
@@ -908,6 +939,25 @@ def create_app(
                 "Import not found",
             ) from error
 
+    @app.get(
+        "/api/v1/statement-coverage",
+        tags=["imports"],
+        response_model=StatementCoverageWire,
+    )
+    def list_statement_coverage(
+        months: int = DEFAULT_WINDOW_MONTHS,
+        _identity: OwnerIdentity = owner_dependency,
+        catalog: ImportCatalogRuntime = imports_dependency,
+    ) -> StatementCoverageWire:
+        try:
+            return _statement_coverage(catalog.coverage(months=months))
+        except StatementCoverageError as error:
+            raise ProblemError(
+                status.HTTP_400_BAD_REQUEST,
+                "statement_coverage_invalid",
+                "Statement coverage request invalid",
+            ) from error
+
     @app.get("/api/v1/categories", tags=["owner"], response_model=OwnerCategoryPageWire)
     def list_owner_categories(
         _identity: OwnerIdentity = owner_dependency,
@@ -1438,6 +1488,29 @@ def _owner_category(category: CategoryRecord) -> OwnerCategoryWire:
         name=category.name,
         parent_id=category.parent_id,
         active=category.active,
+    )
+
+
+def _statement_coverage(report: StatementCoverageReport) -> StatementCoverageWire:
+    return StatementCoverageWire(
+        as_of=report.as_of,
+        timezone=report.timezone,
+        window_months=report.window_months,
+        accounts=[
+            StatementCoverageAccountWire(
+                id=account.financial_account_id,
+                display_name=account.display_name,
+                slug=account.slug,
+                months=[
+                    StatementCoverageMonthWire(
+                        month=month.month.isoformat()[:7],
+                        status=month.status.value,
+                    )
+                    for month in account.months
+                ],
+            )
+            for account in report.accounts
+        ],
     )
 
 

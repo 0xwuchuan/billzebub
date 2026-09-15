@@ -125,6 +125,27 @@ export type ImportPage = {
   items: ImportRecord[];
 };
 
+export type CoverageStatus = "present" | "missing" | "partial";
+
+export type StatementCoverageMonth = {
+  month: string;
+  status: CoverageStatus;
+};
+
+export type StatementCoverageAccount = {
+  id: string;
+  display_name: string;
+  slug: string;
+  months: StatementCoverageMonth[];
+};
+
+export type StatementCoverageReport = {
+  as_of: string;
+  timezone: string;
+  window_months: number;
+  accounts: StatementCoverageAccount[];
+};
+
 export type CreateFinancialAccountInput = {
   slug: string;
   display_name: string;
@@ -161,6 +182,10 @@ export async function getReviews(): Promise<ReviewPage> {
 
 export async function getImports(): Promise<ImportPage> {
   return request<ImportPage>("/api/v1/imports");
+}
+
+export async function getStatementCoverage(): Promise<StatementCoverageReport> {
+  return request<StatementCoverageReport>("/api/v1/statement-coverage");
 }
 
 export async function getImport(extractionId: string): Promise<ImportRecord> {

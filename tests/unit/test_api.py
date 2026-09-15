@@ -147,6 +147,7 @@ def test_import_resources_are_documented_and_fail_closed_without_identity(
 
     assert "/api/v1/imports" in app.openapi()["paths"]
     assert "/api/v1/imports/{extraction_id}" in app.openapi()["paths"]
+    assert "/api/v1/statement-coverage" in app.openapi()["paths"]
     with TestClient(app, client=("127.0.0.1", 50000)) as client:
         response = client.get("/api/v1/imports")
 
