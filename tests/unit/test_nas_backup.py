@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import stat
+import subprocess
 from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -9,14 +10,11 @@ from threading import Thread
 
 import pytest
 
-from tests.unit.test_nas_upgrade import (
-    BACKUP_SCRIPT,
-    DEPLOYMENT_DOC,
-    UPGRADE_SCRIPT,
-    _operations,
-    _run_script,
-    _write_executable,
-)
+REPO_ROOT = Path(__file__).resolve().parents[2]
+NAS_SCRIPTS = REPO_ROOT / "scripts" / "nas"
+BACKUP_SCRIPT = NAS_SCRIPTS / "backup.sh"
+UPGRADE_SCRIPT = NAS_SCRIPTS / "upgrade.sh"
+DEPLOYMENT_DOC = REPO_ROOT / "docs" / "nas-deployment.md"
 
 SYNTHETIC_PASSWORD = "synthetic-password"  # pragma: allowlist secret
 
@@ -128,6 +126,37 @@ def ready_url() -> Iterator[str]:
         thread.join(timeout=5)
 
 
+def _write_executable(path: Path, contents: str) -> None:
+    path.write_text(contents, encoding="utf-8")
+    path.chmod(path.stat().st_mode | stat.S_IXUSR)
+
+
+def _run_script(script: Path, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["bash", str(script)],
+        cwd=REPO_ROOT,
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+
+def _subcommand(line: str) -> str:
+    rest = line.removeprefix("compose ")
+    while rest.startswith(("--project-name ", "--file ")):
+        rest = rest.split(" ", 2)[2]
+    return rest
+
+
+def _operations(env: dict[str, str]) -> list[str]:
+    return [
+        _subcommand(line)
+        for line in Path(env["BILLZEBUB_COMPOSE_LOG"]).read_text(encoding="utf-8").splitlines()
+        if line.startswith("compose ") and not line.endswith(" up --help")
+    ]
+
+
 def _backup_paths(tmp_path: Path) -> tuple[Path, Path, Path]:
     backup_root = tmp_path / "backups"
     secrets_root = tmp_path / "secrets"
@@ -226,9 +255,7 @@ def test_backup_fails_closed_without_usable_secret(
     elif mutate == "symlink-dir":
         real_secrets = tmp_path / "real-secrets"
         real_secrets.mkdir()
-        (real_secrets / "postgres-password").write_text(
-            f"{SYNTHETIC_PASSWORD}\n", encoding="utf-8"
-        )
+        (real_secrets / "postgres-password").write_text(f"{SYNTHETIC_PASSWORD}\n", encoding="utf-8")
         password_file.unlink()
         secrets_root.rmdir()
         secrets_root.symlink_to(real_secrets)
@@ -248,9 +275,7 @@ def test_backup_fails_closed_without_usable_secret(
     assert Path(env["BILLZEBUB_BACKUP_EXEC_LOG"]).read_text(encoding="utf-8") == ""
 
 
-def test_upgrade_keeps_using_backup_script_with_pgpassword(
-    tmp_path: Path, ready_url: str
-) -> None:
+def test_upgrade_keeps_using_backup_script_with_pgpassword(tmp_path: Path, ready_url: str) -> None:
     env = _backup_env(tmp_path)
     env.update(
         {
@@ -269,7 +294,9 @@ def test_upgrade_keeps_using_backup_script_with_pgpassword(
     assert _dump_files(env)
     operations = _operations(env)
     assert operations[0] == "build api worker"
-    assert any(command.startswith("exec -T -e PGPASSWORD postgres pg_dump") for command in operations)
+    assert any(
+        command.startswith("exec -T -e PGPASSWORD postgres pg_dump") for command in operations
+    )
     assert "stop " not in "\n".join(operations)
 
 
@@ -287,5 +314,7 @@ def test_backup_documentation_describes_pgpassword_from_host_secret() -> None:
     )
     assert "supplies it as `PGPASSWORD` to `pg_dump`" in docs
     assert "refuses to run if that secret is missing" in docs
-    assert 'backup_script="${BILLZEBUB_BACKUP_SCRIPT:-$project_root/scripts/nas/backup.sh}"' in upgrade
+    assert (
+        'backup_script="${BILLZEBUB_BACKUP_SCRIPT:-$project_root/scripts/nas/backup.sh}"' in upgrade
+    )
     assert '"$backup_script"' in upgrade
