@@ -34,13 +34,13 @@ from scripts.agent.codex_categorize import (
 
 FOOD_ID = UUID("11111111-1111-1111-1111-111111111111")
 TXN_ID = UUID("22222222-2222-2222-2222-222222222222")
-SECRET = "synthetic-agent-token-do-not-print"
+AGENT_BEARER = "synthetic-agent-token"
 
 
 def _config(**overrides: object) -> RunnerConfig:
     values: dict[str, object] = {
         "api_base": "http://127.0.0.1:8000",
-        "token": SECRET,
+        "token": AGENT_BEARER,
     }
     values.update(overrides)
     return RunnerConfig(**values)  # type: ignore[arg-type]
@@ -69,7 +69,7 @@ def _transaction(**overrides: object) -> Transaction:
 def _env(**overrides: str) -> dict[str, str]:
     values = {
         "BILLZEBUB_API_BASE": "http://127.0.0.1:8000",
-        "BILLZEBUB_AGENT_TOKEN": SECRET,
+        "BILLZEBUB_AGENT_TOKEN": AGENT_BEARER,
     }
     values.update(overrides)
     return values
@@ -154,7 +154,7 @@ def test_applies_high_confidence_proposal_with_idempotency_key() -> None:
         (TXN_ID, 3, FOOD_ID, f"codex-cat:{TXN_ID}:v3:{FOOD_ID}"),
     ]
     assert "applied=1" in stdout.getvalue()
-    assert SECRET not in stdout.getvalue()
+    assert AGENT_BEARER not in stdout.getvalue()
 
 
 def test_skips_transfers_without_calling_codex() -> None:
@@ -264,20 +264,20 @@ def test_main_empty_queue_does_not_print_the_token() -> None:
     )
     assert exit_code == 0
     assert stdout.getvalue() == ""
-    assert SECRET not in stdout.getvalue()
+    assert AGENT_BEARER not in stdout.getvalue()
 
 
 def test_token_file_is_read_and_world_readable_files_are_rejected(
     tmp_path: Path,
 ) -> None:
     token_file = tmp_path / "agent-token"
-    token_file.write_text(f"{SECRET}\n", encoding="utf-8")
+    token_file.write_text(f"{AGENT_BEARER}\n", encoding="utf-8")
     token_file.chmod(0o600)
     config = RunnerConfig.from_environment(
         {"BILLZEBUB_API_BASE": "https://billzebub.example.test"},
         token_file=token_file,
     )
-    assert config.token == SECRET
+    assert config.token == AGENT_BEARER
     assert config.api_base == "https://billzebub.example.test"
 
     token_file.chmod(0o644)
@@ -304,7 +304,7 @@ def test_prompt_lists_only_catalog_categories_and_agent_safe_fields() -> None:
     assert "Synthetic Coffee" in prompt
     assert "Synthetic Food" in prompt
     assert "source_artifact_id" not in prompt
-    assert SECRET not in prompt
+    assert AGENT_BEARER not in prompt
 
 
 def test_parse_proposal_json_rejects_non_objects() -> None:
@@ -333,7 +333,7 @@ def test_codex_exec_uses_luna_then_terra_and_strips_token(
         return Result()
 
     monkeypatch.setattr("scripts.agent.codex_categorize.subprocess.run", fake_run)
-    monkeypatch.setenv("BILLZEBUB_AGENT_TOKEN", SECRET)
+    monkeypatch.setenv("BILLZEBUB_AGENT_TOKEN", AGENT_BEARER)
     proposer = CodexProposer(_config())
 
     with pytest.raises(CodexError, match="luna and terra"):
@@ -342,7 +342,7 @@ def test_codex_exec_uses_luna_then_terra_and_strips_token(
     assert [call[call.index("-m") + 1] for call in calls] == [DEFAULT_MODEL, FALLBACK_MODEL]
     assert all("--output-schema" in call for call in calls)
     assert all("exec" in call for call in calls)
-    assert all(SECRET not in command for command in calls)
+    assert all(AGENT_BEARER not in command for command in calls)
     assert all("BILLZEBUB_AGENT_TOKEN" not in env for env in envs)
 
 
@@ -437,7 +437,7 @@ def test_urlopen_client_lists_reviews_and_categorizes(
     headers = {key.lower(): value for key, value in categorize.header_items()}
     assert headers["idempotency-key"] == "synthetic-key"
     assert headers["if-match"] == f'"transaction:{TXN_ID}:v3"'
-    assert SECRET not in repr(categorize.full_url)
+    assert AGENT_BEARER not in repr(categorize.full_url)
 
 
 def test_http_errors_do_not_include_the_token(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -448,7 +448,7 @@ def test_http_errors_do_not_include_the_token(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr("scripts.agent.codex_categorize.urlopen", fake_urlopen)
     with pytest.raises(AgentApiError, match="HTTP 401") as error:
         UrlLibAgentApi(_config()).list_reviews()
-    assert SECRET not in str(error.value)
+    assert AGENT_BEARER not in str(error.value)
 
 
 def test_unavailable_api_is_fail_closed(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -465,7 +465,7 @@ def test_apply_http_failure_exits_nonzero() -> None:
     stdout = StringIO()
     assert run(_config(), FakeApi(fail_categorize=True), FakeProposer(), stdout=stdout) == 1
     assert "failed=1" in stdout.getvalue()
-    assert SECRET not in stdout.getvalue()
+    assert AGENT_BEARER not in stdout.getvalue()
 
 
 def test_output_schema_forbids_unknown_fields() -> None:
