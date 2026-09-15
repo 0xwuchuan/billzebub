@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import stat
+from decimal import Decimal
 from enum import StrEnum
 from pathlib import Path
 from typing import Self
@@ -46,6 +47,10 @@ class Settings(BaseSettings):
     apple_wallet_timezone: str | None = None
     apple_wallet_max_bytes: int = Field(default=16 * 1024, gt=0, le=1024 * 1024)
     web_root: Path | None = None
+    categorizer_enabled: bool = True
+    categorizer_min_confidence: Decimal = Field(
+        default=Decimal("1.000"), ge=Decimal("0"), le=Decimal("1")
+    )
 
     @field_validator("artifact_root", "statement_inbox_root", "statement_password_root")
     @classmethod

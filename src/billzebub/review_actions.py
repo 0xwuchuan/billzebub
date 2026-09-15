@@ -7,9 +7,10 @@ from uuid import UUID
 
 from sqlalchemy import select
 
+from billzebub.categorizer import enqueue_transaction_categorization
 from billzebub.jobs import JobQueue
 from billzebub.persistence.models import Extraction, PendingReview
-from billzebub.reconciliation import Reconciliation
+from billzebub.reconciliation import Reconciliation, ReconciliationDecisionOutcome
 from billzebub.reviews import (
     PendingReviewRecord,
     PendingReviewStatus,
@@ -77,7 +78,9 @@ class ReviewActions:
     def decide(self, command: ReviewDecision) -> PendingReviewRecord:
         condition_code = self._condition_code(command.review_id)
         if condition_code in self._RECONCILIATION_CONDITIONS:
-            return self._reconciliation.decide(command).review
+            outcome = self._reconciliation.decide(command)
+            self._enqueue_categorizations(outcome)
+            return outcome.review
         if condition_code.startswith("agent_proposal:"):
             return self._inbox.decide(command)
         if condition_code == "categorization_needed":
@@ -225,6 +228,13 @@ class ReviewActions:
             {"financial_account_id": str(account_id)},
             dedupe_key=str(account_id),
         )
+
+    def _enqueue_categorizations(self, outcome: ReconciliationDecisionOutcome) -> None:
+        transaction_ids = {item.transaction_id for item in outcome.follow_up.confirmations}
+        if outcome.confirmation is not None:
+            transaction_ids.add(outcome.confirmation.transaction_id)
+        for transaction_id in transaction_ids:
+            enqueue_transaction_categorization(self._queue, transaction_id)
 
     def _condition_code(self, review_id: UUID) -> str:
         with self._database.transaction() as session:

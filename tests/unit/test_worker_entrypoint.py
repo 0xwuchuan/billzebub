@@ -5,9 +5,9 @@ import pytest
 
 from billzebub.entrypoints.worker import worker_handlers
 from billzebub.jobs import EnqueuedJob
-from billzebub.reconciliation import ReconciliationRun
+from billzebub.reconciliation import ReconciliationConfirmation, ReconciliationRun
 from billzebub.statement_extraction import ExtractionOutcome, ExtractionStatus
-from billzebub.worker import TerminalJobError
+from billzebub.worker import JobHandler, TerminalJobError
 
 
 class FakeQueue:
@@ -53,9 +53,12 @@ class FakeExtraction:
 class FakeReconciliation:
     def __init__(self) -> None:
         self.received: list[UUID] = []
+        self.run: ReconciliationRun | None = None
 
     def reconcile_account(self, financial_account_id: UUID) -> ReconciliationRun:
         self.received.append(financial_account_id)
+        if self.run is not None:
+            return self.run
         return ReconciliationRun(
             financial_account_id=financial_account_id,
             candidates=(),
@@ -66,11 +69,33 @@ class FakeReconciliation:
         )
 
 
+class FakeCategorizer:
+    def __init__(self) -> None:
+        self.received: list[UUID] = []
+
+    def categorize_transaction(self, transaction_id: UUID) -> None:
+        self.received.append(transaction_id)
+
+
+def _handlers(
+    queue: FakeQueue,
+    extraction: FakeExtraction | None = None,
+    reconciliation: FakeReconciliation | None = None,
+    categorizer: FakeCategorizer | None = None,
+) -> dict[str, JobHandler]:
+    return worker_handlers(
+        queue,
+        extraction or FakeExtraction(ExtractionStatus.ACCEPTED),
+        reconciliation or FakeReconciliation(),
+        categorizer or FakeCategorizer(),
+    )
+
+
 def test_accepted_extraction_enqueues_account_deduplicated_reconciliation() -> None:
     queue = FakeQueue()
     extraction = FakeExtraction(ExtractionStatus.ACCEPTED)
     reconciliation = FakeReconciliation()
-    handlers = worker_handlers(queue, extraction, reconciliation)
+    handlers = _handlers(queue, extraction, reconciliation)
     artifact_id = uuid4()
     account_id = uuid4()
 
@@ -91,7 +116,7 @@ def test_accepted_extraction_enqueues_account_deduplicated_reconciliation() -> N
 def test_non_accepted_extraction_does_not_enqueue_reconciliation() -> None:
     queue = FakeQueue()
     extraction = FakeExtraction(ExtractionStatus.FAILED)
-    handlers = worker_handlers(queue, extraction, FakeReconciliation())
+    handlers = _handlers(queue, extraction, FakeReconciliation())
 
     handlers["extract_statement"](
         {"artifact_id": str(uuid4()), "financial_account_id": str(uuid4())}
@@ -103,7 +128,7 @@ def test_non_accepted_extraction_does_not_enqueue_reconciliation() -> None:
 def test_reconciliation_handler_and_invalid_payloads_are_bounded() -> None:
     queue = FakeQueue()
     reconciliation = FakeReconciliation()
-    handlers = worker_handlers(queue, FakeExtraction(ExtractionStatus.ACCEPTED), reconciliation)
+    handlers = _handlers(queue, reconciliation=reconciliation)
     account_id = uuid4()
 
     handlers["reconcile_financial_account"]({"financial_account_id": str(account_id)})
@@ -113,3 +138,50 @@ def test_reconciliation_handler_and_invalid_payloads_are_bounded() -> None:
         handlers["extract_statement"]({})
     with pytest.raises(TerminalJobError, match="invalid_reconciliation_job"):
         handlers["reconcile_financial_account"]({})
+    with pytest.raises(TerminalJobError, match="invalid_categorize_job"):
+        handlers["categorize_transaction"]({})
+
+
+def test_reconciliation_enqueues_categorize_jobs_for_confirmations() -> None:
+    queue = FakeQueue()
+    transaction_id = uuid4()
+    account_id = uuid4()
+    statement_id = uuid4()
+    reconciliation = FakeReconciliation()
+    reconciliation.run = ReconciliationRun(
+        financial_account_id=account_id,
+        candidates=(),
+        confirmations=(
+            ReconciliationConfirmation(
+                transaction_id=transaction_id,
+                statement_claim_id=statement_id,
+                real_time_claim_id=None,
+                source="statement_only",
+            ),
+        ),
+        ambiguous_review_ids=(),
+        unconfirmed_claim_ids=(),
+        no_match_real_time_claim_ids=(),
+    )
+    handlers = _handlers(queue, reconciliation=reconciliation)
+
+    handlers["reconcile_financial_account"]({"financial_account_id": str(account_id)})
+
+    assert queue.enqueued == [
+        (
+            "categorize_transaction",
+            {"transaction_id": str(transaction_id)},
+            str(transaction_id),
+        )
+    ]
+
+
+def test_categorize_handler_runs_the_transaction_pass() -> None:
+    queue = FakeQueue()
+    categorizer = FakeCategorizer()
+    transaction_id = uuid4()
+    handlers = _handlers(queue, categorizer=categorizer)
+
+    handlers["categorize_transaction"]({"transaction_id": str(transaction_id)})
+
+    assert categorizer.received == [transaction_id]

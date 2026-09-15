@@ -139,6 +139,7 @@ export function categoryColor(name: string): string {
     Utilities: "var(--bz-cat-utilities)",
     Health: "var(--bz-cat-health)",
     Shopping: "var(--bz-cat-shopping)",
+    Gifts: "var(--bz-cat-gifts)",
     Uncategorized: "var(--bz-cat-uncat)",
   };
   return colors[name] ?? "var(--bz-cat-uncat)";

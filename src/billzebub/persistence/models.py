@@ -139,6 +139,33 @@ class Category(Base):
     )
 
 
+class CounterpartyCategoryMap(Base):
+    __tablename__ = "counterparty_category_map"
+
+    id: Mapped[UUID] = mapped_column(PostgresUUID(as_uuid=True), primary_key=True, default=uuid7)
+    normalized_key: Mapped[str] = mapped_column(String(300), nullable=False, unique=True)
+    category_id: Mapped[UUID] = mapped_column(
+        PostgresUUID(as_uuid=True),
+        ForeignKey("category.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    source: Mapped[str] = mapped_column(String(40), nullable=False)
+    actor_id: Mapped[UUID | None] = mapped_column(
+        PostgresUUID(as_uuid=True), ForeignKey("audit_actor.id", ondelete="RESTRICT")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint("length(btrim(normalized_key)) > 0", name="normalized_key_present"),
+        CheckConstraint("source IN ('owner_categorization')", name="source_known"),
+    )
+
+
 class AuditActor(Base):
     __tablename__ = "audit_actor"
 
