@@ -2,7 +2,7 @@
 
 Billzebub's in-app pass assigns a Category only at deterministic high confidence and leaves everything else as a `categorization_needed` Review. Unknowns are handled **outside** the NAS app containers by this host-side runner, which calls **Codex ChatGPT** (`codex exec`). It is not a Grok Bot and must not be added to `compose.nas.yaml`.
 
-The runner talks only to the agent-safe API from ADR 0003: opaque Transaction IDs, Counterparty, amount, currency, effective date, Transaction kind, Categories, and review choices.
+The runner talks only to the agent-safe API from ADR 0003: opaque Transaction IDs, Counterparty, amount, currency, effective date, Transaction kind, Categories, and review choices. Schedule it as a forge routine. Keep the bearer token on rafiki as a mode-`0600` secret.
 
 ## What it does
 
@@ -18,7 +18,7 @@ The runner talks only to the agent-safe API from ADR 0003: opaque Transaction ID
 Prefer `gpt-5.6-luna`. If that `codex exec` fails, the runner retries once with `gpt-5.6-terra`.
 
 ```bash
-export BILLZEBUB_API_BASE="https://billzebub.example.ts.net"
+export BILLZEBUB_API_BASE="https://rafiki.tail7c684e.ts.net"
 export BILLZEBUB_AGENT_TOKEN_FILE="/private/path/codex-categorizer.token"
 
 uv run python -m scripts.agent.codex_categorize
@@ -31,7 +31,7 @@ uv run python scripts/agent/codex_categorize.py \
   --token-file /private/path/codex-categorizer.token
 ```
 
-Dry-run (Codex is called; categorize is not POSTed):
+Dry-run (Codex is called; categorize is not POSTed). Do this **once on forge** before enabling the standing routine:
 
 ```bash
 uv run python -m scripts.agent.codex_categorize --dry-run
@@ -44,7 +44,7 @@ codex exec -m gpt-5.6-luna --output-schema /tmp/proposal.schema.json "$PROMPT"
 codex exec -m gpt-5.6-terra --output-schema /tmp/proposal.schema.json "$PROMPT"
 ```
 
-The Python runner adds `--skip-git-repo-check`, `--sandbox read-only`, `--ephemeral`, and `-o` so cron does not need an interactive TTY or a Git checkout.
+The Python runner adds `--skip-git-repo-check`, `--sandbox read-only`, `--ephemeral`, and `-o` so a forge routine does not need an interactive TTY or a Git checkout.
 
 ## Environment
 
@@ -62,38 +62,50 @@ The Python runner adds `--skip-git-repo-check`, `--sandbox read-only`, `--epheme
 
 The child `codex` process does not inherit `BILLZEBUB_AGENT_TOKEN`. Codex authentication stays in the host Codex ChatGPT login (`~/.codex/auth.json`) or a host-managed `CODEX_API_KEY`. Do not put either in Git.
 
-## Token issuance on the NAS
+## Token on rafiki
 
-Issue the token **on the NAS**, copy it once onto the Codex host, and never paste it into the repository, a chat, or a committed compose file.
+Issue the token **on rafiki** (the NAS). The plaintext stays there as a mode-`0600` secret: not Git, not chat, not `compose.nas.yaml`, and not the Compose-mounted `/volume1/docker/billzebub/secrets` directory the app containers read.
 
-In the Billzebub maintenance container:
+In the Billzebub maintenance container on rafiki:
 
 ```bash
 billzebub token issue --name "Codex categorizer" --kind agent \
   --scope agent:read --scope agent:categorize
 ```
 
-On the Codex/forge host, write the plaintext to a root-owned `0600` file **outside** the checkout:
+Write the plaintext once to a rafiki-local `0600` file **outside** the checkout:
 
 ```bash
 install -m 600 /dev/stdin /private/path/codex-categorizer.token
 # paste the token once, then EOF
 ```
 
-Rotate with `billzebub token rotate <token-id>` if the file may have leaked. The runner never prints the token.
+Forge reads that secret through `BILLZEBUB_AGENT_TOKEN_FILE` (or `--token-file`). Do not paste the token into a forge config committed to this repo. Rotate with `billzebub token rotate <token-id>` if the file may have leaked. The runner never prints the token.
 
-## Schedule
+## Schedule (forge routine)
 
-Run this on the forge host or another machine that already has Codex ChatGPT auth and Tailscale reachability to the NAS API. Do **not** schedule it inside the `api` or `worker` containers.
+The primary schedule is a **forge cron/routine**, not NAS Task Scheduler and not a job inside the `api` or `worker` containers. Forge already has Codex ChatGPT auth; it calls rafiki's agent API over Tailscale.
 
-Examples:
+After this runner ships:
 
-- **Forge routine:** a periodic host job that exports `BILLZEBUB_API_BASE` and `BILLZEBUB_AGENT_TOKEN_FILE`, then `uv run python -m scripts.agent.codex_categorize`.
-- **Cron / Synology Task Scheduler** on a Codex-capable host (not the app containers):
+1. Keep the bearer on rafiki as the `0600` secret above.
+2. On forge, dry-run **once**:
 
-```text
-15 * * * * BILLZEBUB_API_BASE=https://billzebub.example.ts.net BILLZEBUB_AGENT_TOKEN_FILE=/private/path/codex-categorizer.token /usr/bin/uv run --directory /path/to/billzebub python -m scripts.agent.codex_categorize
+```bash
+BILLZEBUB_API_BASE="https://rafiki.tail7c684e.ts.net" \
+BILLZEBUB_AGENT_TOKEN_FILE="/private/path/codex-categorizer.token" \
+  uv run python -m scripts.agent.codex_categorize --dry-run
 ```
+
+3. If that is quiet or prints only `codex categorizer dry-run applied=0 skipped=… failed=0`, enable the **standing forge routine** with the same environment and without `--dry-run`:
+
+```bash
+BILLZEBUB_API_BASE="https://rafiki.tail7c684e.ts.net" \
+BILLZEBUB_AGENT_TOKEN_FILE="/private/path/codex-categorizer.token" \
+  uv run python -m scripts.agent.codex_categorize
+```
+
+Do not add a Synology Task Scheduler copy as the default path. NAS cron would still be the wrong place to run Codex.
 
 An empty queue is a quiet success (exit 0, no stdout). Non-empty runs print one line: `codex categorizer applied=N skipped=M failed=P`.
 

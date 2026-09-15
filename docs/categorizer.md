@@ -38,4 +38,4 @@ Later passes look up that key first. A later owner correction overwrites the map
 
 ## External Codex runner
 
-Unknowns stay as Reviews. The optional host-side script `scripts/agent/codex_categorize.py` calls Codex ChatGPT (`codex exec -m gpt-5.6-luna`, fallback `gpt-5.6-terra`) against the agent API. It is not a Grok Bot and is not part of the NAS app image. Invoke, token issuance, and cron notes are in [`docs/codex-categorizer.md`](codex-categorizer.md).
+Unknowns stay as Reviews. The optional host-side script `scripts/agent/codex_categorize.py` calls Codex ChatGPT (`codex exec -m gpt-5.6-luna`, fallback `gpt-5.6-terra`) against the agent API. It is not a Grok Bot and is not part of the NAS app image. The token stays on rafiki as a mode-`0600` secret; the primary schedule is a forge routine (dry-run once, then standing). See [`docs/codex-categorizer.md`](codex-categorizer.md).

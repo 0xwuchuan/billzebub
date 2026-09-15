@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Apply high-confidence Codex Category proposals to pending Reviews.
 
-This runner lives on a forge/NAS cron host. It is not a Grok Bot and must not
-run inside Billzebub API or worker containers.
+This runner is the forge routine for unknowns the in-app pass left as Reviews.
+It is not a Grok Bot and must not run inside Billzebub API or worker containers.
+The agent token stays on rafiki as a mode-0600 secret.
 """
 
 from __future__ import annotations
@@ -601,7 +602,7 @@ def main(
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Categorize pending Billzebub Reviews with Codex ChatGPT.",
+        description="Categorize pending Billzebub Reviews with a forge-side Codex ChatGPT routine.",
     )
     parser.add_argument(
         "--token-file",
