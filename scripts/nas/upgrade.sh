@@ -1,34 +1,35 @@
 #!/usr/bin/env bash
-# Stop writers, back up, migrate explicitly, restart, and verify readiness.
+# Build the new image while serving, back up live PostgreSQL, migrate, then
+# recreate API and worker with a readiness gate. PostgreSQL is never stopped.
+# Tailscale Serve is not modified.
 set -euo pipefail
 
 project_root="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
-docker_bin="${DOCKER_BIN:-docker}"
-if ! command -v "$docker_bin" >/dev/null 2>&1 && [[ -x /usr/local/bin/docker ]]; then
-  docker_bin=/usr/local/bin/docker
-fi
-command -v "$docker_bin" >/dev/null 2>&1 || {
-  echo "Docker is unavailable." >&2
-  exit 1
-}
-compose=("$docker_bin" compose --project-name billzebub --file "$project_root/compose.nas.yaml")
+# shellcheck source=scripts/nas/common.sh
+source "$project_root/scripts/nas/common.sh"
+compose=()
+billzebub_init_compose
 
-"${compose[@]}" stop api worker
-"$project_root/scripts/nas/backup.sh"
+backup_script="${BILLZEBUB_BACKUP_SCRIPT:-$project_root/scripts/nas/backup.sh}"
+
 "${compose[@]}" build api worker
-"${compose[@]}" up --detach postgres
+"$backup_script"
+billzebub_up_service postgres --no-recreate
 "${compose[@]}" --profile maintenance run --rm migrate
-"${compose[@]}" up --detach --remove-orphans api worker
 
-for _attempt in $(seq 1 30); do
-  if python3 -c \
-    "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=2).read()" \
-    >/dev/null 2>&1; then
-    echo "Upgrade completed and the API is ready."
-    exit 0
-  fi
-  sleep 2
-done
+api_recreate_started_at="$(date +%s)"
+billzebub_up_service api --no-deps
+if ! billzebub_wait_for_api_ready; then
+  echo "API recreate finished but readiness did not succeed; inspect local service logs." >&2
+  exit 1
+fi
+api_ready_at="$(date +%s)"
+api_recreate_seconds=$((api_ready_at - api_recreate_started_at))
 
-echo "Upgrade completed but readiness did not succeed; inspect local service logs." >&2
-exit 1
+billzebub_up_service worker --no-deps --remove-orphans
+if ! billzebub_wait_for_api_ready; then
+  echo "Worker recreate finished but API readiness did not succeed; inspect local service logs." >&2
+  exit 1
+fi
+
+echo "Upgrade completed and the API is ready. API recreate window was ${api_recreate_seconds}s."

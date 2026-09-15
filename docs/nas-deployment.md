@@ -28,17 +28,24 @@ The statement inbox host path is `/volume1/billzebub-inbox` (a Synology Shared F
 
 ## First deployment and upgrades
 
-After host preparation, run `scripts/nas/deploy-initial.sh` from the checkout. It builds the image, starts PostgreSQL, runs the explicit migration container, starts API and worker, and waits for `/health/ready`.
+After host preparation, run `scripts/nas/deploy-initial.sh` from the checkout. It builds the image, starts PostgreSQL, runs the explicit migration container, starts API then worker, and waits for `/health/ready` before declaring done. When Compose supports `up --wait`, each `up -d` also waits for that service's healthcheck.
 
 For every later release, run `scripts/nas/upgrade.sh` instead. It:
 
-1. stops API and worker writers;
-2. creates and verifies a private logical PostgreSQL backup;
-3. rebuilds the application image;
-4. applies migrations explicitly; and
-5. restarts API and worker only after the migration succeeds and then checks readiness.
+1. rebuilds the application image while the existing API and worker keep serving;
+2. creates and verifies a private logical PostgreSQL backup without stopping PostgreSQL;
+3. leaves the running PostgreSQL container in place (`up --no-recreate`) and waits until it is healthy;
+4. applies migrations explicitly against that live database;
+5. recreates API, waits until `/health/ready` succeeds, then recreates worker;
+6. declares the upgrade done only after a final host readiness probe succeeds, and prints the API recreate window in seconds.
 
-Ordinary `docker compose up` must not be used as a substitute for the upgrade script because it intentionally does not migrate.
+PostgreSQL is never stopped. The upgrade script does not change Tailscale Serve (`--replace-probe` is only the initial cutover in `enable-tailscale-serve.sh`). Ordinary `docker compose up` must not be used as a substitute for the upgrade script because it intentionally does not migrate.
+
+### Serve availability during upgrade
+
+Docker Compose on Synology recreates a service by stopping the old container before starting the new one. The API publishes a single loopback port (`127.0.0.1:8000`) that Tailscale Serve targets, so two API containers cannot share that binding. Compose therefore cannot keep the old API serving until the new container is healthy.
+
+The operator-visible interruption is only that API recreate: typically a few seconds of refused connections while the new process binds the port. Image build, backup, and migrate no longer take the API down. Worker recreate does not affect Serve. The printed recreate window is time from API `up` until `/health/ready` succeeds; when Compose `up --wait` is available it can include Docker's healthcheck cadence and is an upper bound on the Serve gap. A brief blip of a few seconds is expected and acceptable on this single Serve target.
 
 ## Tailscale and owner browser access
 
