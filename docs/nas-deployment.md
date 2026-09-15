@@ -80,7 +80,7 @@ Do not bulk-reprocess the historical `invalid_payload_*` pile. The command re-re
 
 ## Backup and restore
 
-Schedule `scripts/nas/backup.sh` once daily with Synology Task Scheduler. It uses `pg_dump` inside the PostgreSQL container, verifies the custom-format dump with `pg_restore --list`, stores it privately, and retains 30 days. Do not back up the live PostgreSQL data directory as the restore strategy.
+Schedule `scripts/nas/backup.sh` once daily with Synology Task Scheduler. It reads the host-managed PostgreSQL password secret, supplies it as `PGPASSWORD` to `pg_dump` inside the PostgreSQL container, verifies the custom-format dump with `pg_restore --list`, stores it privately, and retains 30 days. It refuses to run if that secret is missing, not a regular file, or empty, and never prints the password or backup filename. Do not back up the live PostgreSQL data directory as the restore strategy.
 
 Run `scripts/nas/restore-drill.sh` after the first backup and periodically thereafter. It restores the newest dump into an isolated, network-disabled disposable PostgreSQL container and verifies the Alembic history without printing private database contents.
 
