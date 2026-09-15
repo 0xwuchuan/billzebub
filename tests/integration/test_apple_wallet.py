@@ -19,6 +19,7 @@ from billzebub.persistence.models import (
     Claim,
     Extraction,
     FinancialAccount,
+    FinancialAccountAlias,
     FinancialAccountKind,
     PendingReview,
     SourceArtifact,
@@ -350,6 +351,100 @@ def test_realtime_apple_wallet_unmapped_instrument_creates_blocking_review(
         assert extraction is not None
         assert extraction.failure_code == "unmapped_card"
         assert review is not None
+        assert review.condition_code == "apple_wallet_unmapped_card"
+        assert review.context == {"integration": "apple_wallet"}
+        assert session.scalar(select(func.count()).select_from(Claim)) == 0
+
+
+@pytest.mark.integration
+def test_realtime_wallet_matches_curly_apostrophe_alias_and_trailing_newline(
+    database: Database,
+    tmp_path: Path,
+) -> None:
+    account = _account(database)
+    aliases = FinancialAccountAliases(database)
+    aliases.add_apple_wallet_card(
+        account_slug=account.slug,
+        card_label="UOB Lady\u2019s World Mastercard\n",
+    )
+    ingestion = _ingestion(database, tmp_path)
+    body = _realtime_wallet_body(
+        instrument="UOB Lady's World Mastercard",
+        use_card_alias=True,
+        extra={"source": "apple-pay"},
+    )
+
+    outcome = ingestion.ingest(body, received_at=datetime.now(UTC), actor_id=None)
+
+    assert outcome.status is AppleWalletCaptureStatus.ACCEPTED
+    with database.transaction() as session:
+        claim = session.scalar(select(Claim))
+        review = session.scalar(select(PendingReview))
+        assert claim is not None
+        assert claim.financial_account_id == account.id
+        assert review is None
+
+
+@pytest.mark.integration
+def test_realtime_wallet_matches_legacy_stored_curly_alias(
+    database: Database,
+    tmp_path: Path,
+) -> None:
+    account = _account(database)
+    with database.transaction() as session:
+        session.add(
+            FinancialAccountAlias(
+                id=uuid7(),
+                financial_account_id=account.id,
+                alias_kind="apple_wallet_card",
+                value="UOB Lady\u2019s World Mastercard",
+                normalized_value="uob lady\u2019s world mastercard",
+            )
+        )
+    ingestion = _ingestion(database, tmp_path)
+
+    outcome = ingestion.ingest(
+        _realtime_wallet_body(instrument="UOB Lady's World Mastercard\n"),
+        received_at=datetime.now(UTC),
+        actor_id=None,
+    )
+
+    assert outcome.status is AppleWalletCaptureStatus.ACCEPTED
+    mapped = FinancialAccountAliases(database).resolve_apple_wallet_card(
+        "UOB Lady's World Mastercard"
+    )
+    assert mapped is not None
+    assert mapped.id == account.id
+
+
+@pytest.mark.integration
+def test_realtime_wallet_distinct_label_stays_unmapped_blocking_review(
+    database: Database,
+    tmp_path: Path,
+) -> None:
+    account = _account(database)
+    aliases = FinancialAccountAliases(database)
+    aliases.add_apple_wallet_card(
+        account_slug=account.slug,
+        card_label="UOB Lady\u2019s World Mastercard\n",
+    )
+    ingestion = _ingestion(database, tmp_path)
+
+    outcome = ingestion.ingest(
+        _realtime_wallet_body(instrument="UOB Lady's Solitaire Mastercard"),
+        received_at=datetime.now(UTC),
+        actor_id=None,
+    )
+
+    assert outcome.status is AppleWalletCaptureStatus.REVIEW_REQUIRED
+    with database.transaction() as session:
+        extraction = session.scalar(select(Extraction))
+        review = session.scalar(select(PendingReview))
+        assert extraction is not None
+        assert extraction.status == "failed"
+        assert extraction.failure_code == "unmapped_card"
+        assert review is not None
+        assert review.severity == "blocking"
         assert review.condition_code == "apple_wallet_unmapped_card"
         assert review.context == {"integration": "apple_wallet"}
         assert session.scalar(select(func.count()).select_from(Claim)) == 0
