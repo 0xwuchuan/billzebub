@@ -80,6 +80,12 @@ def parser() -> argparse.ArgumentParser:
         help="copy private probe bodies into the production Source Artifact store",
     )
     import_probe.add_argument("--capture-root", required=True, type=Path)
+    reprocess = apple_wallet_commands.add_parser(
+        "reprocess",
+        help="re-ingest stored failed apple_wallet_shortcut artifacts by id",
+    )
+    reprocess.add_argument("--extraction-id", action="append", default=[], type=UUID)
+    reprocess.add_argument("--artifact-id", action="append", default=[], type=UUID)
 
     token = commands.add_parser("token", help="manage scoped integration tokens")
     token_commands = token.add_subparsers(dest="token_command", required=True)
@@ -211,6 +217,31 @@ def main(argv: Sequence[str] | None = None) -> None:
                     "Apple Wallet probe import failed; inspect local configuration."
                 ) from None
             print("Apple Wallet probe import completed.")
+            return
+        if arguments.command == "apple-wallet" and arguments.apple_wallet_command == "reprocess":
+            if settings.apple_wallet_timezone is None:
+                raise SystemExit("Apple Wallet ingestion is not configured.")
+            try:
+                processed = AppleWalletIngestion(
+                    database,
+                    ArtifactCapture(
+                        ContentAddressedStore(
+                            settings.artifact_root,
+                            max_bytes=settings.artifact_max_bytes,
+                        ),
+                        database,
+                    ),
+                    FinancialAccountAliases(database),
+                    timezone=ZoneInfo(settings.apple_wallet_timezone),
+                ).reprocess(
+                    extraction_ids=tuple(arguments.extraction_id),
+                    artifact_ids=tuple(arguments.artifact_id),
+                )
+            except (ArtifactStoreError, OSError, ValueError):
+                raise SystemExit(
+                    "Apple Wallet reprocess failed; inspect local configuration."
+                ) from None
+            print(f"Apple Wallet reprocess completed for {processed} Source Artifact(s).")
             return
         if arguments.command == "token" and arguments.token_command == "issue":
             manager = TokenManager(database)

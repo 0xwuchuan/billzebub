@@ -7,7 +7,7 @@ from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from billzebub.persistence.database import Database
@@ -83,9 +83,13 @@ class ImportCatalog:
         active_review_id = session.scalar(
             select(PendingReview.id)
             .where(
-                PendingReview.subject_type == "extraction",
-                PendingReview.subject_id == extraction.id,
                 PendingReview.status == "pending",
+                or_(
+                    (PendingReview.subject_type == "extraction")
+                    & (PendingReview.subject_id == extraction.id),
+                    (PendingReview.subject_type == "source_artifact")
+                    & (PendingReview.subject_id == extraction.artifact_id),
+                ),
             )
             .order_by(PendingReview.created_at.desc())
             .limit(1)

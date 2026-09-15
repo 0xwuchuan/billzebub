@@ -58,6 +58,10 @@ class ArtifactCapture:
         stored = self._store.put_file(source)
         return self._record(stored, arrival)
 
+    def verified_bytes(self, sha256: str, size: int) -> bytes:
+        """Return stored artifact bytes after content-address verification."""
+        return self._store.verified_path(sha256, size).read_bytes()
+
     def _record(self, stored: StoredContent, arrival: ArtifactArrivalInput) -> SourceArtifactRef:
         proposed_artifact_id = uuid7()
         arrival_id = uuid7()

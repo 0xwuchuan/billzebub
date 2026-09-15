@@ -61,7 +61,15 @@ Do not stop the probe yet. For an interactive one-card setup that keeps the stat
 5. Make one normal Apple Pay purchase, verify the new endpoint creates one provisional Claim, then wait for the next card statement and verify reconciliation.
 6. Only after successful production capture and backfill, stop and remove the throwaway probe. Its old raw bodies must already be retained in the Billzebub Source Artifact store.
 
-The production endpoint records exact bodies, maps Wallet instruments only through local aliases, routes PayLah events to the single active `paylah` Financial Account, uses the mapped Financial Account's currency for dollar-prefixed source text, and applies the configured owner timezone to the local Shortcut timestamp. Unknown Wallet instruments and a missing or ambiguous PayLah account remain blocking review conditions and create no Claim.
+The production endpoint records exact bodies, maps Wallet instruments only through local aliases, routes PayLah events to the single active `paylah` Financial Account, uses the mapped Financial Account's currency for dollar-prefixed source text, and applies the configured owner timezone to the local Shortcut timestamp. Unknown Wallet instruments and a missing or ambiguous PayLah account remain blocking review conditions and create no Claim. Invalid Shortcut JSON opens an Attention Review. `source` values `apple-pay`, `apple_pay`, and `Apple Pay` normalize to `apple_wallet`.
+
+After this parser upgrade, reprocess only the failed `apple_wallet_shortcut` Extractions you name. In the maintenance container, pass tonight’s two `unsupported_source` Extraction ids (or their Source Artifact ids):
+
+```bash
+billzebub apple-wallet reprocess --extraction-id <extraction-id> --extraction-id <extraction-id>
+```
+
+Do not bulk-reprocess the historical `invalid_payload_*` pile. The command re-reads stored artifact bytes through ingest, is idempotent, and does not print payload bytes.
 
 ## Backup and restore
 

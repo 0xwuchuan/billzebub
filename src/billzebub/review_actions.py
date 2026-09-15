@@ -54,6 +54,8 @@ class ReviewActions:
     _UNMAPPED_CARD_CONDITION = "apple_wallet_unmapped_card"
     _MISSING_PAYLAH_CONDITION = "paylah_account_missing"
     _AMBIGUOUS_PAYLAH_CONDITION = "paylah_account_ambiguous"
+    _PAYLOAD_INVALID_CONDITION = "shortcut_payload_invalid"
+    _EXCLUDE_SOURCE_ARTIFACT = "exclude_source_artifact"
     _CONFIGURE_CARD_ALIAS = "configure_card_alias"
     _CONFIGURE_PAYLAH_ACCOUNT = "configure_paylah_account"
     _CARD_ALIAS_COMMAND = "billzebub account apple-wallet-alias"
@@ -104,6 +106,9 @@ class ReviewActions:
                 cli_command=self._PAYLAH_COMMAND,
                 problem_code="paylah_account_configuration_required",
             )
+        if condition_code == self._PAYLOAD_INVALID_CONDITION:
+            self._require_open_decision(command, frozenset({self._EXCLUDE_SOURCE_ARTIFACT}))
+            return self._inbox.decide(command)
         raise ReviewActionError("Pending Review requires a specialized workflow")
 
     def _decide_extraction_failure(self, command: ReviewDecision) -> PendingReviewRecord:
