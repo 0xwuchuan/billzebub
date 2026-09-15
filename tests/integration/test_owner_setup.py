@@ -88,9 +88,10 @@ def test_owner_http_creates_accounts_aliases_categories_and_tokens(
     assert card.json()["inbox_ready"] is True
     assert "statement_account_identifier" not in card.json()
     assert alias.status_code == 201
-    assert alias.json()["masked_value"] != "Synthetic Wallet Card"
-    assert "Synthetic Wallet Card" not in alias.text
-    assert "Synthetic Wallet Card" not in accounts.text
+    assert alias.json()["display_label"] == "Synthetic Wallet Card"
+    assert "••••" not in alias.text
+    assert "masked_value" not in alias.json()
+    assert accounts.json()["items"][1]["aliases"][0]["display_label"] == "Synthetic Wallet Card"
     assert category.status_code == 201
     assert token.status_code == 201
     plaintext = token.json()["plaintext"]

@@ -102,7 +102,7 @@ class FakeAliases:
             id=uuid4(),
             financial_account_id=account_id,
             alias_kind="apple_wallet_card",
-            masked_value="Sy••••••rd",
+            display_label=card_label,
         )
         self.records.append(record)
         return record
@@ -203,7 +203,7 @@ def test_owner_can_create_paylah_and_credit_card_accounts(tmp_path: Path) -> Non
     assert adapters.json()["items"][0]["key"] == "dbs-credit-card"
 
 
-def test_wallet_alias_is_write_only_and_masked(tmp_path: Path) -> None:
+def test_wallet_alias_returns_owner_display_label(tmp_path: Path) -> None:
     account_id = uuid4()
     accounts = FakeAccounts(
         records=[
@@ -231,10 +231,11 @@ def test_wallet_alias_is_write_only_and_masked(tmp_path: Path) -> None:
         listed = client.get("/api/v1/financial-accounts")
 
     assert created.status_code == 201
-    assert created.json()["masked_value"] == "Sy••••••rd"
-    assert "Synthetic Wallet Card" not in created.text
-    assert listed.json()["items"][0]["aliases"][0]["masked_value"] == "Sy••••••rd"
-    assert "Synthetic Wallet Card" not in listed.text
+    assert created.json()["display_label"] == "Synthetic Wallet Card"
+    assert "••••" not in created.text
+    assert "masked_value" not in created.json()
+    assert listed.json()["items"][0]["aliases"][0]["display_label"] == "Synthetic Wallet Card"
+    assert "statement_account_identifier" not in listed.json()["items"][0]
     assert aliases.labels == ["Synthetic Wallet Card"]
 
 

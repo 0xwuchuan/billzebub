@@ -506,6 +506,23 @@ button.statement-cell:hover {
   font-size: var(--bz-text-sm);
 }
 
+.settings {
+  display: grid;
+  gap: var(--bz-space-4);
+  padding-bottom: var(--bz-space-6);
+}
+
+.settings-section {
+  padding: var(--bz-space-5);
+}
+
+.settings-section h2 {
+  margin: 0 0 var(--bz-space-4);
+  font-size: var(--bz-text-md);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
 @media (max-width: 64rem) {
   .split,
   .desk {

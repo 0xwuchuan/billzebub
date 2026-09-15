@@ -15,6 +15,7 @@ import { isoDate } from "./lib/labels";
 import {
   defaultSetupState,
   firstBlockedStep,
+  gatesMet,
   reduceSetup,
   stepIndexValid,
   stepValid,
@@ -217,8 +218,8 @@ describe("App", () => {
     });
   });
 
-  it("creates a PayLah Financial Account and Wallet alias from Setup", async () => {
-    window.location.hash = "#/setup";
+  it("creates a PayLah Financial Account and Wallet alias from Onboarding", async () => {
+    window.location.hash = "#/onboarding";
     const created = {
       id: "00000000-0000-0000-0000-000000000021",
       slug: "synthetic-paylah",
@@ -251,7 +252,7 @@ describe("App", () => {
             {
               id: "00000000-0000-0000-0000-000000000022",
               alias_kind: "apple_wallet_card",
-              masked_value: "Sy••••••rd",
+              display_label: "Synthetic Wallet Card",
             },
             201,
           );
@@ -349,6 +350,12 @@ describe("App", () => {
     expect(
       within(drawer).getByRole("button", { name: "Imports" }),
     ).toBeVisible();
+    expect(
+      within(drawer).getByRole("button", { name: "Settings" }),
+    ).toBeVisible();
+    expect(
+      within(drawer).queryByRole("button", { name: "Setup" }),
+    ).not.toBeInTheDocument();
     fireEvent.click(
       within(drawer).getByRole("button", { name: "Close navigation" }),
     );
@@ -505,6 +512,231 @@ describe("App", () => {
       "#/imports/00000000-0000-0000-0000-000000000017",
     );
   });
+
+  it("never shows Onboarding when accounts and Categories already exist", async () => {
+    window.location.hash = "";
+    vi.stubGlobal(
+      "fetch",
+      mockWorkspace({
+        transactions: [],
+        reviews: [],
+        categories: [
+          {
+            id: "00000000-0000-0000-0000-000000000099",
+            name: "Dining",
+            parent_id: null,
+            active: true,
+          },
+        ],
+        accounts: [configuredAccount()],
+      }),
+    );
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Overview" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "This machine keeps the history" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/Onboarding ·/)).not.toBeInTheDocument();
+    expect(
+      screen.getAllByRole("button", { name: "Settings" }).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.queryByRole("button", { name: "Setup" }),
+    ).not.toBeInTheDocument();
+    expect(["", "#/overview"]).toContain(window.location.hash);
+  });
+
+  it("shows Onboarding when the only Category is Uncategorized", async () => {
+    window.location.hash = "";
+    vi.stubGlobal(
+      "fetch",
+      mockWorkspace({
+        transactions: [],
+        reviews: [],
+        categories: [
+          {
+            id: "00000000-0000-0000-0000-000000000098",
+            name: "Uncategorized",
+            parent_id: null,
+            active: true,
+          },
+        ],
+        accounts: [configuredAccount()],
+      }),
+    );
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", {
+        name: "This machine keeps the history",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Onboarding ·/)).toBeInTheDocument();
+  });
+
+  it("adds an account, alias, Category, and token from Settings", async () => {
+    seedOnboarded();
+    window.location.hash = "#/settings";
+    const created = {
+      ...configuredAccount(),
+      id: "00000000-0000-0000-0000-000000000031",
+      slug: "synthetic-paylah",
+      display_name: "Synthetic PayLah",
+      kind: "paylah",
+      statement_adapter_key: null,
+      inbox_ready: false,
+      aliases: [],
+    };
+    const fetchMock = mockWorkspace({
+      transactions: [],
+      reviews: [],
+      categories: [
+        {
+          id: "00000000-0000-0000-0000-000000000099",
+          name: "Dining",
+          parent_id: null,
+          active: true,
+        },
+      ],
+      accounts: [configuredAccount()],
+    });
+    fetchMock.mockImplementation(
+      async (raw: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(raw);
+        if (url === "/api/v1/financial-accounts" && init?.method === "POST") {
+          return json(created, 201);
+        }
+        if (url.endsWith("/aliases") && init?.method === "POST") {
+          return json(
+            {
+              id: "00000000-0000-0000-0000-000000000032",
+              alias_kind: "apple_wallet_card",
+              display_label: "Citi PremierMiles",
+            },
+            201,
+          );
+        }
+        if (url === "/api/v1/categories" && init?.method === "POST") {
+          return json(
+            {
+              id: "00000000-0000-0000-0000-000000000033",
+              name: "Pets",
+              parent_id: null,
+              active: true,
+            },
+            201,
+          );
+        }
+        if (url === "/api/v1/tokens" && init?.method === "POST") {
+          return json(
+            {
+              id: "00000000-0000-0000-0000-000000000034",
+              name: "Apple Shortcut",
+              prefix: "abcd1234efgh",
+              scopes: ["shortcut:claims:create"],
+              created_at: "2026-01-10T00:00:00+00:00",
+              last_used_at: null,
+              plaintext: "bzb_v1_abcd1234efgh_once",
+            },
+            201,
+          );
+        }
+        return mockWorkspace({
+          transactions: [],
+          reviews: [],
+          categories: [
+            {
+              id: "00000000-0000-0000-0000-000000000099",
+              name: "Dining",
+              parent_id: null,
+              active: true,
+            },
+          ],
+          accounts: [configuredAccount()],
+        })(raw, init);
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Settings" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Onboarding ·/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Citi PremierMiles • 8899/)).toBeInTheDocument();
+    expect(screen.queryByText(/Sy•/)).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Kind"), {
+      target: { value: "paylah" },
+    });
+    fireEvent.change(screen.getByLabelText("Slug"), {
+      target: { value: "synthetic-paylah" },
+    });
+    fireEvent.change(screen.getByLabelText("Display name"), {
+      target: { value: "Synthetic PayLah" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Create Financial Account" }),
+    );
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/financial-accounts",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            slug: "synthetic-paylah",
+            display_name: "Synthetic PayLah",
+            institution: "dbs",
+            kind: "paylah",
+            default_currency: "SGD",
+          }),
+        }),
+      );
+    });
+    expect(screen.getAllByText("Synthetic PayLah").length).toBeGreaterThan(0);
+
+    fireEvent.change(screen.getByLabelText("Apple Wallet card label"), {
+      target: { value: "Citi Rewards" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Map Wallet card" }));
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/financial-accounts/00000000-0000-0000-0000-000000000021/aliases",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+
+    fireEvent.change(screen.getByLabelText("Add a Category"), {
+      target: { value: "Pets" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create Category" }));
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/categories",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ name: "Pets", parent_id: null }),
+        }),
+      );
+    });
+    expect(screen.getAllByText("Pets").length).toBeGreaterThan(0);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Issue Shortcut token" }),
+    );
+    expect(
+      await screen.findByText("bzb_v1_abcd1234efgh_once"),
+    ).toBeInTheDocument();
+    expect(window.localStorage.getItem(SETUP_STORAGE_KEY)).not.toContain(
+      "bzb_v1_",
+    );
+  });
 });
 
 describe("formatMoney", () => {
@@ -516,9 +748,13 @@ describe("formatMoney", () => {
 });
 
 describe("parseHash", () => {
-  it("defaults an empty hash to Setup before onboarding and Overview after", () => {
-    expect(parseHash("", false).page).toBe("setup");
+  it("defaults an empty hash to Onboarding before gates and Overview after", () => {
+    expect(parseHash("", false).page).toBe("onboarding");
     expect(parseHash("", true).page).toBe("overview");
+    expect(parseHash("#/setup", false).page).toBe("onboarding");
+    expect(parseHash("#/setup", true).page).toBe("settings");
+    expect(parseHash("#/onboarding", true).page).toBe("settings");
+    expect(parseHash("#/settings", true).page).toBe("settings");
     expect(
       hashFor({
         page: "review",
@@ -528,6 +764,7 @@ describe("parseHash", () => {
         importId: null,
       }),
     ).toBe("#/review/blocking");
+    expect(hashFor({ ...parseHash("#/settings", true) })).toBe("#/settings");
     expect(parseHash("#/imports", true).page).toBe("imports");
     expect(
       parseHash("#/imports/00000000-0000-0000-0000-000000000099", true),
@@ -542,7 +779,7 @@ describe("parseHash", () => {
 });
 
 describe("setup gates", () => {
-  it("blocks Continue until each Setup gate is met", () => {
+  it("blocks Continue until each Onboarding gate is met", () => {
     const empty: SetupGates = { accountCount: 0, categoryCount: 0 };
     const accounts: SetupGates = { accountCount: 1, categoryCount: 0 };
     const ready: SetupGates = { accountCount: 1, categoryCount: 1 };
@@ -553,6 +790,9 @@ describe("setup gates", () => {
     expect(stepIndexValid(3, accounts)).toBe(false);
     expect(stepIndexValid(3, ready)).toBe(true);
     expect(stepIndexValid(4, ready)).toBe(true);
+    expect(gatesMet(empty)).toBe(false);
+    expect(gatesMet(accounts)).toBe(false);
+    expect(gatesMet(ready)).toBe(true);
     expect(firstBlockedStep(state, empty)).toBe(1);
     state = reduceSetup(state, { type: "advance" }, empty);
     expect(state.step).toBe(1);
@@ -569,6 +809,28 @@ function seedOnboarded(): void {
       step: 0,
     }),
   );
+}
+
+function configuredAccount() {
+  return {
+    id: "00000000-0000-0000-0000-000000000021",
+    slug: "citi-premiermiles",
+    display_name: "Citi PremierMiles",
+    institution: "citi",
+    kind: "credit_card",
+    default_currency: "SGD",
+    statement_adapter_key: "citi-credit-card",
+    active: true,
+    password_configured: true,
+    inbox_ready: true,
+    aliases: [
+      {
+        id: "00000000-0000-0000-0000-000000000022",
+        alias_kind: "apple_wallet_card",
+        display_label: "Citi PremierMiles 8899",
+      },
+    ],
+  };
 }
 
 function mockWorkspace(input: {

@@ -23,12 +23,6 @@ export function useSetup(gates: SetupGates = emptyGates) {
     saveSetup(state);
   }, [state]);
 
-  useEffect(() => {
-    if (gates.accountCount >= 1 && !state.onboarded) {
-      dispatchState({ type: "finish" });
-    }
-  }, [gates.accountCount, state.onboarded]);
-
   return { state, dispatch: dispatchState };
 }
 

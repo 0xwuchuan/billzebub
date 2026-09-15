@@ -9,11 +9,11 @@ import {
   MenuIcon,
   OverviewIcon,
   ReviewIcon,
-  SetupIcon,
+  SettingsIcon,
   TransactionsIcon,
 } from "./icons";
 
-type NavId = "overview" | "review" | "transactions" | "imports" | "setup";
+type NavId = "overview" | "review" | "transactions" | "imports" | "settings";
 
 type NavItem = {
   id: NavId;
@@ -66,10 +66,10 @@ export function AppShell({
       icon: <ImportsIcon />,
     },
   ];
-  const setupItem: NavItem = {
-    id: "setup",
-    label: "Setup",
-    icon: <SetupIcon />,
+  const settingsItem: NavItem = {
+    id: "settings",
+    label: "Settings",
+    icon: <SettingsIcon />,
   };
 
   useEffect(() => {
@@ -97,7 +97,7 @@ export function AppShell({
       <aside className="rail" aria-label="Daily navigation">
         <RailContent
           dailyItems={dailyItems}
-          setupItem={setupItem}
+          settingsItem={settingsItem}
           current={route.page}
           onNavigate={go}
         />
@@ -165,7 +165,7 @@ export function AppShell({
             </div>
             <RailContent
               dailyItems={dailyItems}
-              setupItem={setupItem}
+              settingsItem={settingsItem}
               current={route.page}
               onNavigate={go}
             />
@@ -178,12 +178,12 @@ export function AppShell({
 
 function RailContent({
   dailyItems,
-  setupItem,
+  settingsItem,
   current,
   onNavigate,
 }: {
   dailyItems: NavItem[];
-  setupItem: NavItem;
+  settingsItem: NavItem;
   current: RoutePage;
   onNavigate: (page: RoutePage) => void;
 }) {
@@ -211,7 +211,11 @@ function RailContent({
       </div>
       <div className="rail-foot">
         <p className="rail-label">Workspace</p>
-        <RailItem item={setupItem} current={current} onNavigate={onNavigate} />
+        <RailItem
+          item={settingsItem}
+          current={current}
+          onNavigate={onNavigate}
+        />
       </div>
     </>
   );
