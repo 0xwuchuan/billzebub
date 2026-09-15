@@ -14,6 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 NAS_SCRIPTS = REPO_ROOT / "scripts" / "nas"
 UPGRADE_SCRIPT = NAS_SCRIPTS / "upgrade.sh"
 DEPLOY_SCRIPT = NAS_SCRIPTS / "deploy-initial.sh"
+BACKUP_SCRIPT = NAS_SCRIPTS / "backup.sh"
 COMMON_SCRIPT = NAS_SCRIPTS / "common.sh"
 COMPOSE_FILE = REPO_ROOT / "compose.nas.yaml"
 DEPLOYMENT_DOC = REPO_ROOT / "docs" / "nas-deployment.md"
@@ -145,7 +146,7 @@ def _operations(env: dict[str, str]) -> list[str]:
 
 
 def test_nas_scripts_are_valid_bash() -> None:
-    for script in (UPGRADE_SCRIPT, DEPLOY_SCRIPT, COMMON_SCRIPT):
+    for script in (UPGRADE_SCRIPT, DEPLOY_SCRIPT, BACKUP_SCRIPT, COMMON_SCRIPT):
         subprocess.run(["bash", "-n", str(script)], check=True)
 
 
