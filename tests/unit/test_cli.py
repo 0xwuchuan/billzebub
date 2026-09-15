@@ -1,4 +1,5 @@
 from pathlib import Path
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -173,3 +174,48 @@ def test_account_bootstrap_cli_rejects_broadly_readable_identifier_file(
                 str(identifier_file),
             ]
         )
+
+
+class FakeAppleWalletIngestion:
+    extraction_ids: tuple[UUID, ...] | None = None
+    artifact_ids: tuple[UUID, ...] | None = None
+
+    def __init__(self, *_args: object, **_kwargs: object) -> None:
+        pass
+
+    def reprocess(
+        self,
+        *,
+        extraction_ids: tuple[UUID, ...] = (),
+        artifact_ids: tuple[UUID, ...] = (),
+    ) -> int:
+        type(self).extraction_ids = extraction_ids
+        type(self).artifact_ids = artifact_ids
+        return len(extraction_ids)
+
+
+def test_apple_wallet_reprocess_cli_forwards_ids_and_prints_no_payload(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    extraction_id = uuid4()
+    monkeypatch.setattr(
+        cli,
+        "Settings",
+        lambda: Settings(
+            artifact_root=tmp_path / "artifacts",
+            apple_wallet_timezone="Asia/Singapore",
+        ),
+    )
+    monkeypatch.setattr(cli, "Database", FakeDatabase)
+    monkeypatch.setattr(cli, "AppleWalletIngestion", FakeAppleWalletIngestion)
+
+    cli.main(["apple-wallet", "reprocess", "--extraction-id", str(extraction_id)])
+
+    output = capsys.readouterr().out
+    assert FakeAppleWalletIngestion.extraction_ids == (extraction_id,)
+    assert FakeAppleWalletIngestion.artifact_ids == ()
+    assert output == "Apple Wallet reprocess completed for 1 Source Artifact(s).\n"
+    assert "apple-pay" not in output
+    assert "$" not in output

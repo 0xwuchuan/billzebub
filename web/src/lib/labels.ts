@@ -23,6 +23,9 @@ export function reviewTitle(condition: string): string {
   if (condition === "apple_wallet_unmapped_card") {
     return "Wallet card unmapped";
   }
+  if (condition === "shortcut_payload_invalid") {
+    return "Shortcut payload rejected";
+  }
   if (condition === "paylah_account_missing") {
     return "PayLah account missing";
   }

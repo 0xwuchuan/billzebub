@@ -26,6 +26,7 @@ from billzebub.persistence.models import (
     FinancialAccountKind,
     PendingReview,
     ReviewEvent,
+    SourceArtifact,
 )
 from billzebub.reviews import ReviewCondition, ReviewInbox, ReviewSeverity
 
@@ -67,11 +68,12 @@ class AppleWalletIngestion:
 
     _WALLET_ADAPTER_KEY = "apple_wallet_shortcut"
     _PAYLAH_ADAPTER_KEY = "paylah_shortcut"
-    _PARSER_VERSION = "1"
+    _PARSER_VERSION = "2"
     _PROBE2_SCHEMA = "probe-2"
     _REALTIME_SCHEMA = "realtime-1"
     _SOURCE_APPLE_WALLET = "apple_wallet"
     _SOURCE_PAYLAH = "paylah"
+    _APPLE_WALLET_SOURCE_ALIASES = frozenset({"apple-wallet", "apple-pay"})
     _PROBE2_FIELDS = frozenset({"schema_version", "name", "merchant", "card", "amount", "date"})
     _APPLE_WALLET_REALTIME_FIELDS = frozenset(
         {"schema_version", "source", "name", "merchant", "instrument", "amount", "date"}
@@ -82,8 +84,27 @@ class AppleWalletIngestion:
     _UNMAPPED_CARD_CONDITION = "apple_wallet_unmapped_card"
     _MISSING_PAYLAH_CONDITION = "paylah_account_missing"
     _AMBIGUOUS_PAYLAH_CONDITION = "paylah_account_ambiguous"
+    _PAYLOAD_INVALID_CONDITION = "shortcut_payload_invalid"
+    _EXCLUDE_SOURCE_ARTIFACT = "exclude_source_artifact"
     _CONFIGURATION_REVIEW_CONDITIONS = frozenset(
-        {_UNMAPPED_CARD_CONDITION, _MISSING_PAYLAH_CONDITION, _AMBIGUOUS_PAYLAH_CONDITION}
+        {
+            _UNMAPPED_CARD_CONDITION,
+            _MISSING_PAYLAH_CONDITION,
+            _AMBIGUOUS_PAYLAH_CONDITION,
+            _PAYLOAD_INVALID_CONDITION,
+        }
+    )
+    _PAYLOAD_FAILURE_CODES = frozenset(
+        {
+            "unsupported_source",
+            "unsupported_schema_version",
+            "invalid_payload_shape",
+            "invalid_payload_values",
+            "invalid_json",
+            "invalid_amount",
+            "invalid_occurrence_time",
+            "invalid_card_label",
+        }
     )
 
     def __init__(
@@ -148,8 +169,72 @@ class AppleWalletIngestion:
             arrival.adapter_key,
         )
 
+    def reprocess(
+        self,
+        *,
+        extraction_ids: tuple[UUID, ...] = (),
+        artifact_ids: tuple[UUID, ...] = (),
+        received_at: datetime | None = None,
+    ) -> int:
+        """Re-ingest selected failed apple_wallet_shortcut artifacts by id only."""
+        extraction_ids = tuple(dict.fromkeys(extraction_ids))
+        artifact_ids = tuple(dict.fromkeys(artifact_ids))
+        if not extraction_ids and not artifact_ids:
+            raise ValueError("reprocess requires an extraction or artifact id")
+
+        with self._database.transaction() as session:
+            found_extraction_ids: set[UUID] = set()
+            found_artifact_ids: set[UUID] = set()
+            targets: list[tuple[str, int]] = []
+            seen_hashes: set[str] = set()
+            if extraction_ids:
+                rows = session.execute(
+                    select(
+                        Extraction.id,
+                        SourceArtifact.sha256,
+                        SourceArtifact.size,
+                    )
+                    .join(SourceArtifact, SourceArtifact.id == Extraction.artifact_id)
+                    .where(
+                        Extraction.id.in_(extraction_ids),
+                        Extraction.status == "failed",
+                        Extraction.adapter_key == self._WALLET_ADAPTER_KEY,
+                    )
+                ).all()
+                for extraction_id, sha256, size in rows:
+                    found_extraction_ids.add(extraction_id)
+                    if sha256 not in seen_hashes:
+                        seen_hashes.add(sha256)
+                        targets.append((sha256, size))
+            if artifact_ids:
+                rows = session.execute(
+                    select(SourceArtifact.id, SourceArtifact.sha256, SourceArtifact.size)
+                    .join(Extraction, Extraction.artifact_id == SourceArtifact.id)
+                    .where(
+                        SourceArtifact.id.in_(artifact_ids),
+                        Extraction.status == "failed",
+                        Extraction.adapter_key == self._WALLET_ADAPTER_KEY,
+                    )
+                ).all()
+                for artifact_id, sha256, size in rows:
+                    found_artifact_ids.add(artifact_id)
+                    if sha256 not in seen_hashes:
+                        seen_hashes.add(sha256)
+                        targets.append((sha256, size))
+            missing_extractions = set(extraction_ids) - found_extraction_ids
+            missing_artifacts = set(artifact_ids) - found_artifact_ids
+            if missing_extractions or missing_artifacts:
+                raise ValueError("reprocess ids must be failed apple_wallet_shortcut Extractions")
+
+        replayed_at = datetime.now(UTC) if received_at is None else received_at
+        for sha256, size in targets:
+            body = self._artifacts.verified_bytes(sha256, size)
+            self.ingest(body, received_at=replayed_at, actor_id=None)
+        return len(targets)
+
     def _arrival_typing(self, body: bytes) -> _ArrivalTyping:
-        schema_version, source = self._peek_declared_identity(body)
+        schema_version, declared_source = self._peek_declared_identity(body)
+        source = None if declared_source is None else self._canonical_source(declared_source)
         if source is None and schema_version == self._PROBE2_SCHEMA:
             source = self._SOURCE_APPLE_WALLET
         if source == self._SOURCE_PAYLAH:
@@ -218,14 +303,25 @@ class AppleWalletIngestion:
         source = decoded.get("source")
         if not isinstance(source, str):
             return None, "invalid_payload_shape"
-        normalized_source = source.strip()
-        if normalized_source == self._SOURCE_APPLE_WALLET:
-            return self._apple_wallet_realtime_payload(decoded)
-        if normalized_source == self._SOURCE_PAYLAH:
-            return self._paylah_realtime_payload(decoded)
-        if not normalized_source or len(normalized_source) > 500:
+        canonical_source = self._canonical_source(source)
+        rewritten = dict(decoded)
+        rewritten["source"] = canonical_source
+        if canonical_source == self._SOURCE_APPLE_WALLET:
+            return self._apple_wallet_realtime_payload(rewritten)
+        if canonical_source == self._SOURCE_PAYLAH:
+            return self._paylah_realtime_payload(rewritten)
+        if not canonical_source or len(canonical_source) > 500:
             return None, "invalid_payload_values"
         return None, "unsupported_source"
+
+    @classmethod
+    def _canonical_source(cls, value: str) -> str:
+        compact = value.strip().casefold().replace("_", "-").replace(" ", "-")
+        if compact in cls._APPLE_WALLET_SOURCE_ALIASES:
+            return cls._SOURCE_APPLE_WALLET
+        if compact == cls._SOURCE_PAYLAH:
+            return cls._SOURCE_PAYLAH
+        return value.strip()
 
     def _apple_wallet_realtime_payload(
         self, decoded: dict[str, Any]
@@ -414,44 +510,60 @@ class AppleWalletIngestion:
                 validation_report={"failure": {"code": code}},
             )
             session.add(extraction)
-            review = self._review_for_failure(code)
-            if review is not None:
-                ReviewInbox.synchronize_in_session(
-                    session,
-                    ReviewCondition(
-                        subject_type="source_artifact",
-                        subject_id=artifact_id,
-                        condition_code=review[0],
-                        severity=ReviewSeverity.BLOCKING,
-                        allowed_decisions=review[1],
-                        context=review[2],
-                    ),
-                    active=True,
-                )
+            review = self._review_for_failure(code, adapter_key)
+            ReviewInbox.synchronize_in_session(
+                session,
+                ReviewCondition(
+                    subject_type="source_artifact",
+                    subject_id=artifact_id,
+                    condition_code=review[0],
+                    severity=review[1],
+                    allowed_decisions=review[2],
+                    context=review[3],
+                ),
+                active=True,
+            )
             return AppleWalletCaptureOutcome(
                 AppleWalletCaptureStatus.REVIEW_REQUIRED, duplicate=False
             )
 
-    def _review_for_failure(self, code: str) -> tuple[str, tuple[str, ...], dict[str, str]] | None:
+    def _review_for_failure(
+        self, code: str, adapter_key: str
+    ) -> tuple[str, ReviewSeverity, tuple[str, ...], dict[str, str]]:
+        integration = "paylah" if adapter_key == self._PAYLAH_ADAPTER_KEY else "apple_wallet"
         if code == "unmapped_card":
             return (
                 self._UNMAPPED_CARD_CONDITION,
+                ReviewSeverity.BLOCKING,
                 ("configure_card_alias",),
                 {"integration": "apple_wallet"},
             )
         if code == "missing_paylah_account":
             return (
                 self._MISSING_PAYLAH_CONDITION,
+                ReviewSeverity.BLOCKING,
                 ("configure_paylah_account",),
                 {"integration": "paylah"},
             )
         if code == "ambiguous_paylah_account":
             return (
                 self._AMBIGUOUS_PAYLAH_CONDITION,
+                ReviewSeverity.BLOCKING,
                 ("configure_paylah_account",),
                 {"integration": "paylah"},
             )
-        return None
+        failure_code = code if code in self._PAYLOAD_FAILURE_CODES else "invalid_payload_shape"
+        return (
+            self._PAYLOAD_INVALID_CONDITION,
+            ReviewSeverity.ATTENTION,
+            (self._EXCLUDE_SOURCE_ARTIFACT,),
+            {
+                "integration": integration,
+                "failure_code": failure_code,
+                "subject": "Shortcut payload rejected",
+                "body": (f"Shortcut ingest failed closed ({failure_code}) and created no Claims."),
+            },
+        )
 
     def _existing(
         self,
