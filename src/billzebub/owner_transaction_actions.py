@@ -33,6 +33,8 @@ class OwnerCategorizationCommand:
     expected_version: int
     category_id: UUID
     actor_id: UUID
+    reason: str = "owner_categorization"
+    learn: bool = True
 
 
 class OwnerTransactionActions:
@@ -44,9 +46,9 @@ class OwnerTransactionActions:
 
     def categorize(self, command: OwnerCategorizationCommand) -> TransactionSnapshot:
         with self._database.transaction() as session:
-            return self._categorize_in_session(session, command)
+            return self.categorize_in_session(session, command)
 
-    def _categorize_in_session(
+    def categorize_in_session(
         self,
         session: Session,
         command: OwnerCategorizationCommand,
@@ -60,11 +62,11 @@ class OwnerTransactionActions:
         if category is None or not category.active or self._is_uncategorized(category):
             raise OwnerTransactionActionError("Category is not available for categorization")
         try:
-            return self._history.correct_in_session(
+            updated = self._history.correct_in_session(
                 session,
                 Correction(
                     transaction_id=command.transaction_id,
-                    reason="owner_categorization",
+                    reason=command.reason,
                     category_splits=(
                         CategoryAllocation(
                             category_id=category.id,
@@ -79,6 +81,16 @@ class OwnerTransactionActions:
             )
         except FinancialHistoryError as error:
             raise OwnerTransactionActionError(str(error)) from error
+        if command.learn:
+            from billzebub.categorizer import remember_owner_mapping
+
+            remember_owner_mapping(
+                session,
+                counterparty=updated.counterparty,
+                category_id=category.id,
+                actor_id=command.actor_id,
+            )
+        return updated
 
     @staticmethod
     def _is_uncategorized(category: Category) -> bool:

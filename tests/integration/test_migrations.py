@@ -17,6 +17,7 @@ def test_migrations_create_current_foundation_tables(database: Database) -> None
         "artifact_arrival",
         "audit_actor",
         "category",
+        "counterparty_category_map",
         "durable_job",
         "financial_account",
         "financial_account_alias",

@@ -5,6 +5,7 @@ export const SETUP_CATEGORIES = [
   "Utilities",
   "Health",
   "Shopping",
+  "Gifts",
 ] as const;
 
 export const SETUP_ACCOUNT_EXAMPLES = [
