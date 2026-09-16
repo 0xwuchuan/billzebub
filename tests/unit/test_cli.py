@@ -9,6 +9,7 @@ from billzebub.financial_accounts import (
     FinancialAccountBootstrapCommand,
     FinancialAccountBootstrapPlan,
 )
+from billzebub.imports import FailedImportPurgeReport
 from billzebub.persistence.models import FinancialAccountKind
 
 
@@ -219,3 +220,88 @@ def test_apple_wallet_reprocess_cli_forwards_ids_and_prints_no_payload(
     assert output == "Apple Wallet reprocess completed for 1 Source Artifact(s).\n"
     assert "apple-pay" not in output
     assert "$" not in output
+
+
+class FakeImportCatalog:
+    dismissed_failed = 0
+    dismissed_id: UUID | None = None
+    purge_dry_run: bool | None = None
+    purge_all_failed: bool | None = None
+
+    def __init__(self, _database: FakeDatabase) -> None:
+        pass
+
+    def dismiss(self, extraction_id: UUID) -> object:
+        type(self).dismissed_id = extraction_id
+        return type("Record", (), {"id": extraction_id})()
+
+    def dismiss_failed(self) -> int:
+        type(self).dismissed_failed += 1
+        return 3
+
+    def purge_failed(
+        self, *, dry_run: bool = True, all_failed: bool = False
+    ) -> FailedImportPurgeReport:
+        type(self).purge_dry_run = dry_run
+        type(self).purge_all_failed = all_failed
+        return FailedImportPurgeReport(
+            extraction_ids=(uuid4(),),
+            artifact_ids=(uuid4(),),
+            skipped_extraction_ids=(),
+            dry_run=dry_run,
+        )
+
+
+def test_imports_dismiss_failed_cli_prints_count_without_payloads(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    FakeImportCatalog.dismissed_failed = 0
+    monkeypatch.setattr(cli, "Settings", lambda: Settings(artifact_root=tmp_path / "artifacts"))
+    monkeypatch.setattr(cli, "Database", FakeDatabase)
+    monkeypatch.setattr(cli, "ImportCatalog", FakeImportCatalog)
+
+    cli.main(["imports", "dismiss", "--failed"])
+
+    output = capsys.readouterr().out
+    assert FakeImportCatalog.dismissed_failed == 1
+    assert output == "Dismissed 3 failed Extraction(s).\n"
+    assert "invalid_payload" not in output
+
+
+def test_imports_purge_failed_defaults_to_dry_run(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(cli, "Settings", lambda: Settings(artifact_root=tmp_path / "artifacts"))
+    monkeypatch.setattr(cli, "Database", FakeDatabase)
+    monkeypatch.setattr(cli, "ImportCatalog", FakeImportCatalog)
+
+    cli.main(["imports", "purge-failed"])
+
+    output = capsys.readouterr().out
+    assert FakeImportCatalog.purge_dry_run is True
+    assert FakeImportCatalog.purge_all_failed is False
+    assert "Would delete 1 failed Extraction(s) and 1 orphan Source Artifact(s)." in output
+    assert "Dry run only; pass --execute to delete." in output
+    assert "payload" not in output
+
+
+def test_imports_purge_failed_execute_forwards_all_failed(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(cli, "Settings", lambda: Settings(artifact_root=tmp_path / "artifacts"))
+    monkeypatch.setattr(cli, "Database", FakeDatabase)
+    monkeypatch.setattr(cli, "ImportCatalog", FakeImportCatalog)
+
+    cli.main(["imports", "purge-failed", "--execute", "--all-failed"])
+
+    output = capsys.readouterr().out
+    assert FakeImportCatalog.purge_dry_run is False
+    assert FakeImportCatalog.purge_all_failed is True
+    assert output.startswith("Deleted 1 failed Extraction(s)")
+    assert "Dry run" not in output

@@ -54,3 +54,5 @@ def test_migrations_can_downgrade_to_phase_1_and_reapply(database: Database) -> 
 
     command.upgrade(config, "head")
     assert "claim" in inspect(database.engine).get_table_names()
+    columns = {column["name"] for column in inspect(database.engine).get_columns("extraction")}
+    assert "dismissed_at" in columns

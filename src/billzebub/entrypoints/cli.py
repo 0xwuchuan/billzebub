@@ -23,6 +23,12 @@ from billzebub.financial_accounts import (
     FinancialAccountBootstrapCommand,
     FinancialAccountSetupError,
 )
+from billzebub.imports import (
+    FailedImportPurgeReport,
+    ImportCatalog,
+    ImportNotDismissableError,
+    ImportNotFoundError,
+)
 from billzebub.persistence.database import Database
 from billzebub.persistence.models import AuditActorKind, FinancialAccountKind
 from billzebub.tokens import TokenManager, TokenScope
@@ -61,6 +67,38 @@ def parser() -> argparse.ArgumentParser:
     )
     apple_wallet_alias.add_argument("--slug", required=True)
     apple_wallet_alias.add_argument("--card-label-file", required=True, type=Path)
+
+    imports = commands.add_parser("imports", help="operate owner Import history")
+    imports_commands = imports.add_subparsers(dest="imports_command", required=True)
+    dismiss = imports_commands.add_parser(
+        "dismiss",
+        help="soft-hide failed Extractions from the owner Imports list",
+    )
+    dismiss.add_argument(
+        "--failed",
+        action="store_true",
+        help="dismiss every failed Extraction that is not already dismissed",
+    )
+    dismiss.add_argument("--extraction-id", type=UUID)
+    purge_failed = imports_commands.add_parser(
+        "purge-failed",
+        help="hard-delete historical Shortcut/probe junk failed Extractions",
+    )
+    purge_failed.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="print matching rows without deleting (default when --execute is omitted)",
+    )
+    purge_failed.add_argument(
+        "--execute",
+        action="store_true",
+        help="actually delete matching failed Extractions and orphan Source Artifacts",
+    )
+    purge_failed.add_argument(
+        "--all-failed",
+        action="store_true",
+        help="include every failed Extraction, not only Shortcut/probe junk codes",
+    )
 
     create_paylah = account_commands.add_parser(
         "create-paylah",
@@ -193,6 +231,31 @@ def main(argv: Sequence[str] | None = None) -> None:
                 ) from None
             print("Apple Wallet card alias configured.")
             return
+        if arguments.command == "imports" and arguments.imports_command == "dismiss":
+            if arguments.failed == bool(arguments.extraction_id):
+                raise SystemExit("specify exactly one of --failed or --extraction-id")
+            catalog = ImportCatalog(database)
+            try:
+                if arguments.failed:
+                    dismissed = catalog.dismiss_failed()
+                    print(f"Dismissed {dismissed} failed Extraction(s).")
+                    return
+                record = catalog.dismiss(arguments.extraction_id)
+            except ImportNotFoundError:
+                raise SystemExit("Extraction was not found") from None
+            except ImportNotDismissableError:
+                raise SystemExit("Only failed Extractions may be dismissed") from None
+            print(f"Dismissed Extraction {record.id}.")
+            return
+        if arguments.command == "imports" and arguments.imports_command == "purge-failed":
+            if arguments.dry_run and arguments.execute:
+                raise SystemExit("specify only one of --dry-run or --execute")
+            report = ImportCatalog(database).purge_failed(
+                dry_run=not arguments.execute,
+                all_failed=arguments.all_failed,
+            )
+            _print_purge_report(report)
+            return
         if arguments.command == "apple-wallet" and arguments.apple_wallet_command == "import-probe":
             if settings.apple_wallet_timezone is None:
                 raise SystemExit("Apple Wallet ingestion is not configured.")
@@ -268,6 +331,29 @@ def main(argv: Sequence[str] | None = None) -> None:
         raise SystemExit("unsupported command")
     finally:
         database.close()
+
+
+def _print_purge_report(report: FailedImportPurgeReport) -> None:
+    action = "Would delete" if report.dry_run else "Deleted"
+    print(
+        f"{action} {len(report.extraction_ids)} failed Extraction(s) and "
+        f"{len(report.artifact_ids)} orphan Source Artifact(s)."
+    )
+    if report.skipped_extraction_ids:
+        print(
+            f"Skipped {len(report.skipped_extraction_ids)} Extraction(s) with Claims "
+            "or remaining dependents."
+        )
+    if report.dry_run and not report.extraction_ids and not report.skipped_extraction_ids:
+        print("Nothing matched the junk filter.")
+    elif report.dry_run:
+        print("Dry run only; pass --execute to delete.")
+    for extraction_id in report.extraction_ids:
+        print(f"extraction_id={extraction_id}")
+    for artifact_id in report.artifact_ids:
+        print(f"artifact_id={artifact_id}")
+    for extraction_id in report.skipped_extraction_ids:
+        print(f"skipped_extraction_id={extraction_id}")
 
 
 def _read_private_value(path: Path) -> str:

@@ -46,7 +46,12 @@ from billzebub.financial_accounts import (
 )
 from billzebub.financial_history import TransactionKind
 from billzebub.identity import IdentityError, OwnerIdentity, resolve_owner
-from billzebub.imports import ImportCatalog, ImportNotFoundError, ImportRecord
+from billzebub.imports import (
+    ImportCatalog,
+    ImportNotDismissableError,
+    ImportNotFoundError,
+    ImportRecord,
+)
 from billzebub.owner_actors import OwnerActors
 from billzebub.owner_transaction_actions import (
     OwnerCategorizationCommand,
@@ -81,9 +86,13 @@ from billzebub.tokens import (
 
 
 class ImportCatalogRuntime(Protocol):
-    def list(self) -> tuple[ImportRecord, ...]: ...
+    def list(self, *, include_dismissed: bool = False) -> tuple[ImportRecord, ...]: ...
 
     def get(self, extraction_id: UUID) -> ImportRecord: ...
+
+    def dismiss(self, extraction_id: UUID) -> ImportRecord: ...
+
+    def dismiss_failed(self) -> int: ...
 
     def coverage(
         self,
@@ -348,6 +357,10 @@ class StatementCoverageWire(BaseModel):
     timezone: str
     window_months: int
     accounts: list[StatementCoverageAccountWire]
+
+
+class ImportDismissFailedWire(BaseModel):
+    dismissed_count: int
 
 
 class OwnerTokenWire(BaseModel):
@@ -919,10 +932,22 @@ def create_app(
 
     @app.get("/api/v1/imports", tags=["imports"], response_model=None)
     def list_imports(
+        include_dismissed: bool = False,
         _identity: OwnerIdentity = owner_dependency,
         catalog: ImportCatalogRuntime = imports_dependency,
     ) -> dict[str, tuple[ImportRecord, ...]]:
-        return {"items": catalog.list()}
+        return {"items": catalog.list(include_dismissed=include_dismissed)}
+
+    @app.post(
+        "/api/v1/imports/dismiss-failed",
+        tags=["imports"],
+        response_model=ImportDismissFailedWire,
+    )
+    def dismiss_failed_imports(
+        _identity: OwnerIdentity = browser_mutation_dependency,
+        catalog: ImportCatalogRuntime = imports_dependency,
+    ) -> ImportDismissFailedWire:
+        return ImportDismissFailedWire(dismissed_count=catalog.dismiss_failed())
 
     @app.get("/api/v1/imports/{extraction_id}", tags=["imports"], response_model=None)
     def get_import(
@@ -937,6 +962,27 @@ def create_app(
                 status.HTTP_404_NOT_FOUND,
                 "import_not_found",
                 "Import not found",
+            ) from error
+
+    @app.post("/api/v1/imports/{extraction_id}/dismiss", tags=["imports"], response_model=None)
+    def dismiss_import(
+        extraction_id: UUID,
+        _identity: OwnerIdentity = browser_mutation_dependency,
+        catalog: ImportCatalogRuntime = imports_dependency,
+    ) -> ImportRecord:
+        try:
+            return catalog.dismiss(extraction_id)
+        except ImportNotFoundError as error:
+            raise ProblemError(
+                status.HTTP_404_NOT_FOUND,
+                "import_not_found",
+                "Import not found",
+            ) from error
+        except ImportNotDismissableError as error:
+            raise ProblemError(
+                status.HTTP_409_CONFLICT,
+                "import_not_dismissable",
+                "Only failed Extractions may be dismissed",
             ) from error
 
     @app.get(

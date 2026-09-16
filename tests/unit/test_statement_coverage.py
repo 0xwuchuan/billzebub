@@ -35,12 +35,20 @@ class FakeImportCatalog:
     def __init__(self, report: StatementCoverageReport) -> None:
         self.report = report
         self.months: list[int] = []
+        self.include_dismissed: list[bool] = []
 
-    def list(self) -> tuple[ImportRecord, ...]:
+    def list(self, *, include_dismissed: bool = False) -> tuple[ImportRecord, ...]:
+        self.include_dismissed.append(include_dismissed)
         return ()
 
     def get(self, extraction_id: UUID) -> ImportRecord:
         raise ImportNotFoundError(str(extraction_id))
+
+    def dismiss(self, extraction_id: UUID) -> ImportRecord:
+        raise ImportNotFoundError(str(extraction_id))
+
+    def dismiss_failed(self) -> int:
+        return 0
 
     def coverage(
         self,

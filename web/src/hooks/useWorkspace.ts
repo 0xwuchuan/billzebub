@@ -6,6 +6,8 @@ import {
   createFinancialAccount,
   createWalletAlias,
   decideReview,
+  dismissFailedImports,
+  dismissImport,
   getCategories,
   getFinancialAccounts,
   getImports,
@@ -64,19 +66,20 @@ export function useWorkspace() {
   const [saving, setSaving] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [issuedToken, setIssuedToken] = useState<IssuedToken | null>(null);
+  const [includeDismissed, setIncludeDismissed] = useState(false);
 
   const loadWorkspace = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      setWorkspace(await fetchWorkspace());
+      setWorkspace(await fetchWorkspace(includeDismissed));
     } catch (requestError) {
       setWorkspace(emptyWorkspace);
       setError(messageFor(requestError));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [includeDismissed]);
 
   useEffect(() => {
     let active = true;
@@ -307,6 +310,47 @@ export function useWorkspace() {
     }
   }
 
+  async function refreshImports(showDismissed: boolean): Promise<void> {
+    const page = await getImports(showDismissed);
+    setWorkspace((current) => ({ ...current, imports: page.items }));
+  }
+
+  async function showDismissedImports(show: boolean): Promise<void> {
+    setIncludeDismissed(show);
+    setError(null);
+    try {
+      await refreshImports(show);
+    } catch (requestError) {
+      setError(messageFor(requestError));
+    }
+  }
+
+  async function dismissFailedExtraction(extractionId: string): Promise<void> {
+    setSaving(extractionId);
+    setError(null);
+    try {
+      await dismissImport(extractionId);
+      await refreshImports(includeDismissed);
+    } catch (requestError) {
+      setError(messageFor(requestError));
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function dismissAllFailedExtractions(): Promise<void> {
+    setSaving("imports-dismiss-failed");
+    setError(null);
+    try {
+      await dismissFailedImports();
+      await refreshImports(includeDismissed);
+    } catch (requestError) {
+      setError(messageFor(requestError));
+    } finally {
+      setSaving(null);
+    }
+  }
+
   return {
     workspace,
     loading,
@@ -314,6 +358,7 @@ export function useWorkspace() {
     saving,
     loadingMore,
     issuedToken,
+    includeDismissed,
     loadWorkspace,
     loadMoreTransactions,
     saveCategory,
@@ -324,13 +369,18 @@ export function useWorkspace() {
     addToken,
     replaceToken,
     removeToken,
+    showDismissedImports,
+    dismissFailedExtraction,
+    dismissAllFailedExtractions,
     dismissIssuedToken: () => {
       setIssuedToken(null);
     },
   };
 }
 
-async function fetchWorkspace(): Promise<WorkspaceSnapshot> {
+async function fetchWorkspace(
+  includeDismissed = false,
+): Promise<WorkspaceSnapshot> {
   const [
     identity,
     transactions,
@@ -345,7 +395,7 @@ async function fetchWorkspace(): Promise<WorkspaceSnapshot> {
     getWhoami(),
     getTransactions(),
     getReviews(),
-    getImports(),
+    getImports(includeDismissed),
     getStatementCoverage(),
     getCategories(),
     getFinancialAccounts(),
