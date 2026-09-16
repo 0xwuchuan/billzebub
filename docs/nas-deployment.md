@@ -76,7 +76,14 @@ After this parser upgrade, reprocess only the failed `apple_wallet_shortcut` Ext
 billzebub apple-wallet reprocess --extraction-id <extraction-id> --extraction-id <extraction-id>
 ```
 
-Do not bulk-reprocess the historical `invalid_payload_*` pile. The command re-reads stored artifact bytes through ingest, is idempotent, and does not print payload bytes.
+Do not bulk-reprocess the historical `invalid_payload_*` pile. After deploy, hard-delete that Shortcut/probe junk with a dry-run first:
+
+```bash
+billzebub imports purge-failed --dry-run
+billzebub imports purge-failed --execute
+```
+
+The default filter is failed `apple_wallet_shortcut` / `paylah_shortcut` Extractions whose `failure_code` is `unmapped_card`, `invalid_json`, `invalid_amount`, `invalid_occurrence_time`, `invalid_card_label`, or starts with `invalid_payload_` / `unsupported_`. It never deletes accepted Extractions or any Extraction with Claims. Pass `--all-failed` only when you intend to include other failed Extractions under the same fail-closed rules. The command re-reads stored artifact bytes through ingest, is idempotent, and does not print payload bytes.
 
 ## Backup and restore
 

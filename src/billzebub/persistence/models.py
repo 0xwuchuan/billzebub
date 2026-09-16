@@ -328,6 +328,7 @@ class Extraction(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    dismissed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
         CheckConstraint("status IN ('accepted', 'failed')", name="status_known"),
@@ -344,6 +345,10 @@ class Extraction(Base):
             "(status = 'accepted' AND failure_code IS NULL AND accepted_at IS NOT NULL) OR "
             "(status = 'failed' AND failure_code IS NOT NULL AND accepted_at IS NULL)",
             name="status_fields_consistent",
+        ),
+        CheckConstraint(
+            "dismissed_at IS NULL OR status = 'failed'",
+            name="dismissed_at_failed_only",
         ),
         Index("ix_extraction_artifact_created", "artifact_id", "created_at"),
         Index(

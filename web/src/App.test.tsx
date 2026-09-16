@@ -464,6 +464,7 @@ describe("App", () => {
       supersedes_extraction_id: null,
       created_at: "2026-08-31T00:00:00+00:00",
       accepted_at: null,
+      dismissed_at: null,
     };
     const extractionReview = {
       ...blockingReview,
@@ -513,6 +514,115 @@ describe("App", () => {
     );
   });
 
+  it("dismisses a failed Extraction from Imports and can show it again", async () => {
+    seedOnboarded();
+    window.location.hash = "#/imports";
+    const failedImport = {
+      id: "00000000-0000-0000-0000-000000000017",
+      source_artifact_id: "00000000-0000-0000-0000-000000000015",
+      financial_account_id: "00000000-0000-0000-0000-000000000018",
+      financial_account_name: "Synthetic Statement Card",
+      status: "failed",
+      adapter_key: "apple_wallet_shortcut",
+      parser_version: "2",
+      statement_date: null,
+      period_start: null,
+      period_end: null,
+      candidate_row_count: 0,
+      claim_count: 0,
+      failure_code: "invalid_payload_shape",
+      validation_report: { failure: { code: "invalid_payload_shape" } },
+      duplicate_arrivals: 0,
+      active_review_id: null,
+      supersedes_extraction_id: null,
+      created_at: "2026-08-31T00:00:00+00:00",
+      accepted_at: null,
+      dismissed_at: null as string | null,
+    };
+    const acceptedImport = {
+      ...failedImport,
+      id: "00000000-0000-0000-0000-000000000018",
+      status: "accepted",
+      adapter_key: "citi-credit-card",
+      failure_code: null,
+      claim_count: 2,
+      accepted_at: "2026-08-31T00:00:00+00:00",
+    };
+    const items = [failedImport, acceptedImport];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (raw: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(raw);
+        if (url === "/api/v1/whoami") {
+          return json({ login: "owner@example.test", name: "Owner" });
+        }
+        if (url === "/api/v1/transactions") {
+          return json({ items: [], next_cursor: null });
+        }
+        if (url === "/api/v1/reviews") {
+          return json({ items: [], next_cursor: null });
+        }
+        if (url === "/api/v1/imports" || url.startsWith("/api/v1/imports?")) {
+          const includeDismissed = url.includes("include_dismissed=true");
+          return json({
+            items: items.filter(
+              (item) => includeDismissed || item.dismissed_at === null,
+            ),
+          });
+        }
+        if (url === "/api/v1/statement-coverage") {
+          return json({
+            as_of: "2026-09-15",
+            timezone: "Asia/Singapore",
+            window_months: 6,
+            accounts: [],
+          });
+        }
+        if (url === "/api/v1/categories") {
+          return json({ items: [] });
+        }
+        if (url === "/api/v1/financial-accounts") {
+          return json({ items: [] });
+        }
+        if (url === "/api/v1/statement-adapters") {
+          return json({ items: [] });
+        }
+        if (url === "/api/v1/tokens") {
+          return json({ items: [] });
+        }
+        if (
+          url === `/api/v1/imports/${failedImport.id}/dismiss` &&
+          init?.method === "POST"
+        ) {
+          failedImport.dismissed_at = "2026-09-15T00:00:00+00:00";
+          return json(failedImport);
+        }
+        throw new Error(`Unexpected request: ${url}`);
+      }),
+    );
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Imports" }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("apple_wallet_shortcut").length).toBeGreaterThan(
+      0,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    await waitFor(() => {
+      expect(
+        screen.queryByText("apple_wallet_shortcut"),
+      ).not.toBeInTheDocument();
+    });
+    expect(screen.getAllByText("citi-credit-card").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: "Show dismissed" }));
+    expect(
+      (await screen.findAllByText("apple_wallet_shortcut")).length,
+    ).toBeGreaterThan(0);
+    expect(screen.getAllByText("dismissed").length).toBeGreaterThan(0);
+  });
+
   it("marks missing statement months and deep-links Imports by Financial Account", async () => {
     seedOnboarded();
     window.location.hash = "#/imports";
@@ -537,6 +647,7 @@ describe("App", () => {
       supersedes_extraction_id: null,
       created_at: "2026-04-30T00:00:00+00:00",
       accepted_at: "2026-04-30T00:00:00+00:00",
+      dismissed_at: null,
     };
     const otherImport = {
       ...coveredImport,
@@ -975,8 +1086,20 @@ function mockWorkspace(input: {
     if (url === "/api/v1/reviews") {
       return json({ items: input.reviews, next_cursor: null });
     }
-    if (url === "/api/v1/imports") {
-      return json({ items: input.imports ?? [] });
+    if (url === "/api/v1/imports" || url.startsWith("/api/v1/imports?")) {
+      const includeDismissed = url.includes("include_dismissed=true");
+      const items = (input.imports ?? []).filter((item) => {
+        if (
+          includeDismissed ||
+          typeof item !== "object" ||
+          item === null ||
+          !("dismissed_at" in item)
+        ) {
+          return true;
+        }
+        return item.dismissed_at === null;
+      });
+      return json({ items });
     }
     if (url === "/api/v1/statement-coverage") {
       return json(
@@ -987,6 +1110,26 @@ function mockWorkspace(input: {
           accounts: [],
         },
       );
+    }
+    if (url === "/api/v1/imports/dismiss-failed" && init?.method === "POST") {
+      return json({ dismissed_count: 0 });
+    }
+    if (url.endsWith("/dismiss") && init?.method === "POST") {
+      const extractionId = url.slice(
+        "/api/v1/imports/".length,
+        url.length - "/dismiss".length,
+      );
+      const match = (input.imports ?? []).find((item) => {
+        return (
+          typeof item === "object" &&
+          item !== null &&
+          "id" in item &&
+          item.id === extractionId
+        );
+      });
+      if (match !== undefined && typeof match === "object") {
+        return json({ ...match, dismissed_at: "2026-09-15T00:00:00+00:00" });
+      }
     }
     if (url.startsWith("/api/v1/imports/")) {
       const extractionId = url.slice("/api/v1/imports/".length);

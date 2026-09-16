@@ -271,6 +271,8 @@ export function App() {
             selectedId={route.importId}
             accountId={route.accountId}
             today={today}
+            includeDismissed={workspace.includeDismissed}
+            saving={workspace.saving}
             onSelect={openImport}
             onSelectAccount={openAccountImports}
             onClearAccount={() => {
@@ -286,6 +288,15 @@ export function App() {
                 page: "review",
                 ...emptyRoute,
               });
+            }}
+            onShowDismissed={(show) => {
+              void workspace.showDismissedImports(show);
+            }}
+            onDismiss={(extractionId) => {
+              void workspace.dismissFailedExtraction(extractionId);
+            }}
+            onDismissFailed={() => {
+              void workspace.dismissAllFailedExtractions();
             }}
           />
         ) : null}

@@ -1,3 +1,5 @@
+from dataclasses import replace
+from datetime import UTC, date, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -6,6 +8,8 @@ from fastapi.testclient import TestClient
 from billzebub.api import create_app
 from billzebub.categories import CategoryRecord
 from billzebub.config import Settings
+from billzebub.imports import ImportNotDismissableError, ImportNotFoundError, ImportRecord
+from billzebub.statement_coverage import StatementCoverageReport
 
 
 class FakeCategories:
@@ -147,6 +151,8 @@ def test_import_resources_are_documented_and_fail_closed_without_identity(
 
     assert "/api/v1/imports" in app.openapi()["paths"]
     assert "/api/v1/imports/{extraction_id}" in app.openapi()["paths"]
+    assert "/api/v1/imports/{extraction_id}/dismiss" in app.openapi()["paths"]
+    assert "/api/v1/imports/dismiss-failed" in app.openapi()["paths"]
     assert "/api/v1/statement-coverage" in app.openapi()["paths"]
     with TestClient(app, client=("127.0.0.1", 50000)) as client:
         response = client.get("/api/v1/imports")
@@ -168,3 +174,117 @@ def test_owner_resource_fails_closed_without_identity(tmp_path: Path) -> None:
         "status": 401,
         "detail": "owner_identity_required",
     }
+
+
+class FakeImportCatalog:
+    def __init__(self, record: ImportRecord) -> None:
+        self.record = record
+        self.include_dismissed: list[bool] = []
+        self.dismissed: list[UUID] = []
+        self.dismissed_failed = 0
+
+    def list(self, *, include_dismissed: bool = False) -> tuple[ImportRecord, ...]:
+        self.include_dismissed.append(include_dismissed)
+        if include_dismissed or self.record.dismissed_at is None:
+            return (self.record,)
+        return ()
+
+    def get(self, extraction_id: UUID) -> ImportRecord:
+        if extraction_id != self.record.id:
+            raise ImportNotFoundError(str(extraction_id))
+        return self.record
+
+    def dismiss(self, extraction_id: UUID) -> ImportRecord:
+        if extraction_id != self.record.id:
+            raise ImportNotFoundError(str(extraction_id))
+        if self.record.status != "failed":
+            raise ImportNotDismissableError("only failed Extractions may be dismissed")
+        self.dismissed.append(extraction_id)
+        self.record = replace(self.record, dismissed_at=datetime(2026, 9, 15, tzinfo=UTC))
+        return self.record
+
+    def dismiss_failed(self) -> int:
+        self.dismissed_failed += 1
+        return 2
+
+    def coverage(
+        self,
+        *,
+        months: int = 6,
+        as_of: date | None = None,
+    ) -> StatementCoverageReport:
+        del months, as_of
+        raise AssertionError("coverage is unused")
+
+
+def _failed_import() -> ImportRecord:
+    return ImportRecord(
+        id=uuid4(),
+        source_artifact_id=uuid4(),
+        financial_account_id=None,
+        financial_account_name=None,
+        status="failed",
+        adapter_key="apple_wallet_shortcut",
+        parser_version="2",
+        statement_date=None,
+        period_start=None,
+        period_end=None,
+        candidate_row_count=0,
+        claim_count=0,
+        failure_code="invalid_payload_shape",
+        validation_report={"failure": {"code": "invalid_payload_shape"}},
+        duplicate_arrivals=0,
+        active_review_id=None,
+        supersedes_extraction_id=None,
+        created_at=datetime(2026, 8, 31, tzinfo=UTC),
+        accepted_at=None,
+        dismissed_at=None,
+    )
+
+
+def test_import_list_excludes_dismissed_unless_requested(tmp_path: Path) -> None:
+    catalog = FakeImportCatalog(_failed_import())
+    app = create_app(
+        Settings(artifact_root=tmp_path, development_identity="developer@example.test"),
+        FakeDatabase(),
+        import_catalog=catalog,
+    )
+
+    with TestClient(app, client=("127.0.0.1", 50000)) as client:
+        default_list = client.get("/api/v1/imports")
+        included = client.get("/api/v1/imports", params={"include_dismissed": True})
+
+    assert default_list.status_code == 200
+    assert included.status_code == 200
+    assert catalog.include_dismissed == [False, True]
+
+
+def test_import_dismiss_requires_browser_protection(tmp_path: Path) -> None:
+    catalog = FakeImportCatalog(_failed_import())
+    app = create_app(
+        Settings(artifact_root=tmp_path, development_identity="developer@example.test"),
+        FakeDatabase(),
+        import_catalog=catalog,
+    )
+
+    with TestClient(app, client=("127.0.0.1", 50000)) as client:
+        blocked = client.post(f"/api/v1/imports/{catalog.record.id}/dismiss", json={})
+        dismissed = client.post(
+            f"/api/v1/imports/{catalog.record.id}/dismiss",
+            headers={"Origin": "http://testserver", "X-Billzebub-CSRF": "bzb-spa"},
+            json={},
+        )
+        bulk = client.post(
+            "/api/v1/imports/dismiss-failed",
+            headers={"Origin": "http://testserver", "X-Billzebub-CSRF": "bzb-spa"},
+            json={},
+        )
+
+    assert blocked.status_code == 403
+    assert dismissed.status_code == 200
+    assert dismissed.json()["dismissed_at"] is not None
+    assert dismissed.json()["status"] == "failed"
+    assert bulk.status_code == 200
+    assert bulk.json() == {"dismissed_count": 2}
+    assert catalog.dismissed == [catalog.record.id]
+    assert catalog.dismissed_failed == 1

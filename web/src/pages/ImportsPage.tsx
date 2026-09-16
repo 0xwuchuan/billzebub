@@ -11,20 +11,30 @@ export function ImportsPage({
   selectedId,
   accountId,
   today,
+  includeDismissed,
+  saving,
   onSelect,
   onSelectAccount,
   onClearAccount,
   onOpenReview,
+  onShowDismissed,
+  onDismiss,
+  onDismissFailed,
 }: {
   imports: ImportRecord[];
   coverage: StatementCoverageReport | null;
   selectedId: string | null;
   accountId: string | null;
   today: Date;
+  includeDismissed: boolean;
+  saving: string | null;
   onSelect: (id: string) => void;
   onSelectAccount: (accountId: string) => void;
   onClearAccount: () => void;
   onOpenReview: (reviewId: string) => void;
+  onShowDismissed: (show: boolean) => void;
+  onDismiss: (id: string) => void;
+  onDismissFailed: () => void;
 }) {
   const fresh = useEntrance("imports");
   const visible =
@@ -33,6 +43,9 @@ export function ImportsPage({
       : imports.filter((item) => item.financial_account_id === accountId);
   const selected =
     visible.find((item) => item.id === selectedId) ?? visible[0] ?? null;
+  const failedVisible = visible.filter(
+    (item) => item.status === "failed" && item.dismissed_at === null,
+  );
   return (
     <div className={`imports-stage${fresh ? " stage-enter" : ""}`}>
       <StatementCoveragePanel
@@ -45,8 +58,37 @@ export function ImportsPage({
         <section className="card queue-pane" aria-label="Import history">
           <div className="panel-head">
             <h2>Extractions</h2>
-            <span className="muted" style={{ fontSize: "var(--bz-text-sm)" }}>
-              {visible.length} recorded
+            <span
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "0.5rem",
+                flexWrap: "wrap",
+                justifyContent: "flex-end",
+              }}
+            >
+              <span className="muted" style={{ fontSize: "var(--bz-text-sm)" }}>
+                {visible.length} recorded
+              </span>
+              <button
+                className="chip"
+                type="button"
+                aria-pressed={includeDismissed}
+                onClick={() => {
+                  onShowDismissed(!includeDismissed);
+                }}
+              >
+                Show dismissed
+              </button>
+              {failedVisible.length > 0 ? (
+                <Button
+                  variant="ghost"
+                  disabled={saving !== null}
+                  onClick={onDismissFailed}
+                >
+                  Dismiss failed
+                </Button>
+              ) : null}
             </span>
           </div>
           {visible.length === 0 ? (
@@ -78,7 +120,9 @@ export function ImportsPage({
             <ImportDetail
               item={selected}
               today={today}
+              saving={saving}
               onOpenReview={onOpenReview}
+              onDismiss={onDismiss}
             />
           )}
         </section>
@@ -97,9 +141,10 @@ function ImportRow({
   onSelect: (id: string) => void;
 }) {
   const failed = item.status === "failed";
+  const dismissed = item.dismissed_at !== null;
   return (
     <button
-      className={`queue-item${failed ? " is-blocking" : ""}`}
+      className={`queue-item${failed && !dismissed ? " is-blocking" : ""}`}
       type="button"
       aria-current={current}
       onClick={() => {
@@ -111,7 +156,9 @@ function ImportRow({
         <span className="queue-reason">{periodLabel(item)}</span>
       </span>
       <span className="queue-right">
-        <Badge tone={failed ? "blocking" : "confirmed"}>{item.status}</Badge>
+        <Badge tone={dismissed ? "count" : failed ? "blocking" : "confirmed"}>
+          {dismissed ? "dismissed" : item.status}
+        </Badge>
         <span className="queue-age">
           {item.failure_code === null
             ? `${item.claim_count} Claims`
@@ -125,37 +172,67 @@ function ImportRow({
 function ImportDetail({
   item,
   today,
+  saving,
   onOpenReview,
+  onDismiss,
 }: {
   item: ImportRecord;
   today: Date;
+  saving: string | null;
   onOpenReview: (reviewId: string) => void;
+  onDismiss: (id: string) => void;
 }) {
   const fresh = useEntrance(`import:${item.id}`);
   const failed = item.status === "failed";
+  const dismissed = item.dismissed_at !== null;
   return (
     <>
       <div className="panel-head">
         <div>
-          <Badge tone={failed ? "blocking" : "confirmed"}>{item.status}</Badge>
+          <Badge tone={dismissed ? "count" : failed ? "blocking" : "confirmed"}>
+            {dismissed ? "dismissed" : item.status}
+          </Badge>
           <h2 style={{ marginTop: 8 }}>{adapterLabel(item)}</h2>
         </div>
-        {item.active_review_id !== null ? (
-          <Button
-            variant="ghost"
-            onClick={() => {
-              onOpenReview(item.active_review_id ?? "");
-            }}
-          >
-            Open Pending Review
-          </Button>
-        ) : null}
+        <span
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.5rem",
+            flexWrap: "wrap",
+            justifyContent: "flex-end",
+          }}
+        >
+          {failed && !dismissed ? (
+            <Button
+              variant="ghost"
+              disabled={saving !== null}
+              onClick={() => {
+                onDismiss(item.id);
+              }}
+            >
+              Dismiss
+            </Button>
+          ) : null}
+          {item.active_review_id !== null ? (
+            <Button
+              variant="ghost"
+              onClick={() => {
+                onOpenReview(item.active_review_id ?? "");
+              }}
+            >
+              Open Pending Review
+            </Button>
+          ) : null}
+        </span>
       </div>
       <div className={`evidence-body${fresh ? " stage-enter" : ""}`}>
-        <p className={`prompt${failed ? " is-blocking" : ""}`}>
-          {failed
-            ? `This Extraction failed${item.failure_code === null ? "" : ` (${item.failure_code})`} and created no Claims.`
-            : `Accepted Extraction with ${item.claim_count} Claims.`}
+        <p className={`prompt${failed && !dismissed ? " is-blocking" : ""}`}>
+          {dismissed
+            ? `This failed Extraction is hidden from the default Imports list${item.failure_code === null ? "" : ` (${item.failure_code})`}.`
+            : failed
+              ? `This Extraction failed${item.failure_code === null ? "" : ` (${item.failure_code})`} and created no Claims.`
+              : `Accepted Extraction with ${item.claim_count} Claims.`}
         </p>
         <dl className="kv">
           <dt>Financial Account</dt>

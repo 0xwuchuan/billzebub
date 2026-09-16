@@ -119,6 +119,7 @@ export type ImportRecord = {
   supersedes_extraction_id: string | null;
   created_at: string;
   accepted_at: string | null;
+  dismissed_at: string | null;
 };
 
 export type ImportPage = {
@@ -180,8 +181,11 @@ export async function getReviews(): Promise<ReviewPage> {
   return request<ReviewPage>("/api/v1/reviews");
 }
 
-export async function getImports(): Promise<ImportPage> {
-  return request<ImportPage>("/api/v1/imports");
+export async function getImports(
+  includeDismissed = false,
+): Promise<ImportPage> {
+  const query = includeDismissed ? "?include_dismissed=true" : "";
+  return request<ImportPage>(`/api/v1/imports${query}`);
 }
 
 export async function getStatementCoverage(): Promise<StatementCoverageReport> {
@@ -191,6 +195,32 @@ export async function getStatementCoverage(): Promise<StatementCoverageReport> {
 export async function getImport(extractionId: string): Promise<ImportRecord> {
   return request<ImportRecord>(
     `/api/v1/imports/${encodeURIComponent(extractionId)}`,
+  );
+}
+
+export async function dismissImport(
+  extractionId: string,
+): Promise<ImportRecord> {
+  return request<ImportRecord>(
+    `/api/v1/imports/${encodeURIComponent(extractionId)}/dismiss`,
+    {
+      method: "POST",
+      headers: mutationHeaders(),
+      body: JSON.stringify({}),
+    },
+  );
+}
+
+export async function dismissFailedImports(): Promise<{
+  dismissed_count: number;
+}> {
+  return request<{ dismissed_count: number }>(
+    "/api/v1/imports/dismiss-failed",
+    {
+      method: "POST",
+      headers: mutationHeaders(),
+      body: JSON.stringify({}),
+    },
   );
 }
 
