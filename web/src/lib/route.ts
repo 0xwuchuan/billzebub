@@ -1,5 +1,6 @@
 export type RoutePage =
   | "overview"
+  | "spending"
   | "review"
   | "transactions"
   | "imports"
@@ -103,6 +104,9 @@ export function parseHash(hash: string, onboarded: boolean): Route {
   if (page === "overview") {
     return { page: "overview", ...emptyRoute };
   }
+  if (page === "spending" || page === "analytics") {
+    return { page: "spending", ...emptyRoute };
+  }
   return defaultRoute(onboarded);
 }
 
@@ -135,6 +139,9 @@ export function hashFor(route: Route): string {
     }
     return "#/transactions";
   }
+  if (route.page === "spending") {
+    return "#/spending";
+  }
   return "#/overview";
 }
 
@@ -144,6 +151,9 @@ export function titleFor(page: RoutePage): string {
   }
   if (page === "transactions") {
     return "Transactions";
+  }
+  if (page === "spending") {
+    return "Spending";
   }
   if (page === "imports") {
     return "Imports";

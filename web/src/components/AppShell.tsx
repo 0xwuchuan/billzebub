@@ -10,10 +10,12 @@ import {
   OverviewIcon,
   ReviewIcon,
   SettingsIcon,
+  SpendingIcon,
   TransactionsIcon,
 } from "./icons";
 
-type NavId = "overview" | "review" | "transactions" | "imports" | "settings";
+type NavId =
+  "overview" | "spending" | "review" | "transactions" | "imports" | "settings";
 
 type NavItem = {
   id: NavId;
@@ -26,7 +28,6 @@ type NavItem = {
 type AppShellProps = {
   route: Route;
   periodLabel: string;
-  accountCount: number;
   reviewCount: number;
   reviewBlocking: boolean;
   error: string | null;
@@ -37,7 +38,6 @@ type AppShellProps = {
 export function AppShell({
   route,
   periodLabel,
-  accountCount,
   reviewCount,
   reviewBlocking,
   error,
@@ -48,6 +48,7 @@ export function AppShell({
   const titleId = useId();
   const dailyItems: NavItem[] = [
     { id: "overview", label: "Overview", icon: <OverviewIcon /> },
+    { id: "spending", label: "Spending", icon: <SpendingIcon /> },
     {
       id: "review",
       label: "Review",
@@ -76,13 +77,19 @@ export function AppShell({
     function onKey(event: KeyboardEvent) {
       if (event.key === "Escape") {
         setNavOpen(false);
+        return;
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key === ",") {
+        event.preventDefault();
+        setNavOpen(false);
+        onNavigate("settings");
       }
     }
     window.addEventListener("keydown", onKey);
     return () => {
       window.removeEventListener("keydown", onKey);
     };
-  }, []);
+  }, [onNavigate]);
 
   function go(page: RoutePage) {
     setNavOpen(false);
@@ -120,9 +127,6 @@ export function AppShell({
             <p className="eyebrow">{periodLabel}</p>
             <h1>{titleFor(route.page)}</h1>
           </div>
-          <p className="top-meta">
-            SGD · Asia/Singapore · {accountCount} Financial Accounts
-          </p>
         </header>
         <main className="stage" id="stage">
           {error !== null ? (
@@ -191,11 +195,10 @@ function RailContent({
     <>
       <div className="rail-body">
         <div className="brand">
-          <span className="mark">B</span>
-          <div>
-            <strong>Billzebub</strong>
-            <span>Quiet Rail · local</span>
-          </div>
+          <span className="mark">
+            <img src="/baby-beel.svg" alt="" />
+          </span>
+          <strong>Billzebub</strong>
         </div>
         <div className="rail-group">
           <p className="rail-label">Daily</p>
@@ -235,6 +238,7 @@ function RailItem({
     <button
       className="rail-item"
       type="button"
+      aria-label={item.label}
       aria-current={current === item.id ? "page" : undefined}
       onClick={() => {
         onNavigate(item.id);
@@ -242,6 +246,7 @@ function RailItem({
     >
       {item.icon}
       <span>{item.label}</span>
+      {item.id === "settings" ? <kbd className="rail-shortcut">⌘,</kbd> : null}
       {count > 0 ? (
         <Badge tone={item.blocking === true ? "blocking" : "attention"}>
           {count}

@@ -5,20 +5,22 @@ import type {
   FinancialAccount,
   StatementAdapter,
 } from "../../api";
+import { SETUP_ACCOUNT_EXAMPLES } from "../../lib/accounts";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
-import { SETUP_ACCOUNT_EXAMPLES } from "../../lib/accounts";
 
 export function AccountsPanel({
   accounts,
   adapters,
   saving,
   onCreateAccount,
+  mode = "all",
 }: {
   accounts: FinancialAccount[];
   adapters: StatementAdapter[];
   saving: boolean;
   onCreateAccount: (input: CreateFinancialAccountInput) => Promise<void>;
+  mode?: "all" | "list" | "form";
 }) {
   const [kind, setKind] = useState<"credit_card" | "paylah">("credit_card");
   const [slug, setSlug] = useState("");
@@ -72,138 +74,141 @@ export function AccountsPanel({
 
   return (
     <div className="stack">
-      {accounts.length === 0 ? (
-        <p className="muted">No Financial Accounts yet.</p>
-      ) : (
-        accounts.map((account) => (
-          <div className="card account-toggle" key={account.id}>
-            <Badge tone={account.active ? "confirmed" : "count"}>
-              {account.kind === "paylah" ? "PayLah" : "Credit card"}
-            </Badge>
-            <span>
-              <strong style={{ display: "block" }}>
-                {account.display_name}
-              </strong>
-              <span className="muted">
-                {account.slug} · {account.institution}
+      {mode !== "form" ? (
+        accounts.length === 0 ? (
+          <p className="muted">No Financial Accounts yet.</p>
+        ) : (
+          accounts.map((account) => (
+            <div className="account-summary" key={account.id}>
+              <span>
+                <strong>{account.display_name}</strong>
+                <span className="muted">
+                  {account.institution} · {account.default_currency}
+                </span>
               </span>
-            </span>
-          </div>
-        ))
-      )}
-      {suggestedAccounts.length > 0 ? (
-        <div className="filters">
-          {suggestedAccounts.map((example) => (
-            <button
-              key={example.slug}
-              className="chip"
-              type="button"
-              onClick={() => {
-                applyExample(example);
-              }}
-            >
-              {example.displayName}
-            </button>
-          ))}
-        </div>
+              <Badge tone={account.active ? "confirmed" : "count"}>
+                {account.kind === "paylah" ? "PayLah" : "Credit card"}
+              </Badge>
+            </div>
+          ))
+        )
       ) : null}
-      <form className="stack" onSubmit={(event) => void onSubmit(event)}>
-        <label className="field-label">
-          Kind
-          <select
-            className="select"
-            value={kind}
-            onChange={(event) => {
-              const next =
-                event.target.value === "paylah" ? "paylah" : "credit_card";
-              setKind(next);
-            }}
-          >
-            <option value="credit_card">credit_card</option>
-            <option value="paylah">paylah</option>
-          </select>
-        </label>
-        <label className="field-label">
-          Slug
-          <input
-            className="field"
-            value={slug}
-            required
-            placeholder="dbs-live-fresh"
-            onChange={(event) => {
-              setSlug(event.target.value);
-            }}
-          />
-        </label>
-        <label className="field-label">
-          Display name
-          <input
-            className="field"
-            value={displayName}
-            required
-            placeholder="DBS Live Fresh"
-            onChange={(event) => {
-              setDisplayName(event.target.value);
-            }}
-          />
-        </label>
-        {kind === "credit_card" ? (
-          <>
+      {mode !== "list" ? (
+        <>
+          {suggestedAccounts.length > 0 ? (
+            <div className="filters">
+              {suggestedAccounts.map((example) => (
+                <button
+                  key={example.slug}
+                  className="chip"
+                  type="button"
+                  onClick={() => {
+                    applyExample(example);
+                  }}
+                >
+                  {example.displayName}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <form className="stack" onSubmit={(event) => void onSubmit(event)}>
             <label className="field-label">
-              Statement adapter
+              Kind
               <select
                 className="select"
-                value={adapterKey}
+                value={kind}
                 onChange={(event) => {
-                  setAdapterKey(event.target.value);
+                  setKind(
+                    event.target.value === "paylah" ? "paylah" : "credit_card",
+                  );
                 }}
               >
-                {adapters.map((adapter) => (
-                  <option key={adapter.key} value={adapter.key}>
-                    {adapter.key}
-                  </option>
-                ))}
+                <option value="credit_card">Credit card</option>
+                <option value="paylah">PayLah</option>
               </select>
             </label>
             <label className="field-label">
-              Statement account identifier
+              Slug
               <input
                 className="field"
-                value={identifier}
+                value={slug}
                 required
-                autoComplete="off"
+                placeholder="dbs-live-fresh"
                 onChange={(event) => {
-                  setIdentifier(event.target.value);
+                  setSlug(event.target.value);
                 }}
               />
             </label>
             <label className="field-label">
-              Password secret filename (optional)
+              Display name
               <input
                 className="field"
-                value={secretName}
-                placeholder="dbs-live-fresh.password"
-                autoComplete="off"
+                value={displayName}
+                required
+                placeholder="DBS Live Fresh"
                 onChange={(event) => {
-                  setSecretName(event.target.value);
+                  setDisplayName(event.target.value);
                 }}
               />
             </label>
-            <p className="muted" style={{ fontSize: "var(--bz-text-xs)" }}>
-              The filename is a reference only. Create the mode-0600 file on the
-              NAS first; Billzebub will not accept the password itself here.
-            </p>
-          </>
-        ) : (
-          <p className="muted" style={{ fontSize: "var(--bz-text-xs)" }}>
-            PayLah uses Shortcut ingest, not a statement inbox or mailbox
-            secret. Keep a single active paylah Financial Account.
-          </p>
-        )}
-        <Button variant="primary" type="submit" disabled={saving}>
-          {saving ? "Saving…" : "Create Financial Account"}
-        </Button>
-      </form>
+            {kind === "credit_card" ? (
+              <>
+                <label className="field-label">
+                  Statement adapter
+                  <select
+                    className="select"
+                    value={adapterKey}
+                    onChange={(event) => {
+                      setAdapterKey(event.target.value);
+                    }}
+                  >
+                    {adapters.map((adapter) => (
+                      <option key={adapter.key} value={adapter.key}>
+                        {adapter.key}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field-label">
+                  Statement account identifier
+                  <input
+                    className="field"
+                    value={identifier}
+                    required
+                    autoComplete="off"
+                    onChange={(event) => {
+                      setIdentifier(event.target.value);
+                    }}
+                  />
+                </label>
+                <label className="field-label">
+                  Password secret filename (optional)
+                  <input
+                    className="field"
+                    value={secretName}
+                    placeholder="dbs-live-fresh.password"
+                    autoComplete="off"
+                    onChange={(event) => {
+                      setSecretName(event.target.value);
+                    }}
+                  />
+                </label>
+                <p className="muted settings-help">
+                  Reference the mode-0600 NAS file only. Never enter the
+                  password itself here.
+                </p>
+              </>
+            ) : (
+              <p className="muted settings-help">
+                PayLah uses Shortcut ingest and does not need a statement inbox.
+              </p>
+            )}
+            <Button variant="primary" type="submit" disabled={saving}>
+              {saving ? "Saving…" : "Create Financial Account"}
+            </Button>
+          </form>
+        </>
+      ) : null}
     </div>
   );
 }
