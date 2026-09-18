@@ -32,6 +32,7 @@ from billzebub.imports import (
 from billzebub.persistence.database import Database
 from billzebub.persistence.models import AuditActorKind, FinancialAccountKind
 from billzebub.tokens import TokenManager, TokenScope
+from billzebub.uob_ref_no_backfill import UobRefNoBackfill, UobRefNoBackfillReport
 
 
 def parser() -> argparse.ArgumentParser:
@@ -147,6 +148,23 @@ def parser() -> argparse.ArgumentParser:
 
     revoke = token_commands.add_parser("revoke", help="revoke a token immediately")
     revoke.add_argument("token_id", type=UUID)
+
+    uob = commands.add_parser("uob", help="operate UOB statement Counterparty cleanup")
+    uob_commands = uob.add_subparsers(dest="uob_command", required=True)
+    strip_ref_no = uob_commands.add_parser(
+        "strip-ref-no",
+        help="rewrite current UOB statement Counterparties that still have a trailing Ref No.",
+    )
+    strip_ref_no.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="print matching Transactions without rewriting (default when --execute is omitted)",
+    )
+    strip_ref_no.add_argument(
+        "--execute",
+        action="store_true",
+        help="apply audited Corrections that strip the trailing Ref No.",
+    )
     return root
 
 
@@ -256,6 +274,12 @@ def main(argv: Sequence[str] | None = None) -> None:
             )
             _print_purge_report(report)
             return
+        if arguments.command == "uob" and arguments.uob_command == "strip-ref-no":
+            if arguments.dry_run and arguments.execute:
+                raise SystemExit("specify only one of --dry-run or --execute")
+            uob_report = UobRefNoBackfill(database).run(dry_run=not arguments.execute)
+            _print_uob_ref_no_report(uob_report)
+            return
         if arguments.command == "apple-wallet" and arguments.apple_wallet_command == "import-probe":
             if settings.apple_wallet_timezone is None:
                 raise SystemExit("Apple Wallet ingestion is not configured.")
@@ -331,6 +355,26 @@ def main(argv: Sequence[str] | None = None) -> None:
         raise SystemExit("unsupported command")
     finally:
         database.close()
+
+
+def _print_uob_ref_no_report(report: UobRefNoBackfillReport) -> None:
+    action = "Would rewrite" if report.dry_run else "Rewrote"
+    print(f"{action} {len(report.rewritten_transaction_ids)} UOB Counterparty value(s).")
+    if report.skipped_empty_transaction_ids:
+        print(
+            f"Skipped {len(report.skipped_empty_transaction_ids)} Transaction(s) "
+            "because stripping Ref No. would empty Counterparty."
+        )
+    if report.dry_run and not (
+        report.rewritten_transaction_ids or report.skipped_empty_transaction_ids
+    ):
+        print("Nothing matched the trailing UOB Ref No. suffix.")
+    elif report.dry_run:
+        print("Dry run only; pass --execute to apply audited Corrections.")
+    for transaction_id in report.rewritten_transaction_ids:
+        print(f"transaction_id={transaction_id}")
+    for transaction_id in report.skipped_empty_transaction_ids:
+        print(f"skipped_empty_transaction_id={transaction_id}")
 
 
 def _print_purge_report(report: FailedImportPurgeReport) -> None:

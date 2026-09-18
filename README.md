@@ -68,11 +68,15 @@ Administrative commands are explicit:
 ```bash
 uv run billzebub check
 uv run billzebub migrate
+uv run billzebub uob strip-ref-no --dry-run
+uv run billzebub uob strip-ref-no --execute
 uv run billzebub token issue --name "Apple Shortcut" \
   --kind integration --scope shortcut:claims:create
 uv run billzebub token rotate <token-id>
 uv run billzebub token revoke <token-id>
 ```
+
+`uob strip-ref-no` applies audited Corrections that remove a trailing UOB statement `Ref No. : <token>` from current Counterparties. It does not rewrite immutable Claims; new UOB Extractions strip the suffix before `raw_description` is recorded. Default is dry-run. Do not print merchant text from this command.
 
 Token plaintext is displayed only by `token issue`; PostgreSQL stores its SHA-256 digest and scoped metadata.
 

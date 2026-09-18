@@ -46,6 +46,10 @@ def _never_ignore(_line: str) -> bool:
     return False
 
 
+def _unchanged_description(description: str) -> str:
+    return description
+
+
 @dataclass(frozen=True, slots=True)
 class MonopolyAdapterDefinition:
     bank: type[Any]
@@ -54,6 +58,7 @@ class MonopolyAdapterDefinition:
     kind_hint: Callable[[str, str | None], str | None]
     ignores_line: Callable[[str], bool] = _never_ignore
     account_identifiers: Callable[[Any], tuple[str, ...]] | None = None
+    normalize_description: Callable[[str], str] = _unchanged_description
 
 
 class MonopolyStatementAdapter:
@@ -200,14 +205,17 @@ class MonopolyStatementAdapter:
                         if raw_posting_date is not None
                         else provider_date
                     )
+                    description = self._definition.normalize_description(
+                        " ".join(raw.description.split())
+                    )
                     rows.append(
                         StatementRowCandidate(
-                            raw_description=" ".join(raw.description.split()),
+                            raw_description=description,
                             posted_amount_text=posted_amount,
                             provider_transaction_date=provider_date,
                             posting_date=posting_date,
                             transaction_kind_hint=self._definition.kind_hint(
-                                raw.description,
+                                description,
                                 effective_polarity,
                             ),
                             locator=SourceLocator(

@@ -53,7 +53,7 @@ def _statement_lines(institution: str) -> list[str]:
             "1111-2222-3333-4444",
             "Description of Transaction Transaction Amount",
             shared[0],
-            "11 Jan 10 Jan FICTIONAL BOOKSHOP 10.00",
+            "11 Jan 10 Jan FICTIONAL BOOKSHOP Ref No. : 12345678 10.00",
             "21 Jan 20 Jan BILL PAYMENT 5.00 CR",
             "26 Jan 25 Jan FICTIONAL MERCHANT REFUND (2.00)",
             "TOTAL BALANCE 103.00",
@@ -128,4 +128,10 @@ def test_institution_adapter_passes_strict_atomic_extraction(
         "transfer",
         "refund",
     ]
+    if institution == "uob":
+        assert [claim.raw_description for claim in claims] == [
+            "FICTIONAL BOOKSHOP",
+            "BILL PAYMENT",
+            "FICTIONAL MERCHANT REFUND",
+        ]
     assert all(ClaimBook(database).source_locator(claim.id).text_sha256 for claim in claims)

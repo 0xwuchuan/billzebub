@@ -39,6 +39,7 @@ from billzebub.reviews import (
     ReviewInbox,
     ReviewSeverity,
 )
+from billzebub.statement_adapters.uob_ref_no import strip_uob_statement_ref_no
 
 if TYPE_CHECKING:
     from billzebub.persistence.database import Database
@@ -676,7 +677,8 @@ class Reconciliation:
     ) -> Confirmation:
         statement = next(claim for claim in claims if claim.id == statement_claim_id)
         kind = Reconciliation._statement_kind(statement)
-        counterparty = " ".join(statement.raw_description.split())[:300]
+        normalized = strip_uob_statement_ref_no(" ".join(statement.raw_description.split()))
+        counterparty = normalized[:300]
         return Confirmation(
             statement_claim_id=statement_claim_id,
             real_time_claim_id=real_time_claim_id,
