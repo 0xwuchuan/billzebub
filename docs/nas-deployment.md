@@ -41,6 +41,13 @@ For every later release, run `scripts/nas/upgrade.sh` instead. It:
 
 PostgreSQL is never stopped. The upgrade script does not change Tailscale Serve (`--replace-probe` is only the initial cutover in `enable-tailscale-serve.sh`). Ordinary `docker compose up` must not be used as a substitute for the upgrade script because it intentionally does not migrate.
 
+After this UOB adapter upgrade, strip leftover statement `Ref No.` suffixes from current Counterparties in the maintenance container. Claims stay immutable.
+
+```bash
+billzebub uob strip-ref-no --dry-run
+billzebub uob strip-ref-no --execute
+```
+
 ### Serve availability during upgrade
 
 Docker Compose on Synology recreates a service by stopping the old container before starting the new one. The API publishes a single loopback port (`127.0.0.1:8000`) that Tailscale Serve targets, so two API containers cannot share that binding. Compose therefore cannot keep the old API serving until the new container is healthy.

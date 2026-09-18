@@ -11,6 +11,7 @@ from billzebub.financial_accounts import (
 )
 from billzebub.imports import FailedImportPurgeReport
 from billzebub.persistence.models import FinancialAccountKind
+from billzebub.uob_ref_no_backfill import UobRefNoBackfillReport
 
 
 class FakeDatabase:
@@ -305,3 +306,55 @@ def test_imports_purge_failed_execute_forwards_all_failed(
     assert FakeImportCatalog.purge_all_failed is True
     assert output.startswith("Deleted 1 failed Extraction(s)")
     assert "Dry run" not in output
+
+
+class FakeUobRefNoBackfill:
+    dry_run: bool | None = None
+
+    def __init__(self, _database: FakeDatabase) -> None:
+        pass
+
+    def run(self, *, dry_run: bool = True) -> UobRefNoBackfillReport:
+        type(self).dry_run = dry_run
+        return UobRefNoBackfillReport(
+            rewritten_transaction_ids=(uuid4(),),
+            skipped_empty_transaction_ids=(),
+            dry_run=dry_run,
+        )
+
+
+def test_uob_strip_ref_no_defaults_to_dry_run(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(cli, "Settings", lambda: Settings(artifact_root=tmp_path / "artifacts"))
+    monkeypatch.setattr(cli, "Database", FakeDatabase)
+    monkeypatch.setattr(cli, "UobRefNoBackfill", FakeUobRefNoBackfill)
+
+    cli.main(["uob", "strip-ref-no"])
+
+    output = capsys.readouterr().out
+    assert FakeUobRefNoBackfill.dry_run is True
+    assert "Would rewrite 1 UOB Counterparty value(s)." in output
+    assert "Dry run only; pass --execute to apply audited Corrections." in output
+    assert "Ref No." not in output
+    assert "DIN TAI FUNG" not in output
+
+
+def test_uob_strip_ref_no_execute_applies_corrections(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(cli, "Settings", lambda: Settings(artifact_root=tmp_path / "artifacts"))
+    monkeypatch.setattr(cli, "Database", FakeDatabase)
+    monkeypatch.setattr(cli, "UobRefNoBackfill", FakeUobRefNoBackfill)
+
+    cli.main(["uob", "strip-ref-no", "--execute"])
+
+    output = capsys.readouterr().out
+    assert FakeUobRefNoBackfill.dry_run is False
+    assert output.startswith("Rewrote 1 UOB Counterparty value(s).")
+    assert "Dry run" not in output
+    assert "DIN TAI FUNG" not in output

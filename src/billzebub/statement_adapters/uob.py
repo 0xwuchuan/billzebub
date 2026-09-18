@@ -1,4 +1,9 @@
-"""UOB Singapore credit-card statement adapter."""
+"""UOB Singapore credit-card statement adapter.
+
+Strips a trailing statement ``Ref No. : <token>`` from the merchant description
+before it becomes Claim.raw_description / Counterparty. This is not Monopoly's
+REFERENCE_ID field.
+"""
 
 from __future__ import annotations
 
@@ -18,6 +23,7 @@ from billzebub.statement_adapters.monopoly import (
     MonopolyStatementMetadata,
     MonopolyStatementSelection,
 )
+from billzebub.statement_adapters.uob_ref_no import strip_uob_statement_ref_no
 from billzebub.statement_extraction import StatementAdapterError
 
 _AMOUNT = r"(?P<amount>\(?\s*\d+(?:,\d{3})*\.\d+\s*\)?)(?:\s*(?P<polarity>CR|DR|DB|\+|-))?"
@@ -64,7 +70,7 @@ def uob_credit_card_adapter(*, bank: type[Any] = Uob) -> MonopolyStatementAdapte
     """Build the versioned UOB adapter used by the worker registry."""
     return MonopolyStatementAdapter(
         key="uob-credit-card",
-        adapter_version="uob-credit-1",
+        adapter_version="uob-credit-2",
         institution="uob",
         definition=MonopolyAdapterDefinition(
             bank=bank,
@@ -73,6 +79,7 @@ def uob_credit_card_adapter(*, bank: type[Any] = Uob) -> MonopolyStatementAdapte
             kind_hint=_kind_hint,
             ignores_line=lambda line: _ZERO_AMOUNT_PATTERN.search(line) is not None,
             account_identifiers=_account_identifiers,
+            normalize_description=strip_uob_statement_ref_no,
         ),
     )
 
