@@ -38,7 +38,7 @@ class InboxPollResult:
 
 
 class StatementInbox:
-    """Poll configured folders and remove files only after capture and enqueue."""
+    """Poll configured folders and leave captured PDFs in the account inbox."""
 
     def __init__(
         self,
@@ -141,7 +141,6 @@ class StatementInbox:
             },
             dedupe_key=f"{artifact.id}:{account_id}",
         )
-        path.unlink()
         self._mark_captured(observation.id, artifact.id, now)
         return InboxPollResult(captured=1, enqueued=0 if job.duplicate else 1)
 

@@ -45,7 +45,7 @@ The worker polls one folder per configured Financial Account:
 $BILLZEBUB_STATEMENT_INBOX_ROOT/<financial-account-slug>/*.pdf
 ```
 
-A file must retain the same size and modification time across the stability interval before capture. The worker verifies a content-addressed copy, enqueues Extraction, and only then removes the inbox file. Optional PDF passwords are permission-restricted files under `STATEMENT_PASSWORD_ROOT`; PostgreSQL stores only the configured secret filename. The accepted credit-card adapters are `dbs-credit-card`, `citi-credit-card`, and `uob-credit-card`.
+A file must retain the same size and modification time across the stability interval before capture. The worker verifies a content-addressed copy and enqueues Extraction, then leaves the original PDF in the account inbox folder so File Station still shows it. Later polls skip a captured file with the same account, name, size, and modification time; a changed size or mtime is a new observation. The owner may delete inbox PDFs manually. Optional PDF passwords are permission-restricted files under `STATEMENT_PASSWORD_ROOT`; PostgreSQL stores only the configured secret filename. The accepted credit-card adapters are `dbs-credit-card`, `citi-credit-card`, and `uob-credit-card`.
 
 Create each statement-backed Financial Account explicitly. Store its statement selector in an uncommitted, `0600` local file; the CLI never prints its value or filename. Use `--dry-run` first, then repeat without it to create the database record and an empty `0700` inbox folder:
 
