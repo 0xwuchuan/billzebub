@@ -178,6 +178,52 @@ describe("App", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows the last Jev skip on a categorization Review", async () => {
+    seedOnboarded();
+    window.location.hash = "#/review";
+    const fetchMock = mockWorkspace({
+      transactions: [transaction],
+      reviews: [
+        {
+          ...pendingReview,
+          context: {
+            jev_attempt: {
+              attempted_at: "2026-01-10T12:00:00+00:00",
+              model: "jev-1.13.0",
+              action: "skip",
+              choice: "Synthetic Food",
+              choice_confidence: "0.49",
+              noul: "0.40",
+              category_id: null,
+              category_name: null,
+              error_class: null,
+              error_message: null,
+            },
+          },
+        },
+      ],
+      categories: [
+        {
+          id: "00000000-0000-0000-0000-000000000099",
+          name: "Synthetic Food",
+          parent_id: null,
+          active: true,
+        },
+      ],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Last Jev attempt" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("0.49")).toBeInTheDocument();
+    expect(screen.getByText("0.40")).toBeInTheDocument();
+    expect(screen.getByText("jev-1.13.0")).toBeInTheDocument();
+    expect(screen.getAllByText("skip").length).toBeGreaterThan(0);
+  });
+
   it("categorizes a Transaction from the Review queue", async () => {
     seedOnboarded();
     window.location.hash = "#/review";

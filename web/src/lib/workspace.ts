@@ -390,6 +390,52 @@ export function contextStrings(
   return value.filter((item): item is string => typeof item === "string");
 }
 
+export type JevAttempt = {
+  attempted_at: string;
+  model: string;
+  action: string;
+  choice: string | null;
+  choice_confidence: string | null;
+  noul: string | null;
+  category_id: string | null;
+  category_name: string | null;
+  error_class: string | null;
+  error_message: string | null;
+};
+
+export function jevAttemptFromContext(
+  context: Record<string, unknown>,
+): JevAttempt | null {
+  const value = context.jev_attempt;
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  if (typeof record.action !== "string" || typeof record.model !== "string") {
+    return null;
+  }
+  return {
+    attempted_at: stringField(record.attempted_at),
+    model: record.model,
+    action: record.action,
+    choice: nullableString(record.choice),
+    choice_confidence: nullableString(record.choice_confidence),
+    noul: nullableString(record.noul),
+    category_id: nullableString(record.category_id),
+    category_name: nullableString(record.category_name),
+    error_class: nullableString(record.error_class),
+    error_message: nullableString(record.error_message),
+  };
+}
+
+function stringField(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function nullableString(value: unknown): string | null {
+  return typeof value === "string" && value !== "" ? value : null;
+}
+
 export function moneyFromCents(cents: number, currency: string) {
   return centsToMoney(cents, currency);
 }

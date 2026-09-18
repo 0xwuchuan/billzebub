@@ -976,6 +976,68 @@ class InboxFileObservation(Base):
     )
 
 
+class JevCategorizationAttempt(Base):
+    __tablename__ = "jev_categorization_attempt"
+
+    id: Mapped[UUID] = mapped_column(PostgresUUID(as_uuid=True), primary_key=True, default=uuid7)
+    transaction_id: Mapped[UUID] = mapped_column(
+        PostgresUUID(as_uuid=True),
+        ForeignKey("financial_transaction.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    attempted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    model: Mapped[str] = mapped_column(String(120), nullable=False)
+    counterparty: Mapped[str] = mapped_column(String(300), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(), nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    effective_date: Mapped[date] = mapped_column(Date, nullable=False)
+    kind: Mapped[str] = mapped_column(String(30), nullable=False)
+    choice: Mapped[str | None] = mapped_column(String(120))
+    choice_confidence: Mapped[Decimal | None] = mapped_column(Numeric())
+    noul: Mapped[Decimal | None] = mapped_column(Numeric())
+    action: Mapped[str] = mapped_column(String(10), nullable=False)
+    category_id: Mapped[UUID | None] = mapped_column(
+        PostgresUUID(as_uuid=True), ForeignKey("category.id", ondelete="RESTRICT")
+    )
+    category_name: Mapped[str | None] = mapped_column(String(120))
+    error_class: Mapped[str | None] = mapped_column(String(120))
+    error_message: Mapped[str | None] = mapped_column(String(500))
+
+    __table_args__ = (
+        CheckConstraint("length(btrim(model)) > 0", name="model_present"),
+        CheckConstraint("length(btrim(counterparty)) > 0", name="counterparty_present"),
+        CheckConstraint("currency ~ '^[A-Z]{3}$'", name="currency_iso_style"),
+        CheckConstraint(
+            "kind IN ('expense', 'income', 'transfer', 'refund', 'reimbursement', "
+            "'cash_withdrawal')",
+            name="kind_known",
+        ),
+        CheckConstraint(
+            "choice_confidence IS NULL OR (choice_confidence >= 0 AND choice_confidence <= 1)",
+            name="choice_confidence_range",
+        ),
+        CheckConstraint(
+            "noul IS NULL OR (noul >= 0 AND noul <= 1)",
+            name="noul_range",
+        ),
+        CheckConstraint("action IN ('apply', 'skip')", name="action_known"),
+        CheckConstraint(
+            "(action = 'apply' AND category_id IS NOT NULL AND category_name IS NOT NULL "
+            "AND length(btrim(category_name)) > 0) OR "
+            "(action = 'skip' AND category_id IS NULL AND category_name IS NULL)",
+            name="category_matches_action",
+        ),
+        Index(
+            "ix_jev_categorization_attempt_transaction_attempted",
+            "transaction_id",
+            "attempted_at",
+            "id",
+        ),
+    )
+
+
 class ArtifactArrival(Base):
     __tablename__ = "artifact_arrival"
 

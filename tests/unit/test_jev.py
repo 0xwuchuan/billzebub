@@ -23,6 +23,7 @@ from billzebub.jev import (
     jev_questions,
     jev_state,
     parse_jev_proposal,
+    safe_error_message,
 )
 
 FOOD_ID = UUID("11111111-1111-1111-1111-111111111111")
@@ -160,6 +161,11 @@ def test_proposal_gating_is_fail_closed() -> None:
     assert unknown.action == "skip"
     assert apply.action == "apply"
     assert apply.category_id == FOOD_ID
+    assert apply.choice == "Synthetic Food"
+    assert apply.noul == Decimal("0.6")
+    assert low_confidence.choice == "Synthetic Food"
+    assert low_confidence.noul == Decimal("0.99")
+    assert skip_option.choice == SKIP_OPTION
 
 
 def test_state_is_agent_safe_and_questions_include_skip() -> None:
@@ -195,6 +201,7 @@ def test_jev_client_pins_model_and_does_not_post_on_sdk_error(
         proposer.propose(_subject(), (_category(),))
 
     assert TYPESAFE_KEY not in str(error.value)
+    assert TYPESAFE_KEY not in str(error.value.__cause__)
     assert FakeTypeSafeClient.last_init["model"] == DEFAULT_MODEL
     assert FakeTypeSafeClient.last_init["api_key"] == TYPESAFE_KEY
     assert FakeTypeSafeClient.last_init["base_url"] == "https://api.typesafe.ai"
@@ -265,3 +272,13 @@ def test_missing_key_can_fail_open_for_worker() -> None:
 
 def test_endpoint_is_typesafe_system_one() -> None:
     assert TYPESAFE_ENDPOINT == "https://api.typesafe.ai/v1/systemone"
+
+
+def test_safe_error_message_redacts_keys() -> None:
+    message = safe_error_message(
+        RuntimeError(f"api_key={TYPESAFE_KEY} boom"),
+        secret=TYPESAFE_KEY,
+    )
+    assert TYPESAFE_KEY not in message
+    assert "boom" in message
+    assert "[redacted]" in message

@@ -1,12 +1,16 @@
+import logging
 from datetime import date
 from decimal import Decimal
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
+import pytest
+
 from billzebub.financial_history import CategorySplitRecord, TransactionKind, TransactionSnapshot
 from billzebub.jev import JevCategory, JevSubject, Proposal
 from billzebub.jev_categorizer import (
     JevCatchupScheduler,
+    _log_attempt,
     enqueue_transaction_categorization,
     subject_from_snapshot,
 )
@@ -96,3 +100,25 @@ def test_proposal_type_is_reused() -> None:
     )
     category = JevCategory(id=FOOD_ID, name="Synthetic Food")
     assert proposal.category_id == category.id
+
+
+def test_attempt_info_log_includes_decision_without_secrets(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    proposal = Proposal(
+        action="skip",
+        category_id=None,
+        category_name=None,
+        confidence=Decimal("0.49"),
+        model="jev-1.13.0",
+        choice="Synthetic Food",
+        noul=Decimal("0.40"),
+    )
+    with caplog.at_level(logging.INFO, logger="billzebub.jev_categorizer"):
+        _log_attempt(TXN_ID, proposal)
+    assert "action=skip" in caplog.text
+    assert "confidence=0.49" in caplog.text
+    assert "noul=0.40" in caplog.text
+    assert "category=skip" in caplog.text
+    assert str(TXN_ID) in caplog.text
+    assert "synthetic-typesafe-key" not in caplog.text

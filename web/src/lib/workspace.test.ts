@@ -5,6 +5,7 @@ import {
   activityAmount,
   categoryTotalsForMonths,
   isProvisional,
+  jevAttemptFromContext,
   monthTotals,
   monthlySpending,
   weekComparison,
@@ -186,5 +187,36 @@ describe("owner activity amounts", () => {
         ["2026-01", "2026-02", "2026-03"],
       ),
     ).toEqual([{ name: "Groceries", cents: 4567 }]);
+  });
+});
+
+describe("jevAttemptFromContext", () => {
+  it("reads the last Jev skip from Review context", () => {
+    expect(jevAttemptFromContext({})).toBeNull();
+    expect(
+      jevAttemptFromContext({
+        jev_attempt: {
+          action: "skip",
+          model: "jev-1.13.0",
+          choice: "Synthetic Food",
+          choice_confidence: "0.49",
+          noul: "0.40",
+          category_name: null,
+          error_class: null,
+          error_message: null,
+        },
+      }),
+    ).toEqual({
+      attempted_at: "",
+      model: "jev-1.13.0",
+      action: "skip",
+      choice: "Synthetic Food",
+      choice_confidence: "0.49",
+      noul: "0.40",
+      category_id: null,
+      category_name: null,
+      error_class: null,
+      error_message: null,
+    });
   });
 });

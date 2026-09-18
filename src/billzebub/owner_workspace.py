@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from billzebub.claims import ClaimDisposition, ClaimType
 from billzebub.financial_history import CategorySplitRecord, TransactionKind
+from billzebub.jev_attempts import latest_jev_attempts, merge_jev_attempt_context
 from billzebub.money import Money
 from billzebub.persistence.models import (
     Category,
@@ -26,6 +27,7 @@ from billzebub.persistence.models import (
     ClaimDispositionEvent,
     FinancialAccount,
     FinancialTransaction,
+    JevCategorizationAttempt,
     PendingReview,
     TransactionClaim,
     TransactionVersion,
@@ -203,7 +205,7 @@ class OwnerWorkspace:
                 last = page_reviews[-1]
                 next_cursor = self._encode_review_cursor(last.created_at.isoformat(), last.id)
             return OwnerReviewPage(
-                items=tuple(self._review(review) for review in page_reviews),
+                items=self._reviews_from_models(session, page_reviews),
                 next_cursor=next_cursor,
             )
 
@@ -212,7 +214,7 @@ class OwnerWorkspace:
             review = session.get(PendingReview, review_id)
             if review is None:
                 raise OwnerWorkspaceError("Pending Review was not found")
-            return self._review(review)
+            return self._reviews_from_models(session, (review,))[0]
 
     def _confirmed_transactions(
         self,
@@ -466,7 +468,35 @@ class OwnerWorkspace:
         )
 
     @staticmethod
-    def _review(review: PendingReview) -> OwnerReview:
+    def _reviews_from_models(
+        session: Session,
+        reviews: Sequence[PendingReview],
+    ) -> tuple[OwnerReview, ...]:
+        attempts = latest_jev_attempts(
+            session,
+            (
+                review.subject_id
+                for review in reviews
+                if review.subject_type == "transaction"
+                and review.condition_code == "categorization_needed"
+            ),
+        )
+        return tuple(
+            OwnerWorkspace._review(
+                review,
+                attempts.get(review.subject_id)
+                if review.subject_type == "transaction"
+                and review.condition_code == "categorization_needed"
+                else None,
+            )
+            for review in reviews
+        )
+
+    @staticmethod
+    def _review(
+        review: PendingReview,
+        jev_attempt: JevCategorizationAttempt | None = None,
+    ) -> OwnerReview:
         return OwnerReview(
             id=review.id,
             subject_type=review.subject_type,
@@ -476,7 +506,7 @@ class OwnerWorkspace:
             status=PendingReviewStatus(review.status),
             version=review.version,
             allowed_decisions=tuple(review.allowed_decisions),
-            context=dict(review.context),
+            context=merge_jev_attempt_context(review.context, jev_attempt),
             created_at=review.created_at,
             updated_at=review.updated_at,
         )

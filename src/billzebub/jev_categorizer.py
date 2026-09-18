@@ -8,6 +8,7 @@ floor it leaves Uncategorized and the Review in place.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
@@ -26,7 +27,8 @@ from billzebub.financial_history import (
     TransactionKind,
     TransactionSnapshot,
 )
-from billzebub.jev import JevCategory, JevError, JevSubject, Proposal, Proposer
+from billzebub.jev import DEFAULT_MODEL, JevCategory, JevError, JevSubject, Proposal, Proposer
+from billzebub.jev_attempts import proposal_from_jev_error, record_jev_attempt
 from billzebub.owner_transaction_actions import (
     OwnerCategorizationCommand,
     OwnerTransactionActionError,
@@ -37,6 +39,8 @@ from billzebub.reviews import PendingReviewStatus
 
 if TYPE_CHECKING:
     from billzebub.persistence.database import Database
+
+logger = logging.getLogger(__name__)
 
 CATEGORIZE_TRANSACTION_JOB = "categorize_transaction"
 JEV_CATCH_UP_JOB = "jev_catch_up"
@@ -136,40 +140,54 @@ class JevCategorizer:
         return len(ids)
 
     def categorize_transaction(self, transaction_id: UUID) -> TransactionSnapshot | None:
+        retry: JevError | None = None
+        logged: tuple[UUID, Proposal] | None = None
+        updated: TransactionSnapshot | None = None
         try:
             with self._database.transaction() as session:
                 snapshot = self._history.current_in_session(session, transaction_id)
-                return self._categorize_snapshot_in_session(session, snapshot)
+                if snapshot.kind not in _SPENDING_KINDS or not self._needs_category(snapshot):
+                    return None
+                if self._proposer is None:
+                    return None
+                subject = subject_from_snapshot(snapshot)
+                try:
+                    proposal = self._propose_in_session(session, snapshot)
+                except JevError as error:
+                    proposal = proposal_from_jev_error(error, model=self._proposer_model())
+                    retry = error
+                record_jev_attempt(
+                    session,
+                    transaction_id=snapshot.id,
+                    subject=subject,
+                    proposal=proposal,
+                )
+                logged = (snapshot.id, proposal)
+                if retry is not None:
+                    updated = None
+                elif proposal.action != "apply" or proposal.category_id is None:
+                    updated = None
+                else:
+                    try:
+                        updated = self._actions.categorize_in_session(
+                            session,
+                            OwnerCategorizationCommand(
+                                transaction_id=snapshot.id,
+                                expected_version=snapshot.version,
+                                category_id=proposal.category_id,
+                                actor_id=self._system_actor_id(session),
+                                reason="jev_categorization",
+                            ),
+                        )
+                    except OwnerTransactionActionError as error:
+                        raise CategorizerError(str(error)) from error
         except FinancialHistoryError as error:
             raise CategorizerError(str(error)) from error
-
-    def _categorize_snapshot_in_session(
-        self,
-        session: Session,
-        snapshot: TransactionSnapshot,
-    ) -> TransactionSnapshot | None:
-        if snapshot.kind not in _SPENDING_KINDS:
-            return None
-        if not self._needs_category(snapshot):
-            return None
-        if self._proposer is None:
-            return None
-        proposal = self._propose_in_session(session, snapshot)
-        if proposal.action != "apply" or proposal.category_id is None:
-            return None
-        try:
-            return self._actions.categorize_in_session(
-                session,
-                OwnerCategorizationCommand(
-                    transaction_id=snapshot.id,
-                    expected_version=snapshot.version,
-                    category_id=proposal.category_id,
-                    actor_id=self._system_actor_id(session),
-                    reason="jev_categorization",
-                ),
-            )
-        except OwnerTransactionActionError as error:
-            raise CategorizerError(str(error)) from error
+        if logged is not None:
+            _log_attempt(logged[0], logged[1])
+        if retry is not None:
+            raise retry
+        return updated
 
     def _propose_in_session(self, session: Session, snapshot: TransactionSnapshot) -> Proposal:
         if self._proposer is None:
@@ -181,7 +199,7 @@ class JevCategorizer:
                 category_id=None,
                 category_name=None,
                 confidence=Decimal("0"),
-                model="",
+                model=self._proposer_model(),
             )
         return self._proposer.propose(subject_from_snapshot(snapshot), categories)
 
@@ -240,3 +258,27 @@ class JevCategorizer:
         if actor_id is None:
             raise CategorizerError("jev audit actor disappeared")
         return actor_id
+
+    def _proposer_model(self) -> str:
+        model = getattr(self._proposer, "model", None)
+        return model if isinstance(model, str) and model.strip() else DEFAULT_MODEL
+
+
+def _log_attempt(transaction_id: UUID, proposal: Proposal) -> None:
+    category = (
+        proposal.category_name if proposal.action == "apply" and proposal.category_name else "skip"
+    )
+    logger.info(
+        "jev attempt action=%s confidence=%s noul=%s category=%s transaction_id=%s",
+        proposal.action,
+        _log_unit(proposal.confidence),
+        _log_unit(proposal.noul),
+        category,
+        transaction_id,
+    )
+
+
+def _log_unit(value: Decimal | None) -> str:
+    if value is None:
+        return "-"
+    return format(value, "f")

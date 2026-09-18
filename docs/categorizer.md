@@ -18,3 +18,5 @@ Agent categorization uses the same owner-safe mutation path with reason `agent_c
 ## Auto-categorizer (NAS worker)
 
 Unknowns stay as Reviews until Jev applies or the owner assigns. Cascade: statement import / Real-time Claim confirmation → worker Jev (threshold 0.5) → owner. A daily in-worker catch-up (`0 21 * * *` Asia/Singapore, env-overridable) drains remaining `categorization_needed` Reviews. This is not a Grok Bot and is not scheduled on forge. See [`docs/jev-categorizer.md`](jev-categorizer.md).
+
+Every `categorize_transaction` pass that actually calls Jev (apply, skip, or TypeSafe error), including daily catch-up, appends a `jev_categorization_attempt` row. Pending Review `context.jev_attempt` is the latest row for that Transaction so the owner can see why categorization is still needed.
