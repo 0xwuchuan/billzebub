@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import logging
+from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
 
@@ -12,6 +14,7 @@ from billzebub.jev_webhook import notify_jev_webhook, notify_jev_webhook_from_se
 
 WEBHOOK_URL = "https://forge.example.test/automations/webhook/synthetic"
 SENDER_KEY = "synthetic-jev-webhook-sender-key"
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 class FakeResponse:
@@ -29,24 +32,12 @@ class FakeResponse:
         self.closed = True
 
 
-def _capture_warnings(monkeypatch: pytest.MonkeyPatch) -> list[str]:
-    messages: list[str] = []
-
-    def warning(msg: object, *args: object, **kwargs: object) -> None:
-        del kwargs
-        messages.append(str(msg) % args if args else str(msg))
-
-    monkeypatch.setattr("billzebub.jev_webhook.logger.disabled", True)
-    monkeypatch.setattr("billzebub.jev_webhook.logger.warning", warning)
-    return messages
-
-
 def test_missing_url_is_noop(monkeypatch: pytest.MonkeyPatch) -> None:
     def fail_open(*args: object, **kwargs: object) -> None:
         del args, kwargs
         raise AssertionError("urlopen must not be called")
 
-    monkeypatch.setattr("billzebub.jev_webhook.urlopen", fail_open)
+    monkeypatch.setattr("urllib.request.urlopen", fail_open)
     notify_jev_webhook(url=None)
     notify_jev_webhook(url="  ")
     notify_jev_webhook_from_settings(Settings())
@@ -59,7 +50,7 @@ def test_successful_post_sends_bearer_secret(monkeypatch: pytest.MonkeyPatch) ->
         requests.append((request, timeout))
         return FakeResponse()
 
-    monkeypatch.setattr("billzebub.jev_webhook.urlopen", fake_urlopen)
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
     notify_jev_webhook(url=WEBHOOK_URL, secret=SENDER_KEY, timeout_seconds=4.5)
 
     assert len(requests) == 1
@@ -82,7 +73,7 @@ def test_bearer_prefix_is_not_doubled(monkeypatch: pytest.MonkeyPatch) -> None:
         requests.append(request)
         return FakeResponse()
 
-    monkeypatch.setattr("billzebub.jev_webhook.urlopen", fake_urlopen)
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
     notify_jev_webhook(url=WEBHOOK_URL, secret=f"Bearer {SENDER_KEY}")
     headers = {key.lower(): value for key, value in requests[0].header_items()}
     assert headers["authorization"] == f"Bearer {SENDER_KEY}"
@@ -96,7 +87,7 @@ def test_settings_secret_is_sent(monkeypatch: pytest.MonkeyPatch) -> None:
         requests.append(request)
         return FakeResponse()
 
-    monkeypatch.setattr("billzebub.jev_webhook.urlopen", fake_urlopen)
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
     notify_jev_webhook_from_settings(
         Settings(
             jev_webhook_url=WEBHOOK_URL,
@@ -117,6 +108,7 @@ def test_settings_secret_is_sent(monkeypatch: pytest.MonkeyPatch) -> None:
 )
 def test_http_failures_fail_open(
     monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
     error: Exception,
     logged: str,
 ) -> None:
@@ -124,19 +116,26 @@ def test_http_failures_fail_open(
         del request, timeout
         raise error
 
-    monkeypatch.setattr("billzebub.jev_webhook.urlopen", fake_urlopen)
-    messages = _capture_warnings(monkeypatch)
-    notify_jev_webhook(url=WEBHOOK_URL, secret=SENDER_KEY)
-    assert any(logged in message for message in messages)
-    assert all(SENDER_KEY not in message for message in messages)
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    with caplog.at_level(logging.WARNING, logger="billzebub"):
+        notify_jev_webhook(url=WEBHOOK_URL, secret=SENDER_KEY)
+    assert logged in caplog.text
+    assert SENDER_KEY not in caplog.text
 
 
-def test_cleartext_non_loopback_url_is_skipped(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_cleartext_non_loopback_url_is_skipped(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
     def fail_open(*args: object, **kwargs: object) -> None:
         del args, kwargs
         raise AssertionError("urlopen must not be called")
 
-    monkeypatch.setattr("billzebub.jev_webhook.urlopen", fail_open)
-    messages = _capture_warnings(monkeypatch)
-    notify_jev_webhook(url="http://forge.example.test/webhook")
-    assert any("HTTPS" in message for message in messages)
+    monkeypatch.setattr("urllib.request.urlopen", fail_open)
+    with caplog.at_level(logging.WARNING, logger="billzebub"):
+        notify_jev_webhook(url="http://forge.example.test/webhook")
+    assert "HTTPS" in caplog.text
+
+
+def test_alembic_file_config_keeps_existing_loggers() -> None:
+    env = (REPO_ROOT / "migrations" / "env.py").read_text(encoding="utf-8")
+    assert "disable_existing_loggers=False" in env

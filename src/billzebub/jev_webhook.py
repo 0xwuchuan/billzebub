@@ -9,15 +9,15 @@ from __future__ import annotations
 
 import json
 import logging
+import urllib.request
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
-from urllib.request import Request, urlopen
 
 from pydantic import SecretStr
 
 from billzebub.config import Settings
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("billzebub")
 
 DEFAULT_TIMEOUT_SECONDS = 5.0
 _EVENT_BODY = {"event": "categorization_needed"}
@@ -44,14 +44,14 @@ def notify_jev_webhook(
     token = secret.strip() if secret else ""
     if token:
         headers["Authorization"] = _authorization(token)
-    request = Request(
+    request = urllib.request.Request(
         target,
         data=json.dumps(_EVENT_BODY, separators=(",", ":"), allow_nan=False).encode(),
         headers=headers,
         method="POST",
     )
     try:
-        with urlopen(request, timeout=timeout_seconds) as response:
+        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
             response.read(4096)
     except HTTPError as error:
         logger.warning("jev webhook failed: HTTP %s", error.code)
