@@ -18,6 +18,7 @@ import { OnboardingPage } from "./pages/OnboardingPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { ReviewPage } from "./pages/ReviewPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { SpendingPage } from "./pages/SpendingPage";
 import { TransactionsPage } from "./pages/TransactionsPage";
 
 export function App() {
@@ -200,7 +201,6 @@ export function App() {
       <AppShell
         route={route}
         periodLabel={monthYearLabel(isoDate(today))}
-        accountCount={workspace.workspace.accounts.length}
         reviewCount={workspace.workspace.reviews.length}
         reviewBlocking={blockingCount > 0}
         error={workspace.error}
@@ -227,6 +227,15 @@ export function App() {
             }}
             onFilterCategory={(name) => {
               openTransactions("confirmed", name);
+            }}
+          />
+        ) : null}
+        {route.page === "spending" ? (
+          <SpendingPage
+            transactions={workspace.workspace.transactions.items}
+            today={today}
+            onOpenTransactions={() => {
+              openTransactions("");
             }}
           />
         ) : null}

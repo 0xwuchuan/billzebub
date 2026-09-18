@@ -362,6 +362,11 @@ describe("App", () => {
     expect(
       screen.queryByRole("navigation", { name: "Navigation" }),
     ).not.toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: ",", metaKey: true });
+    await waitFor(() => {
+      expect(window.location.hash).toBe("#/settings");
+    });
   });
 
   it("posts a permitted Review decision from the two-pane desk", async () => {
@@ -606,20 +611,16 @@ describe("App", () => {
     expect(
       await screen.findByRole("heading", { name: "Imports" }),
     ).toBeInTheDocument();
-    expect(screen.getAllByText("apple_wallet_shortcut").length).toBeGreaterThan(
-      0,
-    );
+    expect(screen.getAllByText("Apple Wallet").length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
     await waitFor(() => {
-      expect(
-        screen.queryByText("apple_wallet_shortcut"),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByText("Apple Wallet")).not.toBeInTheDocument();
     });
     expect(screen.getAllByText("citi-credit-card").length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: "Show dismissed" }));
-    expect(
-      (await screen.findAllByText("apple_wallet_shortcut")).length,
-    ).toBeGreaterThan(0);
+    expect((await screen.findAllByText("Apple Wallet")).length).toBeGreaterThan(
+      0,
+    );
     expect(screen.getAllByText("dismissed").length).toBeGreaterThan(0);
   });
 
@@ -876,6 +877,7 @@ describe("App", () => {
     expect(screen.getByText(/Citi PremierMiles • 8899/)).toBeInTheDocument();
     expect(screen.queryByText(/Sy•/)).not.toBeInTheDocument();
 
+    fireEvent.click(screen.getByRole("button", { name: "Add account" }));
     fireEvent.change(screen.getByLabelText("Kind"), {
       target: { value: "paylah" },
     });
@@ -905,6 +907,7 @@ describe("App", () => {
     });
     expect(screen.getAllByText("Synthetic PayLah").length).toBeGreaterThan(0);
 
+    fireEvent.click(screen.getByRole("button", { name: "Map card" }));
     fireEvent.change(screen.getByLabelText("Apple Wallet card label"), {
       target: { value: "Citi Rewards" },
     });
@@ -916,7 +919,8 @@ describe("App", () => {
       );
     });
 
-    fireEvent.change(screen.getByLabelText("Add a Category"), {
+    fireEvent.click(screen.getByRole("button", { name: "Add Category" }));
+    fireEvent.change(screen.getByLabelText("Category name"), {
       target: { value: "Pets" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Create Category" }));
@@ -931,6 +935,7 @@ describe("App", () => {
     });
     expect(screen.getAllByText("Pets").length).toBeGreaterThan(0);
 
+    fireEvent.click(screen.getByRole("button", { name: "Issue token" }));
     fireEvent.click(
       screen.getByRole("button", { name: "Issue Shortcut token" }),
     );
@@ -959,6 +964,8 @@ describe("parseHash", () => {
     expect(parseHash("#/setup", true).page).toBe("settings");
     expect(parseHash("#/onboarding", true).page).toBe("settings");
     expect(parseHash("#/settings", true).page).toBe("settings");
+    expect(parseHash("#/spending", true).page).toBe("spending");
+    expect(hashFor({ ...parseHash("#/spending", true) })).toBe("#/spending");
     expect(
       hashFor({
         page: "review",

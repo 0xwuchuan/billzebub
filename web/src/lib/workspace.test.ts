@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import type { Transaction } from "../api";
-import { activityAmount, isProvisional, monthTotals } from "./workspace";
+import {
+  activityAmount,
+  categoryTotalsForMonths,
+  isProvisional,
+  monthTotals,
+  monthlySpending,
+  weekComparison,
+} from "./workspace";
 
 const card = {
   id: "00000000-0000-0000-0000-000000000011",
@@ -109,5 +116,75 @@ describe("owner activity amounts", () => {
     expect(totals.confirmedCents).toBe(1234);
     expect(totals.provisionalCents).toBe(0);
     expect(totals.estimatedCents).toBe(1234);
+  });
+
+  it("separates confirmed and provisional spending in the current week", () => {
+    const comparison = weekComparison(
+      [
+        transaction({
+          id: "00000000-0000-0000-0000-000000000051",
+          kind: "expense",
+          posted: "-45.67",
+          date: "2026-03-11",
+        }),
+        transaction({
+          id: "00000000-0000-0000-0000-000000000052",
+          kind: "expense",
+          posted: "0",
+          authorized: "-12.34",
+          date: "2026-03-11",
+        }),
+      ],
+      new Date(2026, 2, 11),
+    );
+
+    expect(comparison[2]).toEqual({
+      label: "Wed",
+      confirmedCents: 4567,
+      provisionalCents: 1234,
+    });
+  });
+
+  it("builds chronological monthly totals and confirmed category allocation", () => {
+    const groceries = transaction({
+      id: "00000000-0000-0000-0000-000000000061",
+      kind: "expense",
+      posted: "-45.67",
+      date: "2026-01-12",
+    });
+    groceries.category_splits = [
+      {
+        id: "00000000-0000-0000-0000-000000000071",
+        name: "Groceries",
+        amount: { amount: "-45.67", currency: "SGD" },
+      },
+    ];
+    const provisional = transaction({
+      id: "00000000-0000-0000-0000-000000000062",
+      kind: "expense",
+      posted: "0",
+      authorized: "-12.34",
+      date: "2026-03-07",
+    });
+
+    expect(
+      monthlySpending([groceries, provisional], new Date(2026, 2, 11), 3).map(
+        ({ month, confirmedCents, provisionalCents }) => ({
+          month,
+          confirmedCents,
+          provisionalCents,
+        }),
+      ),
+    ).toEqual([
+      { month: "2026-01", confirmedCents: 4567, provisionalCents: 0 },
+      { month: "2026-02", confirmedCents: 0, provisionalCents: 0 },
+      { month: "2026-03", confirmedCents: 0, provisionalCents: 1234 },
+    ]);
+    expect(
+      categoryTotalsForMonths(
+        [groceries, provisional],
+        ["2026-01", "2026-02", "2026-03"],
+      ),
+    ).toEqual([{ name: "Groceries", cents: 4567 }]);
   });
 });

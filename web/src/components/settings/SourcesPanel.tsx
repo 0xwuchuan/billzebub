@@ -1,17 +1,19 @@
 import { useState, type FormEvent } from "react";
 
 import type { FinancialAccount } from "../../api";
-import { Button } from "../ui/Button";
 import { formatOwnerCardLabel } from "../../lib/labels";
+import { Button } from "../ui/Button";
 
 export function SourcesPanel({
   accounts,
   saving,
   onAddAlias,
+  mode = "all",
 }: {
   accounts: FinancialAccount[];
   saving: boolean;
   onAddAlias: (accountId: string, cardLabel: string) => Promise<void>;
+  mode?: "all" | "list" | "form";
 }) {
   const [accountId, setAccountId] = useState(accounts[0]?.id ?? "");
   const [cardLabel, setCardLabel] = useState("");
@@ -29,72 +31,74 @@ export function SourcesPanel({
 
   return (
     <div className="stack">
-      {accounts.map((account) => (
-        <div className="card" key={account.id} style={{ padding: "12px 16px" }}>
-          <strong>{account.display_name}</strong>
-          {account.kind === "paylah" ? (
-            <div className="path">Shortcut ingest · no statement inbox</div>
-          ) : (
-            <div className="path">
-              Inbox {account.inbox_ready ? "ready" : "missing"} · password{" "}
-              {account.password_configured ? "configured" : "not configured"}
+      {mode !== "form" ? (
+        accounts.length === 0 ? (
+          <p className="muted">No Financial Accounts available.</p>
+        ) : (
+          accounts.map((account) => (
+            <div className="account-summary" key={account.id}>
+              <span>
+                <strong>{account.display_name}</strong>
+                <span className="muted">
+                  {account.kind === "paylah"
+                    ? "Shortcut ingest"
+                    : `Inbox ${account.inbox_ready ? "ready" : "missing"}`}
+                </span>
+              </span>
+              <span className="alias-list">
+                {account.aliases.length === 0
+                  ? "No Wallet alias"
+                  : account.aliases
+                      .map((alias) => formatOwnerCardLabel(alias.display_label))
+                      .join(", ")}
+              </span>
             </div>
-          )}
-          {account.aliases.length === 0 ? (
-            <p className="muted" style={{ fontSize: "var(--bz-text-xs)" }}>
-              No Wallet card aliases
-            </p>
-          ) : (
-            account.aliases.map((alias) => (
-              <p className="path" key={alias.id}>
-                {alias.alias_kind}: {formatOwnerCardLabel(alias.display_label)}
-              </p>
-            ))
-          )}
-        </div>
-      ))}
-      <p className="muted" style={{ fontSize: "var(--bz-text-xs)" }}>
-        Statement password files remain NAS mode-0600 secrets. Mapping a Wallet
-        card stores the label server-side. Owner lists show the card name and
-        last4; full statement selectors stay off this page.
-      </p>
-      <form className="stack" onSubmit={(event) => void onSubmit(event)}>
-        <label className="field-label">
-          Financial Account
-          <select
-            className="select"
-            value={selected?.id ?? ""}
-            onChange={(event) => {
-              setAccountId(event.target.value);
-            }}
+          ))
+        )
+      ) : null}
+      {mode !== "list" ? (
+        <form className="stack" onSubmit={(event) => void onSubmit(event)}>
+          <label className="field-label">
+            Financial Account
+            <select
+              className="select"
+              value={selected?.id ?? ""}
+              onChange={(event) => {
+                setAccountId(event.target.value);
+              }}
+            >
+              {accounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.display_name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field-label">
+            Apple Wallet card label
+            <input
+              className="field"
+              value={cardLabel}
+              autoComplete="off"
+              placeholder="Card name from Wallet"
+              onChange={(event) => {
+                setCardLabel(event.target.value);
+              }}
+            />
+          </label>
+          <p className="muted settings-help">
+            This stores the Wallet display label server-side. Statement
+            selectors and passwords stay off this page.
+          </p>
+          <Button
+            variant="primary"
+            type="submit"
+            disabled={saving || cardLabel.trim() === ""}
           >
-            {accounts.map((account) => (
-              <option key={account.id} value={account.id}>
-                {account.display_name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="field-label">
-          Apple Wallet card label
-          <input
-            className="field"
-            value={cardLabel}
-            autoComplete="off"
-            placeholder="Card name from Wallet"
-            onChange={(event) => {
-              setCardLabel(event.target.value);
-            }}
-          />
-        </label>
-        <Button
-          variant="outline"
-          type="submit"
-          disabled={saving || cardLabel.trim() === ""}
-        >
-          {saving ? "Saving…" : "Map Wallet card"}
-        </Button>
-      </form>
+            {saving ? "Saving…" : "Map Wallet card"}
+          </Button>
+        </form>
+      ) : null}
     </div>
   );
 }

@@ -47,11 +47,15 @@
   place-items: center;
   width: 1.75rem;
   height: 1.75rem;
+  overflow: hidden;
   border-radius: 0.45rem;
   background: var(--bz-accent-dim);
-  color: var(--bz-accent);
-  font-size: 0.8rem;
-  font-weight: 700;
+}
+
+.mark img {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .brand strong {
@@ -99,6 +103,12 @@
 
 .rail-item span:first-of-type {
   flex: 1;
+}
+
+.rail-shortcut {
+  color: var(--bz-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--bz-text-xs);
 }
 
 .rail-item:hover {
@@ -321,10 +331,6 @@
 
   .rail-label {
     padding-bottom: var(--bz-space-1);
-  }
-
-  .brand span {
-    display: none;
   }
 }
 

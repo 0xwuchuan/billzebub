@@ -1,4 +1,9 @@
 import type { Transaction } from "../api";
+import {
+  DitherBarChart,
+  DitherDonutChart,
+  type DitherSeries,
+} from "../components/dither-kit/DitherCharts";
 import { TransactionRow } from "../components/TransactionRow";
 import { Button } from "../components/ui/Button";
 import { useEntrance } from "../hooks/useEntrance";
@@ -9,8 +14,32 @@ import {
   monthTotals,
   reportingPeriod,
   sortTransactions,
-  weekBars,
+  weekComparison,
 } from "../lib/workspace";
+
+const CONFIRMATION_SERIES: DitherSeries[] = [
+  {
+    key: "confirmed",
+    label: "Confirmed",
+    color: "#879a39",
+    variant: "gradient",
+  },
+  {
+    key: "provisional",
+    label: "Provisional",
+    color: "#d0a215",
+    variant: "dotted",
+  },
+];
+
+const DITHER_CATEGORY_COLORS = [
+  "#3aa99f",
+  "#d0a215",
+  "#879a39",
+  "#8b7ec8",
+  "#d14d41",
+  "#878580",
+];
 
 export function OverviewPage({
   transactions,
@@ -39,7 +68,11 @@ export function OverviewPage({
   const period = reportingPeriod(transactions, today);
   const totals = monthTotals(transactions, period);
   const categories = categoryTotals(transactions, period);
-  const bars = weekBars(transactions, today);
+  const week = weekComparison(transactions, today).map((day) => ({
+    label: day.label,
+    confirmed: day.confirmedCents,
+    provisional: day.provisionalCents,
+  }));
   const recent = sortTransactions(transactions).slice(0, 6);
   const attention = Math.max(0, reviewCount - blockingCount);
   const failed = blockingCount > 0;
@@ -59,22 +92,16 @@ export function OverviewPage({
             Estimated spending. Confirmed uses Posted Amount. Provisional uses
             eligible Real-time Claims.
           </p>
-          <div className={`bars${fresh ? " is-fresh" : ""}`} aria-hidden="true">
-            {bars.map((bar, index) => (
-              <i
-                key={bar.label}
-                style={{
-                  height: `${bar.pct}%`,
-                  animationDelay: `${index * 10}ms`,
-                }}
-              />
-            ))}
-          </div>
-          <div className="bar-labels">
-            {bars.map((bar) => (
-              <span key={bar.label}>{bar.label}</span>
-            ))}
-          </div>
+          <DitherBarChart
+            data={week}
+            series={CONFIRMATION_SERIES}
+            height={92}
+            ariaLabel="This week's spending stacked by confirmed and provisional transactions"
+            valueFormatter={(cents) =>
+              formatUnsigned(centsToMoney(cents, totals.currency))
+            }
+            stacked
+          />
         </div>
         <button
           className="statement-cell"
@@ -134,7 +161,16 @@ export function OverviewPage({
       </section>
       <article className="card split">
         <div className="ring-wrap">
-          <CategoryRing parts={categories} />
+          <DitherDonutChart
+            data={categories.map((category, index) => ({
+              label: category.name,
+              value: category.cents,
+              color:
+                DITHER_CATEGORY_COLORS[index % DITHER_CATEGORY_COLORS.length] ??
+                "#878580",
+            }))}
+            ariaLabel="Confirmed spending by category"
+          />
           <p className="muted">Confirmed by Category</p>
         </div>
         <div className="cat-list">
@@ -191,55 +227,4 @@ export function OverviewPage({
       </section>
     </>
   );
-}
-
-function CategoryRing({
-  parts,
-}: {
-  parts: Array<{ name: string; cents: number }>;
-}) {
-  const radius = 36;
-  const circumference = 2 * Math.PI * radius;
-  const segments = ringSegments(parts, circumference);
-  return (
-    <svg viewBox="0 0 96 96" aria-hidden="true">
-      <circle
-        cx="48"
-        cy="48"
-        r={radius}
-        fill="none"
-        stroke="#282726"
-        strokeWidth="10"
-      />
-      {segments.map((segment) => (
-        <circle
-          key={segment.name}
-          cx="48"
-          cy="48"
-          r={radius}
-          fill="none"
-          stroke={categoryColor(segment.name)}
-          strokeWidth="10"
-          strokeDasharray={`${segment.length} ${circumference - segment.length}`}
-          strokeDashoffset={segment.offset}
-          transform="rotate(-90 48 48)"
-        />
-      ))}
-    </svg>
-  );
-}
-
-function ringSegments(
-  parts: Array<{ name: string; cents: number }>,
-  circumference: number,
-): Array<{ name: string; length: number; offset: number }> {
-  const total = parts.reduce((sum, part) => sum + part.cents, 0) || 1;
-  const segments: Array<{ name: string; length: number; offset: number }> = [];
-  let offset = 0;
-  for (const part of parts) {
-    const length = (part.cents / total) * circumference;
-    segments.push({ name: part.name, length, offset });
-    offset -= length;
-  }
-  return segments;
 }

@@ -18,9 +18,18 @@ export type CategoryTotal = {
   cents: number;
 };
 
-export type WeekBar = {
+export type WeekComparison = {
   label: string;
-  pct: number;
+  confirmedCents: number;
+  provisionalCents: number;
+};
+
+export type MonthlySpending = {
+  month: string;
+  label: string;
+  confirmedCents: number;
+  provisionalCents: number;
+  estimatedCents: number;
 };
 
 export type TransactionGroup = {
@@ -130,29 +139,78 @@ export function categoryTotals(
     .sort((left, right) => right.cents - left.cents);
 }
 
-export function weekBars(transactions: Transaction[], today: Date): WeekBar[] {
+export function weekComparison(
+  transactions: Transaction[],
+  today: Date,
+): WeekComparison[] {
   const labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
   const monday = startOfWeek(today);
-  const values = labels.map((_, index) => {
-    const date = new Date(monday);
-    date.setDate(monday.getDate() + index);
-    const key = isoDate(date);
-    return transactions
-      .filter(
-        (transaction) =>
-          isExpense(transaction) && transaction.effective_date === key,
-      )
-      .reduce(
-        (sum, transaction) =>
-          sum + Math.abs(amountToCents(activityAmount(transaction).amount)),
-        0,
-      );
+  return labels.map((label, index) => {
+    const day = new Date(monday);
+    day.setDate(monday.getDate() + index);
+    const key = isoDate(day);
+    let confirmedCents = 0;
+    let provisionalCents = 0;
+    for (const transaction of transactions) {
+      if (!isExpense(transaction) || transaction.effective_date !== key) {
+        continue;
+      }
+      const cents = Math.abs(amountToCents(activityAmount(transaction).amount));
+      if (isProvisional(transaction)) {
+        provisionalCents += cents;
+      } else {
+        confirmedCents += cents;
+      }
+    }
+    return { label, confirmedCents, provisionalCents };
   });
-  const max = Math.max(...values, 1);
-  return values.map((cents, index) => ({
-    label: labels[index] ?? "",
-    pct: Math.max(8, Math.round((cents / max) * 100)),
-  }));
+}
+
+export function monthlySpending(
+  transactions: Transaction[],
+  today: Date,
+  count = 6,
+): MonthlySpending[] {
+  return Array.from({ length: count }, (_, index) => {
+    const offset = index - count + 1;
+    const monthDate = new Date(
+      today.getFullYear(),
+      today.getMonth() + offset,
+      1,
+    );
+    const month = `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, "0")}`;
+    const totals = monthTotals(transactions, month);
+    return {
+      month,
+      label: monthDate.toLocaleString("en-SG", { month: "short" }),
+      confirmedCents: totals.confirmedCents,
+      provisionalCents: totals.provisionalCents,
+      estimatedCents: totals.estimatedCents,
+    };
+  });
+}
+
+export function categoryTotalsForMonths(
+  transactions: Transaction[],
+  months: readonly string[],
+): CategoryTotal[] {
+  const included = new Set(months);
+  const map = new Map<string, number>();
+  for (const transaction of transactions) {
+    if (
+      !isExpense(transaction) ||
+      isProvisional(transaction) ||
+      !included.has(transaction.effective_date.slice(0, 7))
+    ) {
+      continue;
+    }
+    const name = categoryName(transaction);
+    const cents = Math.abs(amountToCents(transaction.posted_amount.amount));
+    map.set(name, (map.get(name) ?? 0) + cents);
+  }
+  return [...map.entries()]
+    .map(([name, cents]) => ({ name, cents }))
+    .sort((left, right) => right.cents - left.cents);
 }
 
 export function filterTransactions(input: {

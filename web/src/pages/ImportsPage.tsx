@@ -185,6 +185,8 @@ function ImportDetail({
   const fresh = useEntrance(`import:${item.id}`);
   const failed = item.status === "failed";
   const dismissed = item.dismissed_at !== null;
+  const wallet = item.adapter_key === "apple_wallet_shortcut";
+  const acceptedLabel = `${item.claim_count} ${wallet ? "Apple Wallet " : ""}transaction${item.claim_count === 1 ? "" : "s"} accepted`;
   return (
     <>
       <div className="panel-head">
@@ -192,7 +194,9 @@ function ImportDetail({
           <Badge tone={dismissed ? "count" : failed ? "blocking" : "confirmed"}>
             {dismissed ? "dismissed" : item.status}
           </Badge>
-          <h2 style={{ marginTop: 8 }}>{adapterLabel(item)}</h2>
+          <h2 style={{ marginTop: 8 }}>
+            {wallet ? "Apple Wallet" : adapterLabel(item)}
+          </h2>
         </div>
         <span
           style={{
@@ -226,46 +230,66 @@ function ImportDetail({
           ) : null}
         </span>
       </div>
-      <div className={`evidence-body${fresh ? " stage-enter" : ""}`}>
-        <p className={`prompt${failed && !dismissed ? " is-blocking" : ""}`}>
-          {dismissed
-            ? `This failed Extraction is hidden from the default Imports list${item.failure_code === null ? "" : ` (${item.failure_code})`}.`
-            : failed
-              ? `This Extraction failed${item.failure_code === null ? "" : ` (${item.failure_code})`} and created no Claims.`
-              : `Accepted Extraction with ${item.claim_count} Claims.`}
-        </p>
-        <dl className="kv">
-          <dt>Financial Account</dt>
-          <dd>{item.financial_account_name ?? "Unmapped"}</dd>
-          <dt>Adapter</dt>
-          <dd>{adapterLabel(item)}</dd>
-          <dt>Period</dt>
-          <dd>{periodLabel(item)}</dd>
-          <dt>Failure code</dt>
-          <dd>{item.failure_code ?? "None"}</dd>
-          <dt>Parser version</dt>
-          <dd>{item.parser_version}</dd>
-          <dt>Claims</dt>
-          <dd>{item.claim_count}</dd>
-          <dt>Candidate rows</dt>
-          <dd>
-            {item.candidate_row_count === null
-              ? "Not recorded"
-              : String(item.candidate_row_count)}
-          </dd>
-          <dt>Duplicate arrivals</dt>
-          <dd>{item.duplicate_arrivals}</dd>
-          <dt>Active review</dt>
-          <dd>{item.active_review_id === null ? "None" : "Pending"}</dd>
-          <dt>Recorded</dt>
-          <dd>{openedLabel(item.created_at, today)}</dd>
-        </dl>
+      <div
+        className={`evidence-body import-summary${fresh ? " stage-enter" : ""}`}
+      >
+        <div className={failed && !dismissed ? "is-blocking" : ""}>
+          <p className="import-summary-value">
+            {dismissed
+              ? "Dismissed"
+              : failed
+                ? "No transactions accepted"
+                : acceptedLabel}
+          </p>
+          <p className="muted">
+            {dismissed
+              ? "This failed import is hidden from the default list."
+              : failed
+                ? `Import stopped at ${item.failure_code ?? "an unknown error"}.`
+                : `${item.financial_account_name ?? "Unmapped account"} · ${periodLabel(item)}`}
+          </p>
+        </div>
+        <details className="import-details">
+          <summary>View all import details</summary>
+          <dl className="kv">
+            <dt>Financial Account</dt>
+            <dd>{item.financial_account_name ?? "Unmapped"}</dd>
+            <dt>Adapter</dt>
+            <dd>{adapterLabel(item)}</dd>
+            <dt>Period</dt>
+            <dd>{periodLabel(item)}</dd>
+            <dt>Failure code</dt>
+            <dd>{item.failure_code ?? "None"}</dd>
+            <dt>Parser version</dt>
+            <dd>{item.parser_version}</dd>
+            <dt>Transactions accepted</dt>
+            <dd>{item.claim_count}</dd>
+            <dt>Candidate rows</dt>
+            <dd>
+              {item.candidate_row_count === null
+                ? "Not recorded"
+                : String(item.candidate_row_count)}
+            </dd>
+            <dt>Duplicate arrivals</dt>
+            <dd>{item.duplicate_arrivals}</dd>
+            <dt>Active review</dt>
+            <dd>{item.active_review_id === null ? "None" : "Pending"}</dd>
+            <dt>Recorded</dt>
+            <dd>{openedLabel(item.created_at, today)}</dd>
+          </dl>
+        </details>
       </div>
     </>
   );
 }
 
 function adapterLabel(item: ImportRecord): string {
+  if (item.adapter_key === "apple_wallet_shortcut") {
+    return "Apple Wallet";
+  }
+  if (item.adapter_key === "paylah_shortcut") {
+    return "PayLah";
+  }
   return item.adapter_key ?? "Unknown adapter";
 }
 
