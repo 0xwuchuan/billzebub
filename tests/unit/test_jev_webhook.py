@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import logging
 from typing import Any
 from urllib.error import HTTPError, URLError
 
@@ -28,6 +27,18 @@ class FakeResponse:
 
     def __exit__(self, *args: object) -> None:
         self.closed = True
+
+
+def _capture_warnings(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    messages: list[str] = []
+
+    def warning(msg: object, *args: object, **kwargs: object) -> None:
+        del kwargs
+        messages.append(str(msg) % args if args else str(msg))
+
+    monkeypatch.setattr("billzebub.jev_webhook.logger.disabled", True)
+    monkeypatch.setattr("billzebub.jev_webhook.logger.warning", warning)
+    return messages
 
 
 def test_missing_url_is_noop(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -106,7 +117,6 @@ def test_settings_secret_is_sent(monkeypatch: pytest.MonkeyPatch) -> None:
 )
 def test_http_failures_fail_open(
     monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
     error: Exception,
     logged: str,
 ) -> None:
@@ -115,20 +125,18 @@ def test_http_failures_fail_open(
         raise error
 
     monkeypatch.setattr("billzebub.jev_webhook.urlopen", fake_urlopen)
-    with caplog.at_level(logging.WARNING, logger="billzebub.jev_webhook"):
-        notify_jev_webhook(url=WEBHOOK_URL, secret=SENDER_KEY)
-    assert logged in caplog.text
-    assert SENDER_KEY not in caplog.text
+    messages = _capture_warnings(monkeypatch)
+    notify_jev_webhook(url=WEBHOOK_URL, secret=SENDER_KEY)
+    assert any(logged in message for message in messages)
+    assert all(SENDER_KEY not in message for message in messages)
 
 
-def test_cleartext_non_loopback_url_is_skipped(
-    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-) -> None:
+def test_cleartext_non_loopback_url_is_skipped(monkeypatch: pytest.MonkeyPatch) -> None:
     def fail_open(*args: object, **kwargs: object) -> None:
         del args, kwargs
         raise AssertionError("urlopen must not be called")
 
     monkeypatch.setattr("billzebub.jev_webhook.urlopen", fail_open)
-    with caplog.at_level(logging.WARNING, logger="billzebub.jev_webhook"):
-        notify_jev_webhook(url="http://forge.example.test/webhook")
-    assert "HTTPS" in caplog.text
+    messages = _capture_warnings(monkeypatch)
+    notify_jev_webhook(url="http://forge.example.test/webhook")
+    assert any("HTTPS" in message for message in messages)
