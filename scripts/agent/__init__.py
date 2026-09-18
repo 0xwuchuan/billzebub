@@ -1,1 +1,1 @@
-"""Host-side agent runners that stay outside Billzebub containers."""
+"""Optional host-side agent runners. Production Jev runs in the NAS worker."""

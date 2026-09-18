@@ -1,28 +1,38 @@
 #!/usr/bin/env python3
-"""Apply high-confidence Jev Category proposals to pending Reviews.
+"""Optional host-side Jev CLI. Production categorization runs in the NAS worker.
 
-This runner is the sole host-side auto-categorizer for `categorization_needed`
-Reviews. It is not a Grok Bot and must not run inside Billzebub API or worker
-containers. Tokens stay on the host as mode-0600 secrets.
+This runner is an ops tool for dry-runs and catch-up against the agent API. It
+is not a Grok Bot, not a forge production path, and is not required when the
+worker has TYPESAFE_API_KEY. Tokens stay on the host as mode-0600 secrets.
 """
 
 from __future__ import annotations
 
 import argparse
 import os
-import stat
 import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from pathlib import Path
 from typing import Protocol, TextIO
 from urllib.parse import urlparse
 from uuid import UUID
 
-from typesafe_sdk import Choice, Noul, TypeSafeClient, TypeSafeError
-
-from billzebub.agent_mcp import McpRequestError, assert_agent_safe
+from billzebub.jev import (
+    DEFAULT_MIN_CONFIDENCE,
+    DEFAULT_MODEL,
+    DEFAULT_TIMEOUT_SECONDS,
+    JevCategory,
+    JevClientConfig,
+    JevConfigurationError,
+    JevError,
+    JevProposer,
+    JevSubject,
+    Proposal,
+    Proposer,
+    read_private_secret_file,
+)
 from scripts.agent.agent_api import (
     AgentApi,
     AgentApiConfig,
@@ -33,24 +43,9 @@ from scripts.agent.agent_api import (
     should_categorize,
 )
 
-DEFAULT_MODEL = "jev-1.13.0"
-DEFAULT_MIN_CONFIDENCE = Decimal("0.85")
-DEFAULT_TIMEOUT_SECONDS = 30.0
-SKIP_OPTION = "uncategorized"
-SKIP_OPTION_ALIASES = frozenset({"uncategorized", "skip"})
-CHOICE_QUESTION = "category"
-NOUL_QUESTION = "enough_evidence"
-MAX_CHOICE_OPTIONS = 255
-TYPESAFE_BASE_URL = "https://api.typesafe.ai"
-TYPESAFE_ENDPOINT = f"{TYPESAFE_BASE_URL}/v1/systemone"
-
 
 class RunnerError(ValueError):
     """Configuration failure that should fail the process."""
-
-
-class JevError(ValueError):
-    """Jev did not return a usable structured proposal."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,31 +86,24 @@ class RunnerConfig:
         resolved_token_file = token_file
         if resolved_token_file is None and values.get("BILLZEBUB_AGENT_TOKEN_FILE", "").strip():
             resolved_token_file = Path(values["BILLZEBUB_AGENT_TOKEN_FILE"].strip())
-        token = (
-            _read_secret_file(resolved_token_file, label="agent token")
-            if resolved_token_file is not None
-            else values.get("BILLZEBUB_AGENT_TOKEN", "").strip()
-        )
+        try:
+            token = (
+                read_private_secret_file(resolved_token_file, label="agent token")
+                if resolved_token_file is not None
+                else values.get("BILLZEBUB_AGENT_TOKEN", "").strip()
+            )
+        except JevConfigurationError as error:
+            raise RunnerError(str(error)) from error
         if not token:
             raise RunnerError("BILLZEBUB_AGENT_TOKEN or BILLZEBUB_AGENT_TOKEN_FILE is required")
 
-        typesafe_key_file = values.get("TYPESAFE_API_KEY_FILE", "").strip()
-        typesafe_api_key = (
-            _read_secret_file(Path(typesafe_key_file), label="TypeSafe API key")
-            if typesafe_key_file
-            else values.get("TYPESAFE_API_KEY", "").strip()
-        )
-        if not typesafe_api_key:
+        try:
+            client = JevClientConfig.from_environment(values, require_key=True)
+        except JevConfigurationError as error:
+            raise RunnerError(str(error)) from error
+        if client is None:
             raise RunnerError("TYPESAFE_API_KEY or TYPESAFE_API_KEY_FILE is required")
 
-        min_confidence = _decimal_env(
-            values, "BILLZEBUB_JEV_MIN_CONFIDENCE", DEFAULT_MIN_CONFIDENCE
-        )
-        if not Decimal("0") <= min_confidence <= Decimal("1"):
-            raise RunnerError("BILLZEBUB_JEV_MIN_CONFIDENCE must be between 0 and 1")
-        timeout = _float_env(values, "BILLZEBUB_JEV_TIMEOUT_SECONDS", DEFAULT_TIMEOUT_SECONDS)
-        if timeout <= 0:
-            raise RunnerError("BILLZEBUB_JEV_TIMEOUT_SECONDS must be positive")
         env_limit = _optional_int_env(values, "BILLZEBUB_JEV_LIMIT")
         resolved_limit = limit if limit is not None else env_limit
         if resolved_limit is not None and resolved_limit < 1:
@@ -124,185 +112,48 @@ class RunnerConfig:
         return cls(
             api_base=api_base,
             token=token,
-            typesafe_api_key=typesafe_api_key,
-            model=(model or values.get("BILLZEBUB_JEV_MODEL", "").strip() or DEFAULT_MODEL),
-            min_confidence=min_confidence,
-            timeout_seconds=timeout,
+            typesafe_api_key=client.typesafe_api_key,
+            model=(model or client.model),
+            min_confidence=client.min_confidence,
+            timeout_seconds=client.timeout_seconds,
             dry_run=dry_run,
             verbose=verbose,
             limit=resolved_limit,
         )
 
-
-@dataclass(frozen=True, slots=True)
-class Proposal:
-    action: str
-    category_id: UUID | None
-    category_name: str | None
-    confidence: Decimal
-    model: str
-
-
-class Proposer(Protocol):
-    def propose(
-        self,
-        transaction: Transaction,
-        categories: Sequence[Category],
-    ) -> Proposal: ...
-
-
-class JevProposer:
-    """Call TypeSafe System One and parse a fail-closed Category proposal."""
-
-    def __init__(self, config: RunnerConfig) -> None:
-        self._config = config
-
-    def propose(
-        self,
-        transaction: Transaction,
-        categories: Sequence[Category],
-    ) -> Proposal:
-        state = jev_state(transaction)
-        questions = jev_questions(categories)
-        try:
-            assert_agent_safe(state)
-        except McpRequestError as error:
-            raise JevError("jev state contains a forbidden field") from error
-        try:
-            with TypeSafeClient(
-                api_key=self._config.typesafe_api_key,
-                model=self._config.model,
-                timeout=self._config.timeout_seconds,
-                base_url=TYPESAFE_BASE_URL,
-            ) as client:
-                response = client.system_one(
-                    state=state,
-                    questions=questions,
-                    model=self._config.model,
-                    timeout=self._config.timeout_seconds,
-                )
-        except TypeSafeError as error:
-            raise JevError("typesafe systemone failed") from error
-        return parse_jev_response(
-            response, categories, self._config.min_confidence, model=self._config.model
+    def client_config(self) -> JevClientConfig:
+        return JevClientConfig(
+            typesafe_api_key=self.typesafe_api_key,
+            model=self.model,
+            min_confidence=self.min_confidence,
+            timeout_seconds=self.timeout_seconds,
         )
 
 
-def jev_state(transaction: Transaction) -> dict[str, str]:
-    """Agent-safe fields only; never include ids, artifacts, or raw descriptions."""
-    return {
-        "counterparty": transaction.counterparty,
-        "amount": transaction.amount,
-        "currency": transaction.currency,
-        "effective_date": transaction.effective_date,
-        "kind": transaction.kind,
-    }
+class AgentTransactionProposer(Protocol):
+    def propose(self, transaction: Transaction, categories: Sequence[Category]) -> Proposal: ...
 
 
-def choice_criteria(categories: Sequence[Category]) -> dict[str, str]:
-    criteria: dict[str, str] = {}
-    for category in categories:
-        if category.name.casefold() in SKIP_OPTION_ALIASES:
-            continue
-        criteria[category.name] = category.name
-    criteria[SKIP_OPTION] = (
-        "Skip and leave Uncategorized; use when no existing catalog Category is clearly correct"
-    )
-    if len(criteria) > MAX_CHOICE_OPTIONS:
-        raise JevError("category catalog exceeds Jev Choice limit")
-    return criteria
+class TransactionProposer:
+    """Adapt the shared Jev proposer to agent-API Transaction objects."""
 
+    def __init__(self, proposer: Proposer) -> None:
+        self._proposer = proposer
 
-def jev_questions(categories: Sequence[Category]) -> dict[str, Choice | Noul]:
-    return {
-        CHOICE_QUESTION: Choice(
-            instructions=(
-                "Choose exactly one existing catalog Category for this Expense or "
-                "Cash Withdrawal. Choose uncategorized when uncertain, when two "
-                "Categories could fit, or when the activity is not an Expense Category."
-            ),
-            criteria=choice_criteria(categories),
-        ),
-        NOUL_QUESTION: Noul(
-            instructions=(
-                "There is enough evidence to assign one existing catalog Category confidently"
-            ),
-            criteria={
-                "true": "One existing Category is clearly correct for this Expense",
-                "false": "Ambiguous, skip, Uncategorized, or not an Expense Category",
-            },
-        ),
-    }
-
-
-def parse_jev_response(
-    response: object,
-    categories: Sequence[Category],
-    min_confidence: Decimal,
-    *,
-    model: str,
-) -> Proposal:
-    choice_answer = _named_answer(response, "choices", CHOICE_QUESTION)
-    noul_answer = _named_answer(response, "nouls", NOUL_QUESTION)
-    if choice_answer is None:
-        answers = getattr(response, "answers", None)
-        if isinstance(answers, Mapping):
-            choice_answer = answers.get(CHOICE_QUESTION)
-            noul_answer = noul_answer or answers.get(NOUL_QUESTION)
-    response_model = getattr(response, "model", None)
-    resolved_model = response_model if isinstance(response_model, str) and response_model else model
-    return parse_jev_proposal(
-        getattr(choice_answer, "choice", None) if choice_answer is not None else None,
-        getattr(choice_answer, "confidence", None) if choice_answer is not None else None,
-        getattr(noul_answer, "noul", None) if noul_answer is not None else None,
-        categories,
-        min_confidence,
-        model=resolved_model,
-    )
-
-
-def parse_jev_proposal(
-    choice: object,
-    confidence_raw: object,
-    noul_raw: object,
-    categories: Sequence[Category],
-    min_confidence: Decimal,
-    *,
-    model: str,
-) -> Proposal:
-    confidence = _unit_interval(confidence_raw)
-    noul = _unit_interval(noul_raw)
-    if confidence is None or noul is None:
-        return _skip(model)
-    if not isinstance(choice, str) or not choice.strip():
-        return _skip(model)
-    if noul < min_confidence or confidence < min_confidence:
-        return Proposal(
-            action="skip",
-            category_id=None,
-            category_name=None,
-            confidence=confidence,
-            model=model,
+    def propose(self, transaction: Transaction, categories: Sequence[Category]) -> Proposal:
+        return self._proposer.propose(
+            subject_from_transaction(transaction),
+            tuple(JevCategory(id=category.id, name=category.name) for category in categories),
         )
-    normalized = " ".join(choice.split())
-    if normalized.casefold() in SKIP_OPTION_ALIASES:
-        return Proposal(
-            action="skip",
-            category_id=None,
-            category_name=None,
-            confidence=confidence,
-            model=model,
-        )
-    catalog = _unique_categories_by_name(categories)
-    chosen = catalog.get(normalized.casefold())
-    if chosen is None or chosen.name.casefold() != normalized.casefold():
-        return _skip(model)
-    return Proposal(
-        action="apply",
-        category_id=chosen.id,
-        category_name=chosen.name,
-        confidence=confidence,
-        model=model,
+
+
+def subject_from_transaction(transaction: Transaction) -> JevSubject:
+    return JevSubject(
+        counterparty=transaction.counterparty,
+        amount=transaction.amount,
+        currency=transaction.currency,
+        effective_date=transaction.effective_date,
+        kind=transaction.kind,
     )
 
 
@@ -317,7 +168,7 @@ def should_ask_jev(transaction: Transaction) -> bool:
 def run(
     config: RunnerConfig,
     api: AgentApi,
-    proposer: Proposer,
+    proposer: AgentTransactionProposer,
     *,
     stdout: TextIO = sys.stdout,
 ) -> int:
@@ -383,7 +234,7 @@ def main(
     *,
     environ: Mapping[str, str] | None = None,
     api: AgentApi | None = None,
-    proposer: Proposer | None = None,
+    proposer: AgentTransactionProposer | None = None,
     stdout: TextIO = sys.stdout,
 ) -> int:
     arguments = _parser().parse_args(argv)
@@ -406,14 +257,15 @@ def main(
             timeout_seconds=config.timeout_seconds,
         )
     )
-    resolved_proposer = proposer or JevProposer(config)
+    resolved_proposer = proposer or TransactionProposer(JevProposer(config.client_config()))
     return run(config, resolved_api, resolved_proposer, stdout=stdout)
 
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Categorize pending Billzebub Reviews with a forge-side Jev (TypeSafe) routine."
+            "Optional ops tool: categorize pending Billzebub Reviews via the agent API. "
+            "Production Jev runs in the NAS worker."
         ),
     )
     parser.add_argument(
@@ -432,43 +284,6 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _read_secret_file(path: Path, *, label: str) -> str:
-    expanded = path.expanduser()
-    try:
-        metadata = expanded.lstat()
-    except OSError as error:
-        raise RunnerError(f"{label} file is unreadable") from error
-    if not stat.S_ISREG(metadata.st_mode) or expanded.is_symlink() or metadata.st_mode & 0o077:
-        raise RunnerError(f"{label} file is unsafe")
-    try:
-        value = expanded.read_text(encoding="utf-8").strip()
-    except OSError as error:
-        raise RunnerError(f"{label} file is unreadable") from error
-    if not value:
-        raise RunnerError(f"{label} file is empty")
-    return value
-
-
-def _decimal_env(values: Mapping[str, str], name: str, default: Decimal) -> Decimal:
-    raw = values.get(name, "").strip()
-    if not raw:
-        return default
-    try:
-        return Decimal(raw)
-    except InvalidOperation as error:
-        raise RunnerError(f"{name} is invalid") from error
-
-
-def _float_env(values: Mapping[str, str], name: str, default: float) -> float:
-    raw = values.get(name, "").strip()
-    if not raw:
-        return default
-    try:
-        return float(raw)
-    except ValueError as error:
-        raise RunnerError(f"{name} is invalid") from error
-
-
 def _optional_int_env(values: Mapping[str, str], name: str) -> int | None:
     raw = values.get(name, "").strip()
     if not raw:
@@ -477,60 +292,6 @@ def _optional_int_env(values: Mapping[str, str], name: str) -> int | None:
         return int(raw)
     except ValueError as error:
         raise RunnerError(f"{name} is invalid") from error
-
-
-def _unit_interval(value: object) -> Decimal | None:
-    if isinstance(value, bool) or value is None:
-        return None
-    try:
-        if isinstance(value, int):
-            parsed = Decimal(value)
-        elif isinstance(value, float):
-            parsed = Decimal(str(value))
-        elif isinstance(value, str):
-            parsed = Decimal(value.strip())
-        elif isinstance(value, Decimal):
-            parsed = value
-        else:
-            return None
-    except InvalidOperation:
-        return None
-    if parsed < Decimal("0") or parsed > Decimal("1"):
-        return None
-    return parsed
-
-
-def _unique_categories_by_name(categories: Sequence[Category]) -> dict[str, Category]:
-    mapping: dict[str, Category] = {}
-    duplicates: set[str] = set()
-    for category in categories:
-        key = category.name.casefold()
-        if key in SKIP_OPTION_ALIASES:
-            continue
-        if key in mapping:
-            duplicates.add(key)
-            continue
-        mapping[key] = category
-    for key in duplicates:
-        mapping.pop(key, None)
-    return mapping
-
-
-def _named_answer(response: object, group: str, name: str) -> object | None:
-    answers = getattr(response, group, None)
-    if isinstance(answers, Mapping):
-        return answers.get(name)
-    return None
-
-
-def _skip(model: str) -> Proposal:
-    return Proposal(
-        action="skip",
-        category_id=None,
-        category_name=None,
-        confidence=Decimal("0"),
-        model=model,
-    )
 
 
 def _print(message: str, stdout: TextIO) -> None:

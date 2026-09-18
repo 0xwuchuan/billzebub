@@ -1,0 +1,362 @@
+"""TypeSafe Jev Category proposals with fail-closed confidence gating.
+
+Shared by the NAS worker (primary) and the optional host-side CLI. State is
+limited to agent-safe fields: Counterparty, amount, currency, date, and kind.
+"""
+
+from __future__ import annotations
+
+import os
+import stat
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
+from decimal import Decimal, InvalidOperation
+from pathlib import Path
+from typing import Protocol
+from uuid import UUID
+
+from typesafe_sdk import Choice, Noul, TypeSafeClient, TypeSafeError
+
+from billzebub.agent_mcp import McpRequestError, assert_agent_safe
+
+DEFAULT_MODEL = "jev-1.13.0"
+DEFAULT_MIN_CONFIDENCE = Decimal("0.5")
+DEFAULT_TIMEOUT_SECONDS = 30.0
+SKIP_OPTION = "uncategorized"
+SKIP_OPTION_ALIASES = frozenset({"uncategorized", "skip"})
+CHOICE_QUESTION = "category"
+NOUL_QUESTION = "enough_evidence"
+MAX_CHOICE_OPTIONS = 255
+TYPESAFE_BASE_URL = "https://api.typesafe.ai"
+TYPESAFE_ENDPOINT = f"{TYPESAFE_BASE_URL}/v1/systemone"
+
+
+class JevError(ValueError):
+    """Jev did not return a usable structured proposal."""
+
+
+class JevConfigurationError(ValueError):
+    """TypeSafe or Jev configuration is missing or unsafe."""
+
+
+@dataclass(frozen=True, slots=True)
+class JevSubject:
+    """Agent-safe Transaction fields sent to Jev. Never include ids or artifacts."""
+
+    counterparty: str
+    amount: str
+    currency: str
+    effective_date: str
+    kind: str
+
+
+@dataclass(frozen=True, slots=True)
+class JevCategory:
+    id: UUID
+    name: str
+
+
+@dataclass(frozen=True, slots=True)
+class JevClientConfig:
+    typesafe_api_key: str = field(repr=False)
+    model: str = DEFAULT_MODEL
+    min_confidence: Decimal = DEFAULT_MIN_CONFIDENCE
+    timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS
+
+    @classmethod
+    def from_environment(
+        cls,
+        environ: Mapping[str, str] | None = None,
+        *,
+        require_key: bool = True,
+    ) -> JevClientConfig | None:
+        values = os.environ if environ is None else environ
+        typesafe_api_key = resolve_typesafe_api_key(values)
+        if not typesafe_api_key:
+            if require_key:
+                raise JevConfigurationError("TYPESAFE_API_KEY or TYPESAFE_API_KEY_FILE is required")
+            return None
+        min_confidence = _decimal_env(
+            values, "BILLZEBUB_JEV_MIN_CONFIDENCE", DEFAULT_MIN_CONFIDENCE
+        )
+        if not Decimal("0") <= min_confidence <= Decimal("1"):
+            raise JevConfigurationError("BILLZEBUB_JEV_MIN_CONFIDENCE must be between 0 and 1")
+        timeout = _float_env(values, "BILLZEBUB_JEV_TIMEOUT_SECONDS", DEFAULT_TIMEOUT_SECONDS)
+        if timeout <= 0:
+            raise JevConfigurationError("BILLZEBUB_JEV_TIMEOUT_SECONDS must be positive")
+        model = values.get("BILLZEBUB_JEV_MODEL", "").strip() or DEFAULT_MODEL
+        return cls(
+            typesafe_api_key=typesafe_api_key,
+            model=model,
+            min_confidence=min_confidence,
+            timeout_seconds=timeout,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class Proposal:
+    action: str
+    category_id: UUID | None
+    category_name: str | None
+    confidence: Decimal
+    model: str
+
+
+class Proposer(Protocol):
+    def propose(self, subject: JevSubject, categories: Sequence[JevCategory]) -> Proposal: ...
+
+
+class JevProposer:
+    """Call TypeSafe System One and parse a fail-closed Category proposal."""
+
+    def __init__(self, config: JevClientConfig) -> None:
+        self._config = config
+
+    def propose(self, subject: JevSubject, categories: Sequence[JevCategory]) -> Proposal:
+        state = jev_state(subject)
+        questions = jev_questions(categories)
+        try:
+            assert_agent_safe(state)
+        except McpRequestError as error:
+            raise JevError("jev state contains a forbidden field") from error
+        try:
+            with TypeSafeClient(
+                api_key=self._config.typesafe_api_key,
+                model=self._config.model,
+                timeout=self._config.timeout_seconds,
+                base_url=TYPESAFE_BASE_URL,
+            ) as client:
+                response = client.system_one(
+                    state=state,
+                    questions=questions,
+                    model=self._config.model,
+                    timeout=self._config.timeout_seconds,
+                )
+        except TypeSafeError as error:
+            raise JevError("typesafe systemone failed") from error
+        return parse_jev_response(
+            response, categories, self._config.min_confidence, model=self._config.model
+        )
+
+
+def jev_state(subject: JevSubject) -> dict[str, str]:
+    """Agent-safe fields only; never include ids, artifacts, or raw descriptions."""
+    return {
+        "counterparty": subject.counterparty,
+        "amount": subject.amount,
+        "currency": subject.currency,
+        "effective_date": subject.effective_date,
+        "kind": subject.kind,
+    }
+
+
+def choice_criteria(categories: Sequence[JevCategory]) -> dict[str, str]:
+    criteria: dict[str, str] = {}
+    for category in categories:
+        if category.name.casefold() in SKIP_OPTION_ALIASES:
+            continue
+        criteria[category.name] = category.name
+    criteria[SKIP_OPTION] = (
+        "Skip and leave Uncategorized; use when no existing catalog Category is clearly correct"
+    )
+    if len(criteria) > MAX_CHOICE_OPTIONS:
+        raise JevError("category catalog exceeds Jev Choice limit")
+    return criteria
+
+
+def jev_questions(categories: Sequence[JevCategory]) -> dict[str, Choice | Noul]:
+    return {
+        CHOICE_QUESTION: Choice(
+            instructions=(
+                "Choose exactly one existing catalog Category for this Expense or "
+                "Cash Withdrawal. Choose uncategorized when uncertain, when two "
+                "Categories could fit, or when the activity is not an Expense Category."
+            ),
+            criteria=choice_criteria(categories),
+        ),
+        NOUL_QUESTION: Noul(
+            instructions=(
+                "There is enough evidence to assign one existing catalog Category confidently"
+            ),
+            criteria={
+                "true": "One existing Category is clearly correct for this Expense",
+                "false": "Ambiguous, skip, Uncategorized, or not an Expense Category",
+            },
+        ),
+    }
+
+
+def parse_jev_response(
+    response: object,
+    categories: Sequence[JevCategory],
+    min_confidence: Decimal,
+    *,
+    model: str,
+) -> Proposal:
+    choice_answer = _named_answer(response, "choices", CHOICE_QUESTION)
+    noul_answer = _named_answer(response, "nouls", NOUL_QUESTION)
+    if choice_answer is None:
+        answers = getattr(response, "answers", None)
+        if isinstance(answers, Mapping):
+            choice_answer = answers.get(CHOICE_QUESTION)
+            noul_answer = noul_answer or answers.get(NOUL_QUESTION)
+    response_model = getattr(response, "model", None)
+    resolved_model = response_model if isinstance(response_model, str) and response_model else model
+    return parse_jev_proposal(
+        getattr(choice_answer, "choice", None) if choice_answer is not None else None,
+        getattr(choice_answer, "confidence", None) if choice_answer is not None else None,
+        getattr(noul_answer, "noul", None) if noul_answer is not None else None,
+        categories,
+        min_confidence,
+        model=resolved_model,
+    )
+
+
+def parse_jev_proposal(
+    choice: object,
+    confidence_raw: object,
+    noul_raw: object,
+    categories: Sequence[JevCategory],
+    min_confidence: Decimal,
+    *,
+    model: str,
+) -> Proposal:
+    confidence = _unit_interval(confidence_raw)
+    noul = _unit_interval(noul_raw)
+    if confidence is None or noul is None:
+        return _skip(model)
+    if not isinstance(choice, str) or not choice.strip():
+        return _skip(model)
+    if noul < min_confidence or confidence < min_confidence:
+        return Proposal(
+            action="skip",
+            category_id=None,
+            category_name=None,
+            confidence=confidence,
+            model=model,
+        )
+    normalized = " ".join(choice.split())
+    if normalized.casefold() in SKIP_OPTION_ALIASES:
+        return Proposal(
+            action="skip",
+            category_id=None,
+            category_name=None,
+            confidence=confidence,
+            model=model,
+        )
+    catalog = _unique_categories_by_name(categories)
+    chosen = catalog.get(normalized.casefold())
+    if chosen is None or chosen.name.casefold() != normalized.casefold():
+        return _skip(model)
+    return Proposal(
+        action="apply",
+        category_id=chosen.id,
+        category_name=chosen.name,
+        confidence=confidence,
+        model=model,
+    )
+
+
+def resolve_typesafe_api_key(values: Mapping[str, str]) -> str | None:
+    key_file = (
+        values.get("TYPESAFE_API_KEY_FILE", "").strip()
+        or values.get("BILLZEBUB_TYPESAFE_API_KEY_FILE", "").strip()
+    )
+    if key_file:
+        return read_private_secret_file(Path(key_file), label="TypeSafe API key")
+    key = (
+        values.get("TYPESAFE_API_KEY", "").strip()
+        or values.get("BILLZEBUB_TYPESAFE_API_KEY", "").strip()
+    )
+    return key or None
+
+
+def read_private_secret_file(path: Path, *, label: str) -> str:
+    expanded = path.expanduser()
+    try:
+        metadata = expanded.lstat()
+    except OSError as error:
+        raise JevConfigurationError(f"{label} file is unreadable") from error
+    if not stat.S_ISREG(metadata.st_mode) or expanded.is_symlink() or metadata.st_mode & 0o077:
+        raise JevConfigurationError(f"{label} file is unsafe")
+    try:
+        value = expanded.read_text(encoding="utf-8").strip()
+    except OSError as error:
+        raise JevConfigurationError(f"{label} file is unreadable") from error
+    if not value:
+        raise JevConfigurationError(f"{label} file is empty")
+    return value
+
+
+def _decimal_env(values: Mapping[str, str], name: str, default: Decimal) -> Decimal:
+    raw = values.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return Decimal(raw)
+    except InvalidOperation as error:
+        raise JevConfigurationError(f"{name} is invalid") from error
+
+
+def _float_env(values: Mapping[str, str], name: str, default: float) -> float:
+    raw = values.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return float(raw)
+    except ValueError as error:
+        raise JevConfigurationError(f"{name} is invalid") from error
+
+
+def _unit_interval(value: object) -> Decimal | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        if isinstance(value, int):
+            parsed = Decimal(value)
+        elif isinstance(value, float):
+            parsed = Decimal(str(value))
+        elif isinstance(value, str):
+            parsed = Decimal(value.strip())
+        elif isinstance(value, Decimal):
+            parsed = value
+        else:
+            return None
+    except InvalidOperation:
+        return None
+    if parsed < Decimal("0") or parsed > Decimal("1"):
+        return None
+    return parsed
+
+
+def _unique_categories_by_name(categories: Sequence[JevCategory]) -> dict[str, JevCategory]:
+    mapping: dict[str, JevCategory] = {}
+    duplicates: set[str] = set()
+    for category in categories:
+        key = category.name.casefold()
+        if key in SKIP_OPTION_ALIASES:
+            continue
+        if key in mapping:
+            duplicates.add(key)
+            continue
+        mapping[key] = category
+    for key in duplicates:
+        mapping.pop(key, None)
+    return mapping
+
+
+def _named_answer(response: object, group: str, name: str) -> object | None:
+    answers = getattr(response, group, None)
+    if isinstance(answers, Mapping):
+        return answers.get(name)
+    return None
+
+
+def _skip(model: str) -> Proposal:
+    return Proposal(
+        action="skip",
+        category_id=None,
+        category_name=None,
+        confidence=Decimal("0"),
+        model=model,
+    )

@@ -37,7 +37,7 @@ pnpm --dir web dev
 
 The API exposes `/health/live`, `/health/ready`, authenticated `/api/v1/imports` diagnostics, owner `/api/v1/transactions` and `/api/v1/reviews` workspace resources, `/api/v1/agent` resources, and a development-only `/api/v1/whoami` resource. The bearer-protected `POST /api/v1/ingestions/apple-wallet` endpoint retains exact Shortcut JSON bodies and creates fail-closed Real-time Claims for Apple Wallet and PayLah. Owner mutations require same-origin JSON plus the `X-Billzebub-CSRF: bzb-spa` header and a current ETag. `make api` supplies a loopback-only development identity; NAS mode instead requires an allowlisted Tailscale identity.
 
-Configuration uses `BILLZEBUB_` environment variables and is not loaded automatically from `.env` files. Important settings are `ENVIRONMENT`, `DATABASE_URL`, `ARTIFACT_ROOT`, `STATEMENT_INBOX_ROOT`, `STATEMENT_PASSWORD_ROOT`, `STATEMENT_STABLE_SECONDS`, `APPLE_WALLET_TIMEZONE`, `TRUST_TAILSCALE_HEADERS`, `TAILSCALE_ALLOWED_LOGINS` (a JSON list), and `DEVELOPMENT_IDENTITY`. Expense categorization stays Uncategorized until the owner or host-side Jev assigns a Category; see [`docs/categorizer.md`](docs/categorizer.md).
+Configuration uses `BILLZEBUB_` environment variables and is not loaded automatically from `.env` files. Important settings are `ENVIRONMENT`, `DATABASE_URL`, `ARTIFACT_ROOT`, `STATEMENT_INBOX_ROOT`, `STATEMENT_PASSWORD_ROOT`, `STATEMENT_STABLE_SECONDS`, `APPLE_WALLET_TIMEZONE`, `TRUST_TAILSCALE_HEADERS`, `TAILSCALE_ALLOWED_LOGINS` (a JSON list), and `DEVELOPMENT_IDENTITY`. Expense categorization stays Uncategorized until the owner or the NAS-worker Jev pass assigns a Category; see [`docs/categorizer.md`](docs/categorizer.md).
 
 The worker polls one folder per configured Financial Account:
 
@@ -141,7 +141,7 @@ Pass tonight’s two `unsupported_source` Extraction ids only. The command re-re
 
 `billzebub-mcp` is a local stdio process, never a network service. Configure it with `BILLZEBUB_API_URL` (HTTPS except on loopback) and `BILLZEBUB_AGENT_TOKEN`; do not put the token in an MCP configuration committed to Git. It exposes exactly eight agent-safe tools: transaction/category/review listing, explicit categorization, and owner-reviewed Correction, Reconciliation, Counterparty-change, and Category-split proposals. It cannot fetch Claims, artifacts, account identifiers, or audit details.
 
-Unknown `categorization_needed` Reviews are drained host-side by **Jev** (`scripts/agent/jev_categorize.py`; dry-run on forge first), never inside the NAS app containers. After statement Reconciliation opens those Reviews, the worker POSTs a forge webhook (fail-open). Apple Wallet ingest does not POST; a daily forge cron covers catch-up. Owner categorization still works. That job is not a Grok Bot. Keep the agent token, TypeSafe key, and webhook sender key as mode-`0600` secrets. See [`docs/jev-categorizer.md`](docs/jev-categorizer.md).
+Unknown `categorization_needed` Reviews are drained by **Jev inside the NAS worker** after statement confirmation (and when a Real-time Claim becomes a Transaction). Confidence below 0.5 leaves the Review in place. A daily in-worker catch-up at 21:00 Asia/Singapore covers leftovers, including Wallet-originated Transactions; nothing is scheduled on forge. `scripts/agent/jev_categorize.py` is an optional ops CLI only. Keep `TYPESAFE_API_KEY` (or `_FILE`) as a mode-`0600` secret on rafiki. See [`docs/jev-categorizer.md`](docs/jev-categorizer.md).
 
 ## NAS deployment
 

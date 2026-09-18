@@ -3,18 +3,34 @@
 from __future__ import annotations
 
 import logging
+import os
 import signal
 import socket
-from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from threading import Event
 from typing import Any, Protocol
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from billzebub.artifact_capture import ArtifactCapture
 from billzebub.artifacts import ContentAddressedStore
 from billzebub.config import Settings
-from billzebub.jev_webhook import notify_jev_webhook_from_settings
+from billzebub.jev import (
+    JevClientConfig,
+    JevConfigurationError,
+    JevError,
+    JevProposer,
+    resolve_typesafe_api_key,
+)
+from billzebub.jev_categorizer import (
+    CATEGORIZE_TRANSACTION_JOB,
+    JEV_CATCH_UP_JOB,
+    CategorizerError,
+    JevCatchupScheduler,
+    JevCategorizer,
+    enqueue_jev_catch_up,
+    enqueue_transaction_categorization,
+)
 from billzebub.jobs import EnqueuedJob, JobQueue
 from billzebub.persistence.database import Database
 from billzebub.reconciliation import Reconciliation, ReconciliationRun
@@ -26,10 +42,9 @@ from billzebub.statement_extraction import (
     StatementExtraction,
 )
 from billzebub.statement_inbox import StatementInbox
-from billzebub.worker import JobHandler, TerminalJobError, Worker
+from billzebub.worker import JobHandler, RetryableJobError, TerminalJobError, Worker
 
 logger = logging.getLogger(__name__)
-NotifyCategorizationNeeded = Callable[[], None]
 
 
 class JobEnqueuer(Protocol):
@@ -57,12 +72,17 @@ class ReconciliationRuntime(Protocol):
     def reconcile_account(self, financial_account_id: UUID) -> ReconciliationRun: ...
 
 
+class TransactionCategorizerRuntime(Protocol):
+    def categorize_transaction(self, transaction_id: UUID) -> object: ...
+
+    def enqueue_pending(self, queue: JobEnqueuer) -> int: ...
+
+
 def worker_handlers(
     queue: JobEnqueuer,
     extraction: StatementExtractionRuntime,
     reconciliation: ReconciliationRuntime,
-    *,
-    notify_categorization_needed: NotifyCategorizationNeeded | None = None,
+    categorizer: TransactionCategorizerRuntime,
 ) -> dict[str, JobHandler]:
     """Build durable pipeline handlers without exposing worker mechanics."""
 
@@ -89,17 +109,51 @@ def worker_handlers(
         except (KeyError, ValueError) as error:
             raise TerminalJobError("invalid_reconciliation_job") from error
         run = reconciliation.reconcile_account(account_id)
-        if not run.confirmations or notify_categorization_needed is None:
-            return
+        for confirmation in run.confirmations:
+            enqueue_transaction_categorization(queue, confirmation.transaction_id)
+
+    def categorize_transaction(payload: dict[str, Any]) -> None:
         try:
-            notify_categorization_needed()
-        except Exception:
-            logger.exception("jev webhook failed")
+            transaction_id = UUID(str(payload["transaction_id"]))
+        except (KeyError, ValueError) as error:
+            raise TerminalJobError("invalid_categorize_job") from error
+        try:
+            categorizer.categorize_transaction(transaction_id)
+        except JevError as error:
+            raise RetryableJobError("jev_unavailable", timedelta(seconds=30)) from error
+        except CategorizerError as error:
+            raise TerminalJobError("invalid_categorize_job") from error
+
+    def jev_catch_up(payload: dict[str, Any]) -> None:
+        del payload
+        queued = categorizer.enqueue_pending(queue)
+        if queued:
+            logger.info("jev catch-up queued %s Transactions", queued)
 
     return {
         "extract_statement": extract_statement,
         "reconcile_financial_account": reconcile_financial_account,
+        CATEGORIZE_TRANSACTION_JOB: categorize_transaction,
+        JEV_CATCH_UP_JOB: jev_catch_up,
     }
+
+
+def jev_proposer_from_settings(settings: Settings) -> JevProposer | None:
+    try:
+        key = resolve_typesafe_api_key(os.environ)
+    except JevConfigurationError as error:
+        raise SystemExit(f"jev configuration is invalid: {error}") from error
+    if not key:
+        logger.warning("jev categorizer disabled: TypeSafe API key is not configured")
+        return None
+    return JevProposer(
+        JevClientConfig(
+            typesafe_api_key=key,
+            model=settings.jev_model,
+            min_confidence=settings.jev_min_confidence,
+            timeout_seconds=settings.jev_timeout_seconds,
+        )
+    )
 
 
 def main() -> None:
@@ -126,6 +180,7 @@ def main() -> None:
         password_root=settings.statement_password_root,
     )
     reconciliation = Reconciliation(database)
+    categorizer = JevCategorizer(database, jev_proposer_from_settings(settings))
     inbox = StatementInbox(
         database,
         ArtifactCapture(artifact_store, database),
@@ -133,15 +188,14 @@ def main() -> None:
         inbox_root=settings.statement_inbox_root,
         stable_for=timedelta(seconds=settings.statement_stable_seconds),
     )
+    catchup = JevCatchupScheduler(
+        hour=settings.jev_catchup_hour,
+        timezone=ZoneInfo(settings.jev_catchup_timezone),
+    )
 
     worker = Worker(
         queue,
-        handlers=worker_handlers(
-            queue,
-            extraction,
-            reconciliation,
-            notify_categorization_needed=lambda: notify_jev_webhook_from_settings(settings),
-        ),
+        handlers=worker_handlers(queue, extraction, reconciliation, categorizer),
         worker_id=f"{socket.gethostname()}:{id(stop)}",
         poll_seconds=settings.worker_poll_seconds,
     )
@@ -151,6 +205,9 @@ def main() -> None:
                 inbox.poll(datetime.now(UTC))
             except Exception:
                 logging.error("statement inbox poll failed")
+            run_date = catchup.catchup_date(datetime.now(UTC))
+            if run_date is not None:
+                enqueue_jev_catch_up(queue, run_date)
             if not worker.run_once():
                 stop.wait(settings.worker_poll_seconds)
     finally:
