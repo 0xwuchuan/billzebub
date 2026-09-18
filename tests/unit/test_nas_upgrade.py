@@ -229,3 +229,9 @@ def test_upgrade_documentation_describes_build_first_and_serve_blip() -> None:
     assert "typically a few seconds" in docs
     assert "--replace-probe` is only the initial cutover" in docs
     assert "Database(Settings()).ping()" in compose
+    assert "typesafe" not in compose.casefold()
+    worker_block = compose.split("worker:")[1].split("migrate:")[0]
+    assert "- egress" in worker_block
+    assert "internal: false" in compose.split("egress:")[1]
+    assert "typesafe" not in (REPO_ROOT / "Dockerfile").read_text(encoding="utf-8").casefold()
+    assert "--extra" not in (REPO_ROOT / "Dockerfile").read_text(encoding="utf-8")

@@ -88,6 +88,9 @@ services:
   worker:
     <<: *app
     command: ["billzebub-worker"]
+    networks:
+      - default
+      - egress
     volumes:
       - /volume1/docker/billzebub/artifacts:/var/lib/billzebub/artifacts:rw
       - /volume1/billzebub-inbox:/var/lib/billzebub/inbox:rw
@@ -129,4 +132,6 @@ networks:
   default:
     internal: true
   proxy:
+    internal: false
+  egress:
     internal: false

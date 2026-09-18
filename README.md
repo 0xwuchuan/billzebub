@@ -141,7 +141,7 @@ Pass tonight’s two `unsupported_source` Extraction ids only. The command re-re
 
 `billzebub-mcp` is a local stdio process, never a network service. Configure it with `BILLZEBUB_API_URL` (HTTPS except on loopback) and `BILLZEBUB_AGENT_TOKEN`; do not put the token in an MCP configuration committed to Git. It exposes exactly eight agent-safe tools: transaction/category/review listing, explicit categorization, and owner-reviewed Correction, Reconciliation, Counterparty-change, and Category-split proposals. It cannot fetch Claims, artifacts, account identifiers, or audit details.
 
-Unknown `categorization_needed` Reviews are drained host-side by **Jev** (`scripts/agent/jev_categorize.py`; dry-run on forge first), never inside the NAS app containers. That job is not a Grok Bot. Keep the agent token and TypeSafe key as mode-`0600` secrets. See [`docs/jev-categorizer.md`](docs/jev-categorizer.md).
+Unknown `categorization_needed` Reviews are drained host-side by **Jev** (`scripts/agent/jev_categorize.py`; dry-run on forge first), never inside the NAS app containers. After statement Reconciliation opens those Reviews, the worker POSTs a forge webhook (fail-open). Apple Wallet ingest does not POST; a daily forge cron covers catch-up. Owner categorization still works. That job is not a Grok Bot. Keep the agent token, TypeSafe key, and webhook sender key as mode-`0600` secrets. See [`docs/jev-categorizer.md`](docs/jev-categorizer.md).
 
 ## NAS deployment
 
