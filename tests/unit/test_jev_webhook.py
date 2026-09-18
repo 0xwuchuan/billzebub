@@ -12,7 +12,7 @@ from billzebub.config import Settings
 from billzebub.jev_webhook import notify_jev_webhook, notify_jev_webhook_from_settings
 
 WEBHOOK_URL = "https://forge.example.test/automations/webhook/synthetic"
-WEBHOOK_SECRET = "synthetic-jev-webhook-secret"
+SENDER_KEY = "synthetic-jev-webhook-sender-key"
 
 
 class FakeResponse:
@@ -49,7 +49,7 @@ def test_successful_post_sends_bearer_secret(monkeypatch: pytest.MonkeyPatch) ->
         return FakeResponse()
 
     monkeypatch.setattr("billzebub.jev_webhook.urlopen", fake_urlopen)
-    notify_jev_webhook(url=WEBHOOK_URL, secret=WEBHOOK_SECRET, timeout_seconds=4.5)
+    notify_jev_webhook(url=WEBHOOK_URL, secret=SENDER_KEY, timeout_seconds=4.5)
 
     assert len(requests) == 1
     request, timeout = requests[0]
@@ -57,10 +57,10 @@ def test_successful_post_sends_bearer_secret(monkeypatch: pytest.MonkeyPatch) ->
     assert request.get_method() == "POST"
     assert timeout == 4.5
     headers = {key.lower(): value for key, value in request.header_items()}
-    assert headers["authorization"] == f"Bearer {WEBHOOK_SECRET}"
+    assert headers["authorization"] == f"Bearer {SENDER_KEY}"
     assert headers["content-type"] == "application/json"
     assert json.loads(request.data.decode()) == {"event": "categorization_needed"}
-    assert WEBHOOK_SECRET not in repr(request.full_url)
+    assert SENDER_KEY not in repr(request.full_url)
 
 
 def test_bearer_prefix_is_not_doubled(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -72,9 +72,9 @@ def test_bearer_prefix_is_not_doubled(monkeypatch: pytest.MonkeyPatch) -> None:
         return FakeResponse()
 
     monkeypatch.setattr("billzebub.jev_webhook.urlopen", fake_urlopen)
-    notify_jev_webhook(url=WEBHOOK_URL, secret=f"Bearer {WEBHOOK_SECRET}")
+    notify_jev_webhook(url=WEBHOOK_URL, secret=f"Bearer {SENDER_KEY}")
     headers = {key.lower(): value for key, value in requests[0].header_items()}
-    assert headers["authorization"] == f"Bearer {WEBHOOK_SECRET}"
+    assert headers["authorization"] == f"Bearer {SENDER_KEY}"
 
 
 def test_settings_secret_is_sent(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -89,11 +89,11 @@ def test_settings_secret_is_sent(monkeypatch: pytest.MonkeyPatch) -> None:
     notify_jev_webhook_from_settings(
         Settings(
             jev_webhook_url=WEBHOOK_URL,
-            jev_webhook_secret=SecretStr(WEBHOOK_SECRET),
+            jev_webhook_secret=SecretStr(SENDER_KEY),
         )
     )
     headers = {key.lower(): value for key, value in requests[0].header_items()}
-    assert headers["authorization"] == f"Bearer {WEBHOOK_SECRET}"
+    assert headers["authorization"] == f"Bearer {SENDER_KEY}"
 
 
 @pytest.mark.parametrize(
@@ -116,9 +116,9 @@ def test_http_failures_fail_open(
 
     monkeypatch.setattr("billzebub.jev_webhook.urlopen", fake_urlopen)
     with caplog.at_level(logging.WARNING, logger="billzebub.jev_webhook"):
-        notify_jev_webhook(url=WEBHOOK_URL, secret=WEBHOOK_SECRET)
+        notify_jev_webhook(url=WEBHOOK_URL, secret=SENDER_KEY)
     assert logged in caplog.text
-    assert WEBHOOK_SECRET not in caplog.text
+    assert SENDER_KEY not in caplog.text
 
 
 def test_cleartext_non_loopback_url_is_skipped(

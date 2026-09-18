@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import pytest
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 
 from billzebub.config import Environment, Settings
 
@@ -63,8 +63,8 @@ def test_optional_jev_webhook_settings_treat_blanks_as_unset() -> None:
 
     configured = Settings(
         jev_webhook_url=" https://forge.example.test/webhook ",
-        jev_webhook_secret="synthetic-jev-webhook-secret",
+        jev_webhook_secret=SecretStr("synthetic-jev-webhook-sender-key"),
     )
     assert configured.jev_webhook_url == "https://forge.example.test/webhook"
     assert configured.jev_webhook_secret is not None
-    assert configured.jev_webhook_secret.get_secret_value() == "synthetic-jev-webhook-secret"
+    assert configured.jev_webhook_secret.get_secret_value() == "synthetic-jev-webhook-sender-key"
