@@ -13,7 +13,12 @@ billzebub_init_compose() {
   }
   compose=("$docker_bin" compose --project-name billzebub --file "$project_root/compose.nas.yaml")
   compose_wait_flags=()
-  if "${compose[@]}" up --help 2>/dev/null | grep -q -- '--wait'; then
+  # Capture help fully. `grep -q` closes the pipe on the first match; with
+  # `set -o pipefail` that SIGPIPEs `docker compose` / the test stub and leaves
+  # wait flags unset, so API recreate becomes `up --detach --no-deps api`.
+  local compose_help=""
+  compose_help="$("${compose[@]}" up --help 2>/dev/null || true)"
+  if [[ "$compose_help" == *"--wait"* ]]; then
     compose_wait_flags=(--wait --wait-timeout 120)
   fi
 }
