@@ -1,4 +1,3 @@
-from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -40,16 +39,6 @@ def test_nas_configuration_reads_database_url_only_from_private_file(tmp_path: P
     )
 
     assert settings.database_url_value == "postgresql+psycopg://synthetic@postgres/synthetic"
-    assert settings.categorizer_enabled is True
-    assert settings.categorizer_min_confidence == Decimal("1.000")
-
-
-def test_categorizer_confidence_is_tunable_and_bounded() -> None:
-    settings = Settings(categorizer_min_confidence=Decimal("0.950"), categorizer_enabled=False)
-    assert settings.categorizer_min_confidence == Decimal("0.950")
-    assert settings.categorizer_enabled is False
-    with pytest.raises(ValidationError, match="categorizer_min_confidence"):
-        Settings(categorizer_min_confidence=Decimal("1.001"))
 
 
 def test_settings_normalize_owner_logins_and_paths(tmp_path: Path) -> None:

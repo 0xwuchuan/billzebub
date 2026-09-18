@@ -30,7 +30,6 @@ from billzebub.apple_wallet import AppleWalletCaptureOutcome, AppleWalletIngesti
 from billzebub.artifact_capture import ArtifactCapture
 from billzebub.artifacts import ArtifactStoreError, ContentAddressedStore
 from billzebub.categories import CategoryCatalog, CategoryError, CategoryRecord
-from billzebub.categorizer import AutoCategorizer
 from billzebub.config import Settings
 from billzebub.financial_account_aliases import (
     FinancialAccountAliasError,
@@ -578,14 +577,7 @@ def create_app(
                 password_root=resolved_settings.statement_password_root,
             ),
         )
-        resolved_owner_workspace = resolved_owner_workspace or OwnerWorkspace(
-            resolved_database,
-            categorizer=AutoCategorizer(
-                resolved_database,
-                min_confidence=resolved_settings.categorizer_min_confidence,
-                enabled=resolved_settings.categorizer_enabled,
-            ),
-        )
+        resolved_owner_workspace = resolved_owner_workspace or OwnerWorkspace(resolved_database)
         resolved_agent_facade = resolved_agent_facade or AgentFacade(resolved_database)
         resolved_token_manager = resolved_token_manager or TokenManager(resolved_database)
         if resolved_owner_tokens is None and isinstance(resolved_token_manager, TokenManager):

@@ -1,14 +1,15 @@
 # External Jev categorizer
 
-Billzebub's in-app pass assigns a Category only at deterministic high confidence and leaves everything else as a `categorization_needed` Review. Unknowns are handled **outside** the NAS app containers. **Jev** (TypeSafe System One) is the primary host-side pass; the Codex runner remains an optional fallback and is not deleted. This job is not a Grok Bot and must not be added to `compose.nas.yaml` or the `api`/`worker` images.
+Billzebub's in-app path never auto-assigns a Category. Statement confirmation and Real-time Claim projection leave spending Transactions `Uncategorized` with a `categorization_needed` Review. Unknowns are handled **outside** the NAS app containers. **Jev** (TypeSafe System One) is the only host-side auto-categorizer. This job is not a Grok Bot and must not be added to `compose.nas.yaml` or the `api`/`worker` images.
 
 The runner talks only to the agent-safe API from ADR 0003: opaque Transaction IDs, Counterparty, amount, currency, effective date, Transaction kind, Categories, and review choices. Schedule it as a forge routine after a dry-run. Keep the Billzebub bearer on rafiki and the TypeSafe key on forge as mode-`0600` secrets.
 
 ## Cascade
 
-1. **In-app map + rules** on the NAS (`docs/categorizer.md`) — learned Counterparty map and deterministic keyword rules. No LLM in the app containers.
-2. **Jev** (this runner) — primary external pass for remaining `categorization_needed` Reviews.
-3. **Codex** (`docs/codex-categorizer.md`) — optional fallback. Do not wire a forge routine swap in this change; keep the Codex script intact.
+1. **Owner** — explicit categorization in the owner workspace. Does not teach an in-app map.
+2. **Jev** (this runner) — the only external auto pass for remaining `categorization_needed` Reviews.
+
+There is no in-app Counterparty map, keyword scorer, or Codex runner.
 
 ## What it does
 
@@ -80,9 +81,7 @@ An empty queue is a quiet success (exit 0, no stdout). Non-empty runs print one 
 
 The runner never prints tokens or API keys. The TypeSafe client receives the key as a constructor argument, not a CLI flag.
 
-### Why 0.85 versus Codex 0.95
-
-Codex `BILLZEBUB_CODEX_MIN_CONFIDENCE` defaults to `0.95` because that number is a model-written field on unstructured JSON, not a calibrated probability. Jev Choice `confidence` is derived from the option distribution (calibrated System One output), and the companion Noul is already a yes-probability. `0.85` is a conservative “act automatically” floor on those calibrated values; both Choice confidence **and** the evidence Noul must clear it.
+`BILLZEBUB_JEV_MIN_CONFIDENCE` defaults to `0.85` because Jev Choice `confidence` is derived from the option distribution (calibrated System One output), and the companion Noul is already a yes-probability. Both Choice confidence **and** the evidence Noul must clear that floor before a Category is applied.
 
 ## Token on rafiki (Billzebub agent)
 

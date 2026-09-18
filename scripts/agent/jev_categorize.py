@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Apply high-confidence Jev Category proposals to pending Reviews.
 
-This runner is the primary host-side pass for unknowns the in-app map left as
+This runner is the sole host-side auto-categorizer for `categorization_needed`
 Reviews. It is not a Grok Bot and must not run inside Billzebub API or worker
-containers. The Codex runner remains an optional fallback. Tokens stay on the
-host as mode-0600 secrets.
+containers. Tokens stay on the host as mode-0600 secrets.
 """
 
 from __future__ import annotations
@@ -24,15 +23,15 @@ from uuid import UUID
 from typesafe_sdk import Choice, Noul, TypeSafeClient, TypeSafeError
 
 from billzebub.agent_mcp import McpRequestError, assert_agent_safe
-from scripts.agent.codex_categorize import (
+from scripts.agent.agent_api import (
     AgentApi,
+    AgentApiConfig,
     AgentApiError,
     Category,
     Transaction,
     UrlLibAgentApi,
-    should_ask_codex,
+    should_categorize,
 )
-from scripts.agent.codex_categorize import RunnerConfig as CodexRunnerConfig
 
 DEFAULT_MODEL = "jev-1.13.0"
 DEFAULT_MIN_CONFIDENCE = Decimal("0.85")
@@ -312,7 +311,7 @@ def idempotency_key(transaction: Transaction, category_id: UUID) -> str:
 
 
 def should_ask_jev(transaction: Transaction) -> bool:
-    return should_ask_codex(transaction)
+    return should_categorize(transaction)
 
 
 def run(
@@ -401,7 +400,7 @@ def main(
         _print(f"jev categorizer configuration is invalid: {error}", stdout)
         return 2
     resolved_api = api or UrlLibAgentApi(
-        CodexRunnerConfig(
+        AgentApiConfig(
             api_base=config.api_base,
             token=config.token,
             timeout_seconds=config.timeout_seconds,
