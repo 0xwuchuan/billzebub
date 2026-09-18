@@ -141,7 +141,7 @@ Pass tonight’s two `unsupported_source` Extraction ids only. The command re-re
 
 `billzebub-mcp` is a local stdio process, never a network service. Configure it with `BILLZEBUB_API_URL` (HTTPS except on loopback) and `BILLZEBUB_AGENT_TOKEN`; do not put the token in an MCP configuration committed to Git. It exposes exactly eight agent-safe tools: transaction/category/review listing, explicit categorization, and owner-reviewed Correction, Reconciliation, Counterparty-change, and Category-split proposals. It cannot fetch Claims, artifacts, account identifiers, or audit details.
 
-Unknown `categorization_needed` Reviews can also be drained by a host-side Codex ChatGPT runner (`codex exec -m gpt-5.6-luna`, terra fallback). That job is not a Grok Bot and must not run in the NAS app containers. Schedule it as a **forge routine** (dry-run once, then standing); keep the agent token as a mode-`0600` secret on rafiki. See [`docs/codex-categorizer.md`](docs/codex-categorizer.md).
+Unknown `categorization_needed` Reviews are drained host-side, never inside the NAS app containers: in-app map + rules, then **Jev** (`scripts/agent/jev_categorize.py`; dry-run on forge first), then optional **Codex** fallback. Neither job is a Grok Bot. Keep the agent token and TypeSafe key as mode-`0600` secrets. See [`docs/jev-categorizer.md`](docs/jev-categorizer.md) and [`docs/codex-categorizer.md`](docs/codex-categorizer.md).
 
 ## NAS deployment
 
