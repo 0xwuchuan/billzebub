@@ -4,8 +4,8 @@ Billzebub does **not** auto-assign a Category in the NAS app. After statement co
 
 ## When Reviews appear
 
-1. **Statement confirmation.** After Reconciliation establishes a Transaction (statement-only or matched Real-time Claim), Financial History records `Uncategorized` Category Splits for spending kinds and opens `categorization_needed`.
-2. **Real-time Claim → Transaction projection.** Owner workspace projections of eligible provisional Real-time Claims do not guess a Category. Display splits stay empty until a Statement Claim confirms a Transaction and a later owner or Jev assignment.
+1. **Statement confirmation.** After Reconciliation establishes a Transaction (statement-only or matched Real-time Claim), Financial History records `Uncategorized` Category Splits for spending kinds and opens `categorization_needed`. The worker then POSTs the forge Jev webhook (fail-open).
+2. **Real-time Claim → Transaction projection.** Owner workspace projections of eligible provisional Real-time Claims do not guess a Category. Display splits stay empty until a Statement Claim confirms a Transaction and a later owner or Jev assignment. Wallet ingest does not POST the webhook; a daily forge cron covers catch-up.
 
 Transfers, Income, Refunds, and Reimbursements are never given Expense Categories.
 
@@ -17,4 +17,4 @@ Agent categorization uses the same owner-safe mutation path with reason `agent_c
 
 ## External auto-categorizer (host-side only)
 
-Unknowns stay as Reviews. The only auto pass is host-side **Jev**: `scripts/agent/jev_categorize.py` calls TypeSafe System One (`jev-1.13.0`) against the agent API. It is not a Grok Bot and must not be added to `compose.nas.yaml` or the `api`/`worker` images. See [`docs/jev-categorizer.md`](jev-categorizer.md).
+Unknowns stay as Reviews. Cascade: statement import → fail-open forge webhook → host-side **Jev** (`scripts/agent/jev_categorize.py`, TypeSafe System One `jev-1.13.0`). Owner categorization still works at any time. A daily forge cron is separate and covers Wallet catch-up. Jev is not a Grok Bot and must not be added to `compose.nas.yaml` or the `api`/`worker` images. See [`docs/jev-categorizer.md`](jev-categorizer.md).

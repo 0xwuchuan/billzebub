@@ -2,12 +2,14 @@
 
 Billzebub's in-app path never auto-assigns a Category. Statement confirmation and Real-time Claim projection leave spending Transactions `Uncategorized` with a `categorization_needed` Review. Unknowns are handled **outside** the NAS app containers. **Jev** (TypeSafe System One) is the only host-side auto-categorizer. This job is not a Grok Bot and must not be added to `compose.nas.yaml` or the `api`/`worker` images.
 
-The runner talks only to the agent-safe API from ADR 0003: opaque Transaction IDs, Counterparty, amount, currency, effective date, Transaction kind, Categories, and review choices. Schedule it as a forge routine after a dry-run. Keep the Billzebub bearer on rafiki and the TypeSafe key on forge as mode-`0600` secrets.
+The runner talks only to the agent-safe API from ADR 0003: opaque Transaction IDs, Counterparty, amount, currency, effective date, Transaction kind, Categories, and review choices. Keep the Billzebub bearer on rafiki and the TypeSafe key on forge as mode-`0600` secrets. After a dry-run, save the forge routine with a **webhook** trigger (statement import) and a separate **daily** schedule (Wallet catch-up).
 
 ## Cascade
 
-1. **Owner** — explicit categorization in the owner workspace. Does not teach an in-app map.
-2. **Jev** (this runner) — the only external auto pass for remaining `categorization_needed` Reviews.
+1. **Statement import** — the NAS worker accepts a statement Extraction, reconciles Claims into Transactions, and opens `categorization_needed` Reviews for spending kinds. It then POSTs the forge webhook. The POST is fail-open: timeout, 5xx, or a missing URL is logged (or skipped) and import still completes. TypeSafe/Jev never run inside the `api` or `worker` containers.
+2. **Jev** (this runner) — the forge webhook starts this host-side pass against remaining `categorization_needed` Reviews.
+3. **Owner** — explicit categorization in the owner workspace still works at any time. It does not teach an in-app map.
+4. **Apple Wallet / Real-time Claim projection** — no per-event webhook. A daily forge cron, configured outside this path, drains leftover Reviews (including anything the import webhook missed).
 
 There is no in-app Counterparty map, keyword scorer, or Codex runner.
 
@@ -102,6 +104,33 @@ install -m 600 /dev/stdin /private/path/jev-categorizer.token
 ```
 
 Forge reads that secret through `BILLZEBUB_AGENT_TOKEN_FILE` (or `--token-file`). Rotate with `billzebub token rotate <token-id>` if the file may have leaked.
+
+## Webhook on rafiki (statement import → forge)
+
+The NAS worker does not run Jev. After statement Reconciliation commits Transactions and opens `categorization_needed` Reviews, it POSTs the forge automation webhook. Apple Wallet ingest does not POST; keep a daily scheduled trigger on the same (or a second) forge routine for catch-up.
+
+Paste the URL and sender key **once** from the forge routine panel into rafiki's mode-`0600` runtime env, then recreate the worker so it reloads env. Do not put them in Git, chat, `compose.nas.yaml`, or the Compose-mounted `/volume1/docker/billzebub/secrets` directory.
+
+1. On forge, open the Jev routine, add a **Webhook** trigger, save, copy the webhook URL and **Generate auth header** (sender key). The header convention is `Authorization: Bearer <key>`, the same as Grok Bot webhook sender keys.
+2. On rafiki, append to `/volume1/docker/billzebub/runtime.env` (already mode `0600`):
+
+```bash
+BILLZEBUB_JEV_WEBHOOK_URL=https://api2.cursor.sh/automations/webhook/<id>
+BILLZEBUB_JEV_WEBHOOK_SECRET=<sender-key>
+```
+
+Optional: `BILLZEBUB_JEV_WEBHOOK_TIMEOUT_SECONDS` (default `5`). If you paste the full `Bearer <key>` value, the worker does not double the prefix. HTTPS is required except on loopback. Unset URL is a silent no-op. Timeout or 5xx is logged and import still completes.
+3. Recreate the worker so it loads the new env (env-only; no migration):
+
+```bash
+docker compose -f compose.nas.yaml up -d --force-recreate --no-deps worker
+```
+
+| Variable | Required | Meaning |
+|---|---|---|
+| `BILLZEBUB_JEV_WEBHOOK_URL` | no | Forge automation webhook URL. Unset is a no-op. |
+| `BILLZEBUB_JEV_WEBHOOK_SECRET` | no | Forge webhook sender key. Sent as `Authorization: Bearer …`. |
+| `BILLZEBUB_JEV_WEBHOOK_TIMEOUT_SECONDS` | no | Webhook POST timeout. Default `5`. Fail-open. |
 
 ## TypeSafe key on forge
 

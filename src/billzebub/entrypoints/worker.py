@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import signal
 import socket
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from threading import Event
 from typing import Any, Protocol
@@ -13,6 +14,7 @@ from uuid import UUID
 from billzebub.artifact_capture import ArtifactCapture
 from billzebub.artifacts import ContentAddressedStore
 from billzebub.config import Settings
+from billzebub.jev_webhook import notify_jev_webhook_from_settings
 from billzebub.jobs import EnqueuedJob, JobQueue
 from billzebub.persistence.database import Database
 from billzebub.reconciliation import Reconciliation, ReconciliationRun
@@ -25,6 +27,9 @@ from billzebub.statement_extraction import (
 )
 from billzebub.statement_inbox import StatementInbox
 from billzebub.worker import JobHandler, TerminalJobError, Worker
+
+logger = logging.getLogger(__name__)
+NotifyCategorizationNeeded = Callable[[], None]
 
 
 class JobEnqueuer(Protocol):
@@ -56,6 +61,8 @@ def worker_handlers(
     queue: JobEnqueuer,
     extraction: StatementExtractionRuntime,
     reconciliation: ReconciliationRuntime,
+    *,
+    notify_categorization_needed: NotifyCategorizationNeeded | None = None,
 ) -> dict[str, JobHandler]:
     """Build durable pipeline handlers without exposing worker mechanics."""
 
@@ -81,7 +88,13 @@ def worker_handlers(
             account_id = UUID(str(payload["financial_account_id"]))
         except (KeyError, ValueError) as error:
             raise TerminalJobError("invalid_reconciliation_job") from error
-        reconciliation.reconcile_account(account_id)
+        run = reconciliation.reconcile_account(account_id)
+        if not run.confirmations or notify_categorization_needed is None:
+            return
+        try:
+            notify_categorization_needed()
+        except Exception:
+            logger.exception("jev webhook failed")
 
     return {
         "extract_statement": extract_statement,
@@ -123,7 +136,12 @@ def main() -> None:
 
     worker = Worker(
         queue,
-        handlers=worker_handlers(queue, extraction, reconciliation),
+        handlers=worker_handlers(
+            queue,
+            extraction,
+            reconciliation,
+            notify_categorization_needed=lambda: notify_jev_webhook_from_settings(settings),
+        ),
         worker_id=f"{socket.gethostname()}:{id(stop)}",
         poll_seconds=settings.worker_poll_seconds,
     )

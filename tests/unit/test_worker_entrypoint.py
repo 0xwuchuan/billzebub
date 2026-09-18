@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from datetime import datetime
 from uuid import UUID, uuid4
 
@@ -73,11 +74,13 @@ def _handlers(
     queue: FakeQueue,
     extraction: FakeExtraction | None = None,
     reconciliation: FakeReconciliation | None = None,
+    notify_categorization_needed: Callable[[], None] | None = None,
 ) -> dict[str, JobHandler]:
     return worker_handlers(
         queue,
         extraction or FakeExtraction(ExtractionStatus.ACCEPTED),
         reconciliation or FakeReconciliation(),
+        notify_categorization_needed=notify_categorization_needed,
     )
 
 
@@ -157,3 +160,89 @@ def test_reconciliation_does_not_enqueue_in_app_categorize_jobs() -> None:
     handlers["reconcile_financial_account"]({"financial_account_id": str(account_id)})
 
     assert queue.enqueued == []
+
+
+def test_statement_confirmations_notify_jev_webhook() -> None:
+    queue = FakeQueue()
+    account_id = uuid4()
+    notified: list[str] = []
+    reconciliation = FakeReconciliation()
+    reconciliation.run = ReconciliationRun(
+        financial_account_id=account_id,
+        candidates=(),
+        confirmations=(
+            ReconciliationConfirmation(
+                transaction_id=uuid4(),
+                statement_claim_id=uuid4(),
+                real_time_claim_id=None,
+                source="statement_only",
+            ),
+        ),
+        ambiguous_review_ids=(),
+        unconfirmed_claim_ids=(),
+        no_match_real_time_claim_ids=(),
+    )
+    handlers = _handlers(
+        queue,
+        reconciliation=reconciliation,
+        notify_categorization_needed=lambda: notified.append("posted"),
+    )
+
+    handlers["extract_statement"](
+        {"artifact_id": str(uuid4()), "financial_account_id": str(account_id)}
+    )
+    handlers["reconcile_financial_account"]({"financial_account_id": str(account_id)})
+
+    assert notified == ["posted"]
+    assert queue.enqueued == [
+        (
+            "reconcile_financial_account",
+            {"financial_account_id": str(account_id)},
+            str(account_id),
+        )
+    ]
+
+
+def test_empty_reconciliation_does_not_notify_jev_webhook() -> None:
+    notified: list[str] = []
+    handlers = _handlers(
+        FakeQueue(),
+        notify_categorization_needed=lambda: notified.append("posted"),
+    )
+
+    handlers["reconcile_financial_account"]({"financial_account_id": str(uuid4())})
+
+    assert notified == []
+
+
+def test_jev_webhook_failure_does_not_fail_reconciliation() -> None:
+    account_id = uuid4()
+    reconciliation = FakeReconciliation()
+    reconciliation.run = ReconciliationRun(
+        financial_account_id=account_id,
+        candidates=(),
+        confirmations=(
+            ReconciliationConfirmation(
+                transaction_id=uuid4(),
+                statement_claim_id=uuid4(),
+                real_time_claim_id=None,
+                source="statement_only",
+            ),
+        ),
+        ambiguous_review_ids=(),
+        unconfirmed_claim_ids=(),
+        no_match_real_time_claim_ids=(),
+    )
+
+    def boom() -> None:
+        raise RuntimeError("forge unavailable")
+
+    handlers = _handlers(
+        FakeQueue(),
+        reconciliation=reconciliation,
+        notify_categorization_needed=boom,
+    )
+
+    handlers["reconcile_financial_account"]({"financial_account_id": str(account_id)})
+
+    assert reconciliation.received == [account_id]

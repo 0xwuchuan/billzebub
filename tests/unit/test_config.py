@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import pytest
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 
 from billzebub.config import Environment, Settings
 
@@ -53,3 +53,18 @@ def test_settings_normalize_owner_logins_and_paths(tmp_path: Path) -> None:
     assert settings.statement_inbox_root == (tmp_path / "inbox").resolve()
     assert settings.statement_password_root == (tmp_path / "passwords").resolve()
     assert settings.tailscale_allowed_logins == ("owner@example.test",)
+
+
+def test_optional_jev_webhook_settings_treat_blanks_as_unset() -> None:
+    settings = Settings(jev_webhook_url="  ", jev_webhook_secret="  ")  # type: ignore[arg-type]
+    assert settings.jev_webhook_url is None
+    assert settings.jev_webhook_secret is None
+    assert settings.jev_webhook_timeout_seconds == 5.0
+
+    configured = Settings(
+        jev_webhook_url=" https://forge.example.test/webhook ",
+        jev_webhook_secret=SecretStr("synthetic-jev-webhook-sender-key"),
+    )
+    assert configured.jev_webhook_url == "https://forge.example.test/webhook"
+    assert configured.jev_webhook_secret is not None
+    assert configured.jev_webhook_secret.get_secret_value() == "synthetic-jev-webhook-sender-key"

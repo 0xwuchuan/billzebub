@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     apple_wallet_timezone: str | None = None
     apple_wallet_max_bytes: int = Field(default=16 * 1024, gt=0, le=1024 * 1024)
     web_root: Path | None = None
+    jev_webhook_url: str | None = None
+    jev_webhook_secret: SecretStr | None = None
+    jev_webhook_timeout_seconds: float = Field(default=5.0, gt=0, le=60)
 
     @field_validator("artifact_root", "statement_inbox_root", "statement_password_root")
     @classmethod
@@ -71,6 +74,25 @@ class Settings(BaseSettings):
             ZoneInfo(value)
         except ZoneInfoNotFoundError as error:
             raise ValueError("Apple Wallet timezone must be an IANA timezone") from error
+        return value
+
+    @field_validator("jev_webhook_url", mode="before")
+    @classmethod
+    def empty_webhook_url_to_none(cls, value: object) -> object:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            stripped = value.strip()
+            return stripped or None
+        return value
+
+    @field_validator("jev_webhook_secret", mode="before")
+    @classmethod
+    def empty_webhook_secret_to_none(cls, value: object) -> object:
+        if value is None:
+            return None
+        if isinstance(value, str) and not value.strip():
+            return None
         return value
 
     @model_validator(mode="after")
