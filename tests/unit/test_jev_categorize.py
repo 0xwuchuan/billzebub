@@ -8,7 +8,7 @@ from typing import Any, ClassVar
 from uuid import UUID, uuid4
 
 import pytest
-from scripts.agent.codex_categorize import AgentApiError, Category, Transaction
+from scripts.agent.agent_api import AgentApiError, Category, Transaction
 from scripts.agent.jev_categorize import (
     DEFAULT_MODEL,
     SKIP_OPTION,

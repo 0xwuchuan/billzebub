@@ -17,7 +17,6 @@ def test_migrations_create_current_foundation_tables(database: Database) -> None
         "artifact_arrival",
         "audit_actor",
         "category",
-        "counterparty_category_map",
         "durable_job",
         "financial_account",
         "financial_account_alias",
@@ -54,5 +53,6 @@ def test_migrations_can_downgrade_to_phase_1_and_reapply(database: Database) -> 
 
     command.upgrade(config, "head")
     assert "claim" in inspect(database.engine).get_table_names()
+    assert "counterparty_category_map" not in inspect(database.engine).get_table_names()
     columns = {column["name"] for column in inspect(database.engine).get_columns("extraction")}
     assert "dismissed_at" in columns

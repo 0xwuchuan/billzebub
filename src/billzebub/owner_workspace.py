@@ -16,7 +16,6 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.engine import Row
 from sqlalchemy.orm import Session
 
-from billzebub.categorizer import AutoCategorizer
 from billzebub.claims import ClaimDisposition, ClaimType
 from billzebub.financial_history import CategorySplitRecord, TransactionKind
 from billzebub.money import Money
@@ -104,11 +103,9 @@ class OwnerWorkspace:
         database: Database,
         *,
         reporting_timezone: str = "Asia/Singapore",
-        categorizer: AutoCategorizer | None = None,
     ) -> None:
         self._database = database
         self._reporting_timezone = ZoneInfo(reporting_timezone)
-        self._categorizer = categorizer or AutoCategorizer(database)
 
     def list_transactions(
         self,
@@ -390,12 +387,7 @@ class OwnerWorkspace:
                     authorized_amount=authorized,
                     effective_date=self._claim_effective_date(claim).isoformat(),
                     kind=kind,
-                    category_splits=self._categorizer.projected_split(
-                        session,
-                        kind=kind,
-                        counterparty=counterparty,
-                        amount=authorized,
-                    ),
+                    category_splits=(),
                     reviews=tuple(reviews_by_claim[claim.id]),
                 )
             )

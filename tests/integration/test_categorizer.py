@@ -1,13 +1,11 @@
 from datetime import UTC, date, datetime
-from decimal import Decimal
 from uuid import UUID
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import inspect, select, text
 from uuid6 import uuid7
 
 from billzebub.categories import CategoryCatalog
-from billzebub.categorizer import AutoCategorizer, normalize_counterparty_key
 from billzebub.claims import ClaimBook, ClaimDraft, ClaimType
 from billzebub.financial_history import Confirmation, FinancialHistory, TransactionKind
 from billzebub.identity import OwnerIdentity
@@ -16,13 +14,7 @@ from billzebub.owner_actors import OwnerActors
 from billzebub.owner_transaction_actions import OwnerCategorizationCommand, OwnerTransactionActions
 from billzebub.owner_workspace import OwnerWorkspace
 from billzebub.persistence.database import Database
-from billzebub.persistence.models import (
-    CounterpartyCategoryMap,
-    Extraction,
-    FinancialAccount,
-    PendingReview,
-    SourceArtifact,
-)
+from billzebub.persistence.models import Extraction, FinancialAccount, PendingReview, SourceArtifact
 from billzebub.reviews import PendingReviewStatus
 
 
@@ -116,26 +108,37 @@ def _pending_categorization(database: Database, transaction_id: UUID) -> Pending
 
 
 @pytest.mark.integration
-def test_unknown_expense_stays_uncategorized_with_attention_review(
+def test_confirmed_expense_stays_uncategorized_with_attention_review(
     database: Database,
     evidence: tuple[UUID, UUID, UUID],
 ) -> None:
-    CategoryCatalog(database).create("Gifts")
-    transaction_id = _confirm_expense(database, evidence, counterparty="Synthetic Unknown Vendor")
+    CategoryCatalog(database).create("Groceries")
+    CategoryCatalog(database).create("Dining")
+    unknown_id = _confirm_expense(database, evidence, counterparty="Synthetic Unknown Vendor")
+    grocer_id = _confirm_expense(
+        database,
+        evidence,
+        counterparty="Synthetic Grocer",
+        amount="-8.00",
+        day=date(2026, 3, 8),
+    )
+    named_id = _confirm_expense(
+        database,
+        evidence,
+        counterparty="Synthetic Groceries Hall",
+        amount="-9.00",
+        day=date(2026, 3, 9),
+    )
 
-    snapshot = AutoCategorizer(database).categorize_transaction(transaction_id)
-    current = FinancialHistory(database).get(transaction_id)
-    review = _pending_categorization(database, transaction_id)
-
-    assert snapshot is None
-    assert current.category_splits[0].category_name == "Uncategorized"
-    assert review is not None
-    assert review.context["source"] == "unknown"
-    assert review.context["confidence"] == "0.000"
+    for transaction_id in (unknown_id, grocer_id, named_id):
+        current = FinancialHistory(database).get(transaction_id)
+        review = _pending_categorization(database, transaction_id)
+        assert current.category_splits[0].category_name == "Uncategorized"
+        assert review is not None
 
 
 @pytest.mark.integration
-def test_owner_categorization_teaches_later_high_confidence_assignment(
+def test_owner_categorization_does_not_upsert_a_reusable_map(
     database: Database,
     evidence: tuple[UUID, UUID, UUID],
 ) -> None:
@@ -144,7 +147,7 @@ def test_owner_categorization_teaches_later_high_confidence_assignment(
     actor_id = OwnerActors(database).resolve(
         OwnerIdentity(login="owner@example.test", name="Synthetic Owner")
     )
-    OwnerTransactionActions(database).categorize(
+    categorized = OwnerTransactionActions(database).categorize(
         OwnerCategorizationCommand(
             transaction_id=first_id,
             expected_version=1,
@@ -159,47 +162,17 @@ def test_owner_categorization_teaches_later_high_confidence_assignment(
         amount="-20.00",
         day=date(2026, 3, 8),
     )
-
-    assigned = AutoCategorizer(database).categorize_transaction(second_id)
-    review = _pending_categorization(database, second_id)
+    second = FinancialHistory(database).get(second_id)
     with database.transaction() as session:
-        mapping = session.scalar(
-            select(CounterpartyCategoryMap).where(
-                CounterpartyCategoryMap.normalized_key
-                == normalize_counterparty_key("Synthetic Rare Merchant")
-            )
-        )
+        tables = set(inspect(database.engine).get_table_names())
+        map_rows = session.execute(text("SELECT to_regclass('counterparty_category_map')")).scalar()
 
-    assert mapping is not None
-    assert mapping.category_id == gifts.id
-    assert mapping.source == "owner_categorization"
-    assert assigned is not None
-    assert assigned.category_splits[0].category_id == gifts.id
-    assert assigned.category_splits[0].category_name == "Gifts"
-    assert review is None
-
-
-@pytest.mark.integration
-def test_keyword_rule_is_gated_by_nas_safe_default_threshold(
-    database: Database,
-    evidence: tuple[UUID, UUID, UUID],
-) -> None:
-    groceries = CategoryCatalog(database).create("Groceries")
-    transaction_id = _confirm_expense(database, evidence, counterparty="Synthetic Grocer")
-
-    conservative = AutoCategorizer(database).categorize_transaction(transaction_id)
-    conservative_review = _pending_categorization(database, transaction_id)
-    assigned = AutoCategorizer(database, min_confidence=Decimal("0.950")).categorize_transaction(
-        transaction_id
-    )
-    assigned_review = _pending_categorization(database, transaction_id)
-
-    assert conservative is None
-    assert conservative_review is not None
-    assert conservative_review.context["source"] == "keyword_rule"
-    assert assigned is not None
-    assert assigned.category_splits[0].category_id == groceries.id
-    assert assigned_review is None
+    assert categorized.category_splits[0].category_id == gifts.id
+    assert _pending_categorization(database, first_id) is None
+    assert second.category_splits[0].category_name == "Uncategorized"
+    assert _pending_categorization(database, second_id) is not None
+    assert "counterparty_category_map" not in tables
+    assert map_rows is None
 
 
 @pytest.mark.integration
@@ -216,25 +189,21 @@ def test_transfers_are_not_forced_into_expense_categories(
         kind=TransactionKind.TRANSFER,
     )
 
-    result = AutoCategorizer(database, min_confidence=Decimal("0.950")).categorize_transaction(
-        transaction_id
-    )
     current = FinancialHistory(database).get(transaction_id)
 
-    assert result is None
     assert current.kind is TransactionKind.TRANSFER
     assert current.category_splits == ()
     assert _pending_categorization(database, transaction_id) is None
 
 
 @pytest.mark.integration
-def test_provisional_claim_projection_assigns_only_high_confidence_categories(
+def test_provisional_claim_projection_does_not_guess_categories(
     database: Database,
     evidence: tuple[UUID, UUID, UUID],
 ) -> None:
     account_id, artifact_id, extraction_id = evidence
-    groceries = CategoryCatalog(database).create("Groceries")
     gifts = CategoryCatalog(database).create("Gifts")
+    CategoryCatalog(database).create("Groceries")
     actor_id = OwnerActors(database).resolve(
         OwnerIdentity(login="owner@example.test", name="Synthetic Owner")
     )
@@ -304,8 +273,8 @@ def test_provisional_claim_projection_assigns_only_high_confidence_categories(
         if item.authorized_amount is not None and item.posted_amount == Money.parse("0", "SGD")
     }
 
-    assert items["Synthetic Groceries"].category_splits[0].category_id == groceries.id
-    assert items["Synthetic Taught Merchant"].category_splits[0].category_id == gifts.id
+    assert items["Synthetic Groceries"].category_splits == ()
+    assert items["Synthetic Taught Merchant"].category_splits == ()
     assert items["Synthetic Unknown Vendor"].category_splits == ()
     assert items["Synthetic Taxi Transfer"].category_splits == ()
     assert items["Synthetic Taxi Transfer"].kind is TransactionKind.TRANSFER

@@ -34,7 +34,6 @@ class OwnerCategorizationCommand:
     category_id: UUID
     actor_id: UUID
     reason: str = "owner_categorization"
-    learn: bool = True
 
 
 class OwnerTransactionActions:
@@ -81,15 +80,6 @@ class OwnerTransactionActions:
             )
         except FinancialHistoryError as error:
             raise OwnerTransactionActionError(str(error)) from error
-        if command.learn:
-            from billzebub.categorizer import remember_owner_mapping
-
-            remember_owner_mapping(
-                session,
-                counterparty=updated.counterparty,
-                category_id=category.id,
-                actor_id=command.actor_id,
-            )
         return updated
 
     @staticmethod

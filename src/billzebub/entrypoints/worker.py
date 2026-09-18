@@ -12,11 +12,6 @@ from uuid import UUID
 
 from billzebub.artifact_capture import ArtifactCapture
 from billzebub.artifacts import ContentAddressedStore
-from billzebub.categorizer import (
-    AutoCategorizer,
-    CategorizerError,
-    enqueue_transaction_categorization,
-)
 from billzebub.config import Settings
 from billzebub.jobs import EnqueuedJob, JobQueue
 from billzebub.persistence.database import Database
@@ -57,15 +52,10 @@ class ReconciliationRuntime(Protocol):
     def reconcile_account(self, financial_account_id: UUID) -> ReconciliationRun: ...
 
 
-class TransactionCategorizerRuntime(Protocol):
-    def categorize_transaction(self, transaction_id: UUID) -> object: ...
-
-
 def worker_handlers(
     queue: JobEnqueuer,
     extraction: StatementExtractionRuntime,
     reconciliation: ReconciliationRuntime,
-    categorizer: TransactionCategorizerRuntime,
 ) -> dict[str, JobHandler]:
     """Build durable pipeline handlers without exposing worker mechanics."""
 
@@ -91,24 +81,11 @@ def worker_handlers(
             account_id = UUID(str(payload["financial_account_id"]))
         except (KeyError, ValueError) as error:
             raise TerminalJobError("invalid_reconciliation_job") from error
-        run = reconciliation.reconcile_account(account_id)
-        for confirmation in run.confirmations:
-            enqueue_transaction_categorization(queue, confirmation.transaction_id)
-
-    def categorize_transaction(payload: dict[str, Any]) -> None:
-        try:
-            transaction_id = UUID(str(payload["transaction_id"]))
-        except (KeyError, ValueError) as error:
-            raise TerminalJobError("invalid_categorize_job") from error
-        try:
-            categorizer.categorize_transaction(transaction_id)
-        except CategorizerError as error:
-            raise TerminalJobError("invalid_categorize_job") from error
+        reconciliation.reconcile_account(account_id)
 
     return {
         "extract_statement": extract_statement,
         "reconcile_financial_account": reconcile_financial_account,
-        "categorize_transaction": categorize_transaction,
     }
 
 
@@ -136,11 +113,6 @@ def main() -> None:
         password_root=settings.statement_password_root,
     )
     reconciliation = Reconciliation(database)
-    categorizer = AutoCategorizer(
-        database,
-        min_confidence=settings.categorizer_min_confidence,
-        enabled=settings.categorizer_enabled,
-    )
     inbox = StatementInbox(
         database,
         ArtifactCapture(artifact_store, database),
@@ -151,7 +123,7 @@ def main() -> None:
 
     worker = Worker(
         queue,
-        handlers=worker_handlers(queue, extraction, reconciliation, categorizer),
+        handlers=worker_handlers(queue, extraction, reconciliation),
         worker_id=f"{socket.gethostname()}:{id(stop)}",
         poll_seconds=settings.worker_poll_seconds,
     )

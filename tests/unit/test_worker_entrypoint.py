@@ -69,25 +69,15 @@ class FakeReconciliation:
         )
 
 
-class FakeCategorizer:
-    def __init__(self) -> None:
-        self.received: list[UUID] = []
-
-    def categorize_transaction(self, transaction_id: UUID) -> None:
-        self.received.append(transaction_id)
-
-
 def _handlers(
     queue: FakeQueue,
     extraction: FakeExtraction | None = None,
     reconciliation: FakeReconciliation | None = None,
-    categorizer: FakeCategorizer | None = None,
 ) -> dict[str, JobHandler]:
     return worker_handlers(
         queue,
         extraction or FakeExtraction(ExtractionStatus.ACCEPTED),
         reconciliation or FakeReconciliation(),
-        categorizer or FakeCategorizer(),
     )
 
 
@@ -138,11 +128,10 @@ def test_reconciliation_handler_and_invalid_payloads_are_bounded() -> None:
         handlers["extract_statement"]({})
     with pytest.raises(TerminalJobError, match="invalid_reconciliation_job"):
         handlers["reconcile_financial_account"]({})
-    with pytest.raises(TerminalJobError, match="invalid_categorize_job"):
-        handlers["categorize_transaction"]({})
+    assert "categorize_transaction" not in handlers
 
 
-def test_reconciliation_enqueues_categorize_jobs_for_confirmations() -> None:
+def test_reconciliation_does_not_enqueue_in_app_categorize_jobs() -> None:
     queue = FakeQueue()
     transaction_id = uuid4()
     account_id = uuid4()
@@ -167,21 +156,4 @@ def test_reconciliation_enqueues_categorize_jobs_for_confirmations() -> None:
 
     handlers["reconcile_financial_account"]({"financial_account_id": str(account_id)})
 
-    assert queue.enqueued == [
-        (
-            "categorize_transaction",
-            {"transaction_id": str(transaction_id)},
-            str(transaction_id),
-        )
-    ]
-
-
-def test_categorize_handler_runs_the_transaction_pass() -> None:
-    queue = FakeQueue()
-    categorizer = FakeCategorizer()
-    transaction_id = uuid4()
-    handlers = _handlers(queue, categorizer=categorizer)
-
-    handlers["categorize_transaction"]({"transaction_id": str(transaction_id)})
-
-    assert categorizer.received == [transaction_id]
+    assert queue.enqueued == []
