@@ -8,6 +8,7 @@ import {
   contextStrings,
   filterReviews,
   importForReview,
+  jevAttemptFromContext,
   transactionForReview,
 } from "../lib/workspace";
 import { decisionLabel, openedLabel, reviewTitle } from "../lib/labels";
@@ -224,6 +225,9 @@ function Evidence({
     transaction?.financial_account.name ??
     review.subject_type;
   const categorization = review.condition_code === "categorization_needed";
+  const jevAttempt = categorization
+    ? jevAttemptFromContext(review.context)
+    : null;
   const needsSetup =
     review.condition_code === "apple_wallet_unmapped_card" ||
     review.condition_code === "paylah_account_missing" ||
@@ -275,6 +279,40 @@ function Evidence({
           <dt>Opened</dt>
           <dd>{openedLabel(review.created_at, today)}</dd>
         </dl>
+        {jevAttempt !== null ? (
+          <section>
+            <h3 className="eyebrow">Last Jev attempt</h3>
+            <dl className="kv">
+              <dt>Action</dt>
+              <dd>{jevAttempt.action}</dd>
+              <dt>Choice</dt>
+              <dd>{jevAttempt.choice ?? "none"}</dd>
+              <dt>Confidence</dt>
+              <dd>{jevAttempt.choice_confidence ?? "—"}</dd>
+              <dt>Evidence noul</dt>
+              <dd>{jevAttempt.noul ?? "—"}</dd>
+              <dt>Category</dt>
+              <dd>
+                {jevAttempt.action === "apply"
+                  ? (jevAttempt.category_name ?? "—")
+                  : "skip"}
+              </dd>
+              <dt>Model</dt>
+              <dd>{jevAttempt.model}</dd>
+              {jevAttempt.error_class !== null ? (
+                <>
+                  <dt>TypeSafe error</dt>
+                  <dd>
+                    {jevAttempt.error_class}
+                    {jevAttempt.error_message !== null
+                      ? `: ${jevAttempt.error_message}`
+                      : ""}
+                  </dd>
+                </>
+              ) : null}
+            </dl>
+          </section>
+        ) : null}
         <section>
           <h3 className="eyebrow">Claim evidence</h3>
           {claims.length === 0 ? (

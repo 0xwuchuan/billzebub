@@ -8,4 +8,5 @@ This supersedes the host-side / forge webhook path. The TypeSafe API key lives o
 
 - The worker image includes `typesafe-sdk` and joins the Compose `egress` network solely so it can reach `https://api.typesafe.ai`.
 - Missing key, low confidence, skip, or TypeSafe failure leaves the Transaction Uncategorized with `categorization_needed` (fail closed).
+- Each Jev propose (apply or skip) appends `jev_categorization_attempt` so the owner can see why a Review remains. TypeSafe API keys are never stored or logged.
 - No forge routine, Grok Bot, or webhook is required for production categorization.

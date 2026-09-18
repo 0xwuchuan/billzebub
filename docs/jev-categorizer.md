@@ -20,6 +20,27 @@ There is no in-app Counterparty map, keyword scorer, Codex runner, or forge webh
    - `questions.category`: Choice over active catalog Category names plus an explicit `uncategorized` skip option
    - `questions.enough_evidence`: Noul — enough evidence to assign confidently
 4. Apply a proposal only when fail-closed checks all pass, through `OwnerTransactionActions` with reason `jev_categorization`. Anything else leaves the Review in place.
+5. After every Jev propose (apply or skip, including TypeSafe failures), append a `jev_categorization_attempt` row and emit an info log line. Catch-up uses this same `categorize_transaction` path.
+
+Owner Pending Review for `categorization_needed` joins the latest attempt into `context.jev_attempt` (read-time; the stored Review context is unchanged).
+
+## Attempt log
+
+Each row is append-only and uses the same agent-safe snapshot sent to TypeSafe (no API keys, account ids, artifacts, or raw descriptions):
+
+| Field | Meaning |
+|---|---|
+| `transaction_id` | Opaque Transaction id |
+| `attempted_at` | When the worker finished the propose |
+| `model` | Jev model, default `jev-1.13.0` |
+| `counterparty`, `amount`, `currency`, `effective_date`, `kind` | State snapshot sent to TypeSafe |
+| `choice` | Raw Choice, or null when undetermined |
+| `choice_confidence`, `noul` | Unit-interval scores, or null |
+| `action` | `apply` or `skip` |
+| `category_id`, `category_name` | Set only when `action` is `apply` |
+| `error_class`, `error_message` | Optional TypeSafe/Jev error, already scrubbed of API keys |
+
+The worker info line is `jev attempt action=… confidence=… noul=… category=… transaction_id=…`, where category is the catalog name on apply and `skip` otherwise.
 
 ## Daily NAS catch-up (Wallet leftovers)
 

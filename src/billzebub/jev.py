@@ -7,6 +7,7 @@ limited to agent-safe fields: Counterparty, amount, currency, date, and kind.
 from __future__ import annotations
 
 import os
+import re
 import stat
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -29,6 +30,7 @@ NOUL_QUESTION = "enough_evidence"
 MAX_CHOICE_OPTIONS = 255
 TYPESAFE_BASE_URL = "https://api.typesafe.ai"
 TYPESAFE_ENDPOINT = f"{TYPESAFE_BASE_URL}/v1/systemone"
+_SECRETISH = re.compile(r"(?i)(?:api[_-]?key|bearer|token|secret)\s*[:=]\s*\S+")
 
 
 class JevError(ValueError):
@@ -100,6 +102,10 @@ class Proposal:
     category_name: str | None
     confidence: Decimal
     model: str
+    choice: str | None = None
+    noul: Decimal | None = None
+    error_class: str | None = None
+    error_message: str | None = None
 
 
 class Proposer(Protocol):
@@ -111,6 +117,10 @@ class JevProposer:
 
     def __init__(self, config: JevClientConfig) -> None:
         self._config = config
+
+    @property
+    def model(self) -> str:
+        return self._config.model
 
     def propose(self, subject: JevSubject, categories: Sequence[JevCategory]) -> Proposal:
         state = jev_state(subject)
@@ -133,7 +143,10 @@ class JevProposer:
                     timeout=self._config.timeout_seconds,
                 )
         except TypeSafeError as error:
-            raise JevError("typesafe systemone failed") from error
+            scrubbed = TypeSafeError(
+                safe_error_message(error, secret=self._config.typesafe_api_key)
+            )
+            raise JevError("typesafe systemone failed") from scrubbed
         return parse_jev_response(
             response, categories, self._config.min_confidence, model=self._config.model
         )
@@ -223,10 +236,11 @@ def parse_jev_proposal(
 ) -> Proposal:
     confidence = _unit_interval(confidence_raw)
     noul = _unit_interval(noul_raw)
+    choice_text = " ".join(choice.split()) if isinstance(choice, str) and choice.strip() else None
     if confidence is None or noul is None:
-        return _skip(model)
-    if not isinstance(choice, str) or not choice.strip():
-        return _skip(model)
+        return _skip(model, choice=choice_text, confidence=confidence, noul=noul)
+    if choice_text is None:
+        return _skip(model, confidence=confidence, noul=noul)
     if noul < min_confidence or confidence < min_confidence:
         return Proposal(
             action="skip",
@@ -234,26 +248,31 @@ def parse_jev_proposal(
             category_name=None,
             confidence=confidence,
             model=model,
+            choice=choice_text,
+            noul=noul,
         )
-    normalized = " ".join(choice.split())
-    if normalized.casefold() in SKIP_OPTION_ALIASES:
+    if choice_text.casefold() in SKIP_OPTION_ALIASES:
         return Proposal(
             action="skip",
             category_id=None,
             category_name=None,
             confidence=confidence,
             model=model,
+            choice=choice_text,
+            noul=noul,
         )
     catalog = _unique_categories_by_name(categories)
-    chosen = catalog.get(normalized.casefold())
-    if chosen is None or chosen.name.casefold() != normalized.casefold():
-        return _skip(model)
+    chosen = catalog.get(choice_text.casefold())
+    if chosen is None or chosen.name.casefold() != choice_text.casefold():
+        return _skip(model, choice=choice_text, confidence=confidence, noul=noul)
     return Proposal(
         action="apply",
         category_id=chosen.id,
         category_name=chosen.name,
         confidence=confidence,
         model=model,
+        choice=choice_text,
+        noul=noul,
     )
 
 
@@ -352,11 +371,28 @@ def _named_answer(response: object, group: str, name: str) -> object | None:
     return None
 
 
-def _skip(model: str) -> Proposal:
+def _skip(
+    model: str,
+    *,
+    choice: str | None = None,
+    confidence: Decimal | None = None,
+    noul: Decimal | None = None,
+) -> Proposal:
     return Proposal(
         action="skip",
         category_id=None,
         category_name=None,
-        confidence=Decimal("0"),
+        confidence=confidence if confidence is not None else Decimal("0"),
         model=model,
+        choice=choice,
+        noul=noul,
     )
+
+
+def safe_error_message(error: BaseException, *, secret: str | None = None) -> str:
+    """Keep TypeSafe failures reviewable without logging an API key."""
+    message = str(error)
+    if secret:
+        message = message.replace(secret, "[redacted]")
+    message = _SECRETISH.sub("[redacted]", message)
+    return " ".join(message.split())[:500]

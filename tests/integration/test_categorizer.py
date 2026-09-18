@@ -4,20 +4,27 @@ from uuid import UUID
 
 import pytest
 from sqlalchemy import inspect, select, text
+from typesafe_sdk import TypeSafeError
 from uuid6 import uuid7
 
 from billzebub.categories import CategoryCatalog
 from billzebub.claims import ClaimBook, ClaimDraft, ClaimType
 from billzebub.financial_history import Confirmation, FinancialHistory, TransactionKind
 from billzebub.identity import OwnerIdentity
-from billzebub.jev import JevSubject, Proposal
+from billzebub.jev import JevError, JevSubject, Proposal
 from billzebub.jev_categorizer import JevCategorizer
 from billzebub.money import Money
 from billzebub.owner_actors import OwnerActors
 from billzebub.owner_transaction_actions import OwnerCategorizationCommand, OwnerTransactionActions
 from billzebub.owner_workspace import OwnerWorkspace
 from billzebub.persistence.database import Database
-from billzebub.persistence.models import Extraction, FinancialAccount, PendingReview, SourceArtifact
+from billzebub.persistence.models import (
+    Extraction,
+    FinancialAccount,
+    JevCategorizationAttempt,
+    PendingReview,
+    SourceArtifact,
+)
 from billzebub.reviews import PendingReviewStatus
 
 
@@ -308,6 +315,8 @@ def test_worker_jev_applies_category_at_half_confidence(
             category_name="Gifts",
             confidence=Decimal("0.5"),
             model="jev-1.13.0",
+            choice="Gifts",
+            noul=Decimal("0.62"),
         )
     )
 
@@ -319,6 +328,20 @@ def test_worker_jev_applies_category_at_half_confidence(
     assert _pending_categorization(database, transaction_id) is None
     assert proposer.subjects[0].counterparty == "Synthetic Florist"
     assert str(transaction_id) not in proposer.subjects[0].counterparty
+    attempt = _latest_attempt(database, transaction_id)
+    assert attempt is not None
+    assert attempt.action == "apply"
+    assert attempt.choice == "Gifts"
+    assert attempt.choice_confidence == Decimal("0.5")
+    assert attempt.noul == Decimal("0.62")
+    assert attempt.category_id == gifts.id
+    assert attempt.category_name == "Gifts"
+    assert attempt.counterparty == "Synthetic Florist"
+    assert attempt.amount == Decimal("-12.34")
+    assert attempt.currency == "SGD"
+    assert attempt.kind == "expense"
+    assert attempt.model == "jev-1.13.0"
+    assert attempt.error_class is None
 
 
 @pytest.mark.integration
@@ -342,6 +365,8 @@ def test_worker_jev_below_threshold_or_missing_key_leaves_review(
             category_name=None,
             confidence=Decimal("0.49"),
             model="jev-1.13.0",
+            choice="Gifts",
+            noul=Decimal("0.49"),
         )
     )
 
@@ -356,3 +381,65 @@ def test_worker_jev_below_threshold_or_missing_key_leaves_review(
         skipped_id,
         missing_key_id,
     )
+    skip_attempt = _latest_attempt(database, skipped_id)
+    assert skip_attempt is not None
+    assert skip_attempt.action == "skip"
+    assert skip_attempt.choice == "Gifts"
+    assert skip_attempt.choice_confidence == Decimal("0.49")
+    assert skip_attempt.noul == Decimal("0.49")
+    assert skip_attempt.category_id is None
+    assert skip_attempt.category_name is None
+    assert _latest_attempt(database, missing_key_id) is None
+    review = _pending_categorization(database, skipped_id)
+    assert review is not None
+    owner_review = OwnerWorkspace(database).get_review(review.id)
+    attempt_context = owner_review.context["jev_attempt"]
+    assert attempt_context["action"] == "skip"
+    assert attempt_context["choice"] == "Gifts"
+    assert attempt_context["choice_confidence"] == "0.49"
+    assert attempt_context["noul"] == "0.49"
+    assert attempt_context["category_name"] is None
+    assert attempt_context["model"] == "jev-1.13.0"
+
+
+class _BoomProposer:
+    def propose(self, subject: JevSubject, categories: object) -> Proposal:
+        del subject, categories
+        raise JevError("typesafe systemone failed") from TypeSafeError("nope")
+
+
+@pytest.mark.integration
+def test_worker_jev_persists_typesafe_errors_then_retries(
+    database: Database,
+    evidence: tuple[UUID, UUID, UUID],
+) -> None:
+    CategoryCatalog(database).create("Gifts")
+    transaction_id = _confirm_expense(database, evidence, counterparty="Synthetic Timeout Shop")
+
+    with pytest.raises(JevError, match="systemone failed"):
+        JevCategorizer(database, _BoomProposer()).categorize_transaction(transaction_id)
+
+    assert _pending_categorization(database, transaction_id) is not None
+    attempt = _latest_attempt(database, transaction_id)
+    assert attempt is not None
+    assert attempt.action == "skip"
+    assert attempt.error_class == "TypeSafeError"
+    assert attempt.error_message == "nope"
+    assert "api_key" not in (attempt.error_message or "").casefold()
+    review = _pending_categorization(database, transaction_id)
+    assert review is not None
+    context = OwnerWorkspace(database).get_review(review.id).context["jev_attempt"]
+    assert context["error_class"] == "TypeSafeError"
+    assert context["error_message"] == "nope"
+
+
+def _latest_attempt(database: Database, transaction_id: UUID) -> JevCategorizationAttempt | None:
+    with database.transaction() as session:
+        return session.scalar(
+            select(JevCategorizationAttempt)
+            .where(JevCategorizationAttempt.transaction_id == transaction_id)
+            .order_by(
+                JevCategorizationAttempt.attempted_at.desc(),
+                JevCategorizationAttempt.id.desc(),
+            )
+        )
