@@ -30,6 +30,12 @@ dev = [
   "pytest>=8.3,<9",
   "pytest-cov>=6,<7",
   "ruff>=0.11,<0.12",
+  "typesafe-sdk>=0.7,<1",
+]
+
+[project.optional-dependencies]
+agent = [
+  "typesafe-sdk>=0.7,<1",
 ]
 
 [project.scripts]

@@ -53,6 +53,6 @@ jobs:
           sudo apt-get update && sudo apt-get install --yes
           build-essential libpoppler-cpp-dev pkg-config
 
-      - run: uv sync --locked --all-groups
+      - run: uv sync --locked --all-groups --all-extras
       - run: pnpm install --frozen-lockfile
       - run: make check

@@ -1,6 +1,6 @@
 # External Codex categorizer
 
-Billzebub's in-app pass assigns a Category only at deterministic high confidence and leaves everything else as a `categorization_needed` Review. Unknowns are handled **outside** the NAS app containers by this host-side runner, which calls **Codex ChatGPT** (`codex exec`). It is not a Grok Bot and must not be added to `compose.nas.yaml`.
+Billzebub's in-app pass assigns a Category only at deterministic high confidence and leaves everything else as a `categorization_needed` Review. Unknowns are handled **outside** the NAS app containers. **Jev is the primary external pass** (`docs/jev-categorizer.md`); this Codex ChatGPT runner (`codex exec`) remains an **optional fallback** and must not be removed. It is not a Grok Bot and must not be added to `compose.nas.yaml`.
 
 The runner talks only to the agent-safe API from ADR 0003: opaque Transaction IDs, Counterparty, amount, currency, effective date, Transaction kind, Categories, and review choices. Schedule it as a forge routine. Keep the bearer token on rafiki as a mode-`0600` secret.
 

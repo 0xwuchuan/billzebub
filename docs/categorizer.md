@@ -36,6 +36,11 @@ Owner (not agent, not auto) categorization upserts `counterparty_category_map`:
 
 Later passes look up that key first. A later owner correction overwrites the mapping. Auto-assignment does not write the map, so the system cannot train on its own guesses.
 
-## External Codex runner
+## External runners (host-side only)
 
-Unknowns stay as Reviews. The optional host-side script `scripts/agent/codex_categorize.py` calls Codex ChatGPT (`codex exec -m gpt-5.6-luna`, fallback `gpt-5.6-terra`) against the agent API. It is not a Grok Bot and is not part of the NAS app image. The token stays on rafiki as a mode-`0600` secret; the primary schedule is a forge routine (dry-run once, then standing). See [`docs/codex-categorizer.md`](codex-categorizer.md).
+Unknowns stay as Reviews. External passes run on forge against the agent API; they are not Grok Bots and must not be added to `compose.nas.yaml` or the `api`/`worker` images.
+
+Cascade: **in-app map + rules → Jev → optional Codex**.
+
+1. **Jev (primary).** `scripts/agent/jev_categorize.py` calls TypeSafe System One (`jev-1.13.0`). Fail-closed: catalog match, calibrated Choice confidence, and an evidence Noul. See [`docs/jev-categorizer.md`](jev-categorizer.md).
+2. **Codex (optional fallback).** `scripts/agent/codex_categorize.py` still exists and is unchanged as a fallback (`codex exec -m gpt-5.6-luna`, terra fallback). See [`docs/codex-categorizer.md`](codex-categorizer.md).

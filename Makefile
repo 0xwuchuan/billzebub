@@ -3,7 +3,7 @@
 	test-integration
 
 setup:
-	uv sync --locked --all-groups
+	uv sync --locked --all-groups --all-extras
 	pnpm install --frozen-lockfile
 
 api:
