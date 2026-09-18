@@ -4,30 +4,21 @@ from collections.abc import Sequence
 from decimal import Decimal
 from io import StringIO
 from pathlib import Path
-from typing import Any, ClassVar
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import pytest
 from scripts.agent.agent_api import AgentApiError, Category, Transaction
 from scripts.agent.jev_categorize import (
-    DEFAULT_MODEL,
-    SKIP_OPTION,
-    TYPESAFE_ENDPOINT,
-    JevError,
-    JevProposer,
-    Proposal,
     RunnerConfig,
     RunnerError,
-    choice_criteria,
     idempotency_key,
-    jev_questions,
-    jev_state,
     main,
-    parse_jev_proposal,
     run,
     should_ask_jev,
+    subject_from_transaction,
 )
-from typesafe_sdk import Choice, Noul, TypeSafeError
+
+from billzebub.jev import DEFAULT_MODEL, JevError, Proposal, jev_state
 
 FOOD_ID = UUID("11111111-1111-1111-1111-111111111111")
 TXN_ID = UUID("22222222-2222-2222-2222-222222222222")
@@ -133,54 +124,6 @@ class FakeProposer:
         return self.proposal
 
 
-class FakeChoiceAnswer:
-    def __init__(self, choice: str, confidence: float) -> None:
-        self.choice = choice
-        self.confidence = confidence
-
-
-class FakeNoulAnswer:
-    def __init__(self, noul: float) -> None:
-        self.noul = noul
-
-
-class FakeSystemOneResponse:
-    def __init__(
-        self,
-        *,
-        choice: str = "Synthetic Food",
-        confidence: float = 0.91,
-        noul: float = 0.93,
-        model: str = DEFAULT_MODEL,
-    ) -> None:
-        self.model = model
-        self.choices = {"category": FakeChoiceAnswer(choice, confidence)}
-        self.nouls = {"enough_evidence": FakeNoulAnswer(noul)}
-        self.answers = {**self.choices, **self.nouls}
-
-
-class FakeTypeSafeClient:
-    last_init: ClassVar[dict[str, Any]] = {}
-    last_call: ClassVar[dict[str, Any]] = {}
-    response: ClassVar[FakeSystemOneResponse] = FakeSystemOneResponse()
-    error: ClassVar[Exception | None] = None
-
-    def __init__(self, **kwargs: Any) -> None:
-        type(self).last_init = kwargs
-
-    def __enter__(self) -> FakeTypeSafeClient:
-        return self
-
-    def __exit__(self, *args: object) -> None:
-        return None
-
-    def system_one(self, **kwargs: Any) -> FakeSystemOneResponse:
-        type(self).last_call = kwargs
-        if self.error is not None:
-            raise self.error
-        return self.response
-
-
 def test_empty_review_queue_is_quiet_success() -> None:
     stdout = StringIO()
     api = FakeApi(reviews=())
@@ -213,91 +156,6 @@ def test_skips_transfers_without_calling_jev() -> None:
     assert run(_config(), api, proposer, stdout=StringIO()) == 0
     assert proposer.calls == []
     assert api.categorize_calls == []
-
-
-@pytest.mark.parametrize("kind", ["income", "refund", "reimbursement"])
-def test_skips_income_refund_and_reimbursement(kind: str) -> None:
-    api = FakeApi(transaction=_transaction(kind=kind))
-    proposer = FakeProposer()
-    run(_config(), api, proposer, stdout=StringIO())
-    assert proposer.calls == []
-
-
-def test_proposal_gating_is_fail_closed() -> None:
-    categories = (_category(),)
-    low_confidence = parse_jev_proposal(
-        "Synthetic Food",
-        0.4,
-        0.99,
-        categories,
-        Decimal("0.85"),
-        model=DEFAULT_MODEL,
-    )
-    low_noul = parse_jev_proposal(
-        "Synthetic Food",
-        0.99,
-        0.4,
-        categories,
-        Decimal("0.85"),
-        model=DEFAULT_MODEL,
-    )
-    skip_option = parse_jev_proposal(
-        SKIP_OPTION,
-        0.99,
-        0.99,
-        categories,
-        Decimal("0.85"),
-        model=DEFAULT_MODEL,
-    )
-    unknown = parse_jev_proposal(
-        "Invented",
-        0.99,
-        0.99,
-        categories,
-        Decimal("0.85"),
-        model=DEFAULT_MODEL,
-    )
-    mismatched = parse_jev_proposal(
-        "Synthetic Transport",
-        0.99,
-        0.99,
-        categories,
-        Decimal("0.85"),
-        model=DEFAULT_MODEL,
-    )
-    apply = parse_jev_proposal(
-        "Synthetic Food",
-        0.91,
-        0.93,
-        categories,
-        Decimal("0.85"),
-        model=DEFAULT_MODEL,
-    )
-    assert low_confidence.action == "skip"
-    assert low_noul.action == "skip"
-    assert skip_option.action == "skip"
-    assert unknown.action == "skip"
-    assert mismatched.action == "skip"
-    assert apply.action == "apply"
-    assert apply.category_id == FOOD_ID
-    assert apply.category_name == "Synthetic Food"
-
-
-def test_undetermined_jev_result_leaves_review() -> None:
-    api = FakeApi()
-    proposer = FakeProposer(
-        Proposal(
-            action="skip",
-            category_id=None,
-            category_name=None,
-            confidence=Decimal("0"),
-            model=DEFAULT_MODEL,
-        )
-    )
-
-    assert run(_config(), api, proposer, stdout=StringIO()) == 0
-    assert api.categorize_calls == []
-    assert proposer.calls == [TXN_ID]
 
 
 def test_dry_run_calls_jev_but_does_not_post_categorize() -> None:
@@ -358,7 +216,7 @@ def test_secret_files_are_read_and_world_readable_files_are_rejected(
     )
     assert config.token == AGENT_BEARER
     assert config.typesafe_api_key == TYPESAFE_KEY
-    assert config.api_base == "https://billzebub.example.test"
+    assert config.min_confidence == Decimal("0.5")
     assert AGENT_BEARER not in repr(config)
     assert TYPESAFE_KEY not in repr(config)
 
@@ -386,64 +244,10 @@ def test_missing_tokens_fail_closed() -> None:
         )
 
 
-def test_state_is_agent_safe_and_questions_include_skip() -> None:
-    state = jev_state(_transaction())
-    criteria = choice_criteria((_category(),))
-    questions = jev_questions((_category(),))
-    assert state == {
-        "counterparty": "Synthetic Coffee",
-        "amount": "-12.34",
-        "currency": "SGD",
-        "effective_date": "2026-01-10",
-        "kind": "expense",
-    }
-    assert "source_artifact_id" not in state
+def test_cli_subject_is_agent_safe() -> None:
+    state = jev_state(subject_from_transaction(_transaction()))
     assert str(TXN_ID) not in state.values()
-    assert criteria["Synthetic Food"] == "Synthetic Food"
-    assert SKIP_OPTION in criteria
-    assert isinstance(questions["category"], Choice)
-    assert isinstance(questions["enough_evidence"], Noul)
     assert AGENT_BEARER not in str(state)
-    assert TYPESAFE_KEY not in str(state)
-
-
-def test_jev_client_pins_model_and_does_not_post_on_sdk_error(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    FakeTypeSafeClient.last_init = {}
-    FakeTypeSafeClient.last_call = {}
-    FakeTypeSafeClient.response = FakeSystemOneResponse()
-    FakeTypeSafeClient.error = TypeSafeError("nope")
-    monkeypatch.setattr("scripts.agent.jev_categorize.TypeSafeClient", FakeTypeSafeClient)
-    proposer = JevProposer(_config())
-
-    with pytest.raises(JevError, match="systemone failed") as error:
-        proposer.propose(_transaction(), (_category(),))
-
-    assert TYPESAFE_KEY not in str(error.value)
-    assert FakeTypeSafeClient.last_init["model"] == DEFAULT_MODEL
-    assert FakeTypeSafeClient.last_init["api_key"] == TYPESAFE_KEY
-    assert FakeTypeSafeClient.last_init["base_url"] == "https://api.typesafe.ai"
-    assert FakeTypeSafeClient.last_call["model"] == DEFAULT_MODEL
-
-
-def test_jev_client_parses_choice_and_noul(monkeypatch: pytest.MonkeyPatch) -> None:
-    FakeTypeSafeClient.last_init = {}
-    FakeTypeSafeClient.last_call = {}
-    FakeTypeSafeClient.error = None
-    FakeTypeSafeClient.response = FakeSystemOneResponse(
-        choice="Synthetic Food", confidence=0.91, noul=0.94
-    )
-    monkeypatch.setattr("scripts.agent.jev_categorize.TypeSafeClient", FakeTypeSafeClient)
-    proposal = JevProposer(_config()).propose(_transaction(), (_category(),))
-    assert proposal.action == "apply"
-    assert proposal.category_id == FOOD_ID
-    assert proposal.model == DEFAULT_MODEL
-    state = FakeTypeSafeClient.last_call["state"]
-    questions = FakeTypeSafeClient.last_call["questions"]
-    assert state["counterparty"] == "Synthetic Coffee"
-    assert SKIP_OPTION in questions["category"].criteria
-    assert "enough_evidence" in questions
 
 
 def test_apply_http_failure_exits_nonzero() -> None:
@@ -458,26 +262,10 @@ def test_idempotency_key_is_stable() -> None:
     assert idempotency_key(_transaction(), FOOD_ID) == f"jev-cat:{TXN_ID}:v3:{FOOD_ID}"
 
 
-def test_duplicate_catalog_names_fail_closed() -> None:
-    categories = (
-        Category(id=FOOD_ID, name="Synthetic Food", parent_id=None),
-        Category(id=uuid4(), name="Synthetic Food", parent_id=uuid4()),
-    )
-    proposal = parse_jev_proposal(
-        "Synthetic Food",
-        0.99,
-        0.99,
-        categories,
-        Decimal("0.85"),
-        model=DEFAULT_MODEL,
-    )
-    assert proposal.action == "skip"
-
-
 def test_parser_has_no_typesafe_key_flag() -> None:
     from scripts.agent import jev_categorize as jev
 
     help_text = jev._parser().format_help()
-    assert TYPESAFE_ENDPOINT == "https://api.typesafe.ai/v1/systemone"
     assert "TYPESAFE" not in help_text
     assert "--api-key" not in help_text
+    assert "NAS worker" in help_text

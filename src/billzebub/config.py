@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import stat
+from decimal import Decimal
 from enum import StrEnum
 from pathlib import Path
 from typing import Self
@@ -10,6 +11,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from billzebub.jev import DEFAULT_MIN_CONFIDENCE, DEFAULT_MODEL, DEFAULT_TIMEOUT_SECONDS
 
 
 class Environment(StrEnum):
@@ -46,9 +49,11 @@ class Settings(BaseSettings):
     apple_wallet_timezone: str | None = None
     apple_wallet_max_bytes: int = Field(default=16 * 1024, gt=0, le=1024 * 1024)
     web_root: Path | None = None
-    jev_webhook_url: str | None = None
-    jev_webhook_secret: SecretStr | None = None
-    jev_webhook_timeout_seconds: float = Field(default=5.0, gt=0, le=60)
+    jev_model: str = DEFAULT_MODEL
+    jev_min_confidence: Decimal = DEFAULT_MIN_CONFIDENCE
+    jev_timeout_seconds: float = Field(default=DEFAULT_TIMEOUT_SECONDS, gt=0, le=120)
+    jev_catchup_hour: int = Field(default=21, ge=0, le=23)
+    jev_catchup_timezone: str = "Asia/Singapore"
 
     @field_validator("artifact_root", "statement_inbox_root", "statement_password_root")
     @classmethod
@@ -76,24 +81,27 @@ class Settings(BaseSettings):
             raise ValueError("Apple Wallet timezone must be an IANA timezone") from error
         return value
 
-    @field_validator("jev_webhook_url", mode="before")
+    @field_validator("jev_model")
     @classmethod
-    def empty_webhook_url_to_none(cls, value: object) -> object:
-        if value is None:
-            return None
-        if isinstance(value, str):
-            stripped = value.strip()
-            return stripped or None
+    def normalize_jev_model(cls, value: str) -> str:
+        return value.strip() or DEFAULT_MODEL
+
+    @field_validator("jev_min_confidence")
+    @classmethod
+    def validate_jev_min_confidence(cls, value: Decimal) -> Decimal:
+        if not Decimal("0") <= value <= Decimal("1"):
+            raise ValueError("Jev minimum confidence must be between 0 and 1")
         return value
 
-    @field_validator("jev_webhook_secret", mode="before")
+    @field_validator("jev_catchup_timezone")
     @classmethod
-    def empty_webhook_secret_to_none(cls, value: object) -> object:
-        if value is None:
-            return None
-        if isinstance(value, str) and not value.strip():
-            return None
-        return value
+    def validate_jev_catchup_timezone(cls, value: str) -> str:
+        timezone = value.strip() or "Asia/Singapore"
+        try:
+            ZoneInfo(timezone)
+        except ZoneInfoNotFoundError as error:
+            raise ValueError("Jev catch-up timezone must be an IANA timezone") from error
+        return timezone
 
     @model_validator(mode="after")
     def validate_security_mode(self) -> Self:

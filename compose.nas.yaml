@@ -134,4 +134,5 @@ networks:
   proxy:
     internal: false
   egress:
+    # Worker HTTPS egress for Jev System One. No published ports.
     internal: false

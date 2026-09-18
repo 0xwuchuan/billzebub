@@ -1,9 +1,11 @@
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
-from pydantic import SecretStr, ValidationError
+from pydantic import ValidationError
 
 from billzebub.config import Environment, Settings
+from billzebub.jev import DEFAULT_MIN_CONFIDENCE, DEFAULT_MODEL
 
 
 def test_nas_configuration_requires_tailscale_proxy_and_owner() -> None:
@@ -55,16 +57,16 @@ def test_settings_normalize_owner_logins_and_paths(tmp_path: Path) -> None:
     assert settings.tailscale_allowed_logins == ("owner@example.test",)
 
 
-def test_optional_jev_webhook_settings_treat_blanks_as_unset() -> None:
-    settings = Settings(jev_webhook_url="  ", jev_webhook_secret="  ")  # type: ignore[arg-type]
-    assert settings.jev_webhook_url is None
-    assert settings.jev_webhook_secret is None
-    assert settings.jev_webhook_timeout_seconds == 5.0
+def test_jev_settings_default_to_worker_primary_values() -> None:
+    settings = Settings()
+    assert settings.jev_model == DEFAULT_MODEL
+    assert settings.jev_min_confidence == DEFAULT_MIN_CONFIDENCE
+    assert settings.jev_timeout_seconds == 30.0
+    assert settings.jev_catchup_hour == 21
+    assert settings.jev_catchup_timezone == "Asia/Singapore"
+    assert not hasattr(settings, "jev_webhook_url")
 
-    configured = Settings(
-        jev_webhook_url=" https://forge.example.test/webhook ",
-        jev_webhook_secret=SecretStr("synthetic-jev-webhook-sender-key"),
-    )
-    assert configured.jev_webhook_url == "https://forge.example.test/webhook"
-    assert configured.jev_webhook_secret is not None
-    assert configured.jev_webhook_secret.get_secret_value() == "synthetic-jev-webhook-sender-key"
+
+def test_jev_min_confidence_rejects_out_of_range() -> None:
+    with pytest.raises(ValidationError, match="confidence"):
+        Settings(jev_min_confidence=Decimal("1.1"))

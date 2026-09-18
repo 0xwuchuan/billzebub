@@ -1,14 +1,24 @@
-from collections.abc import Callable
+import importlib
 from datetime import datetime
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
 
 import pytest
 
-from billzebub.entrypoints.worker import worker_handlers
+from billzebub.entrypoints.worker import JobEnqueuer, worker_handlers
+from billzebub.jev import JevError
+from billzebub.jev_categorizer import (
+    CATEGORIZE_TRANSACTION_JOB,
+    JEV_CATCH_UP_JOB,
+    CategorizerError,
+    JevCatchupScheduler,
+    enqueue_jev_catch_up,
+    enqueue_transaction_categorization,
+)
 from billzebub.jobs import EnqueuedJob
 from billzebub.reconciliation import ReconciliationConfirmation, ReconciliationRun
 from billzebub.statement_extraction import ExtractionOutcome, ExtractionStatus
-from billzebub.worker import JobHandler, TerminalJobError
+from billzebub.worker import JobHandler, RetryableJobError, TerminalJobError
 
 
 class FakeQueue:
@@ -70,17 +80,52 @@ class FakeReconciliation:
         )
 
 
+class FakeCategorizer:
+    def __init__(self) -> None:
+        self.received: list[UUID] = []
+        self.pending: tuple[UUID, ...] = ()
+        self.error: Exception | None = None
+
+    def categorize_transaction(self, transaction_id: UUID) -> None:
+        if self.error is not None:
+            raise self.error
+        self.received.append(transaction_id)
+
+    def enqueue_pending(self, queue: JobEnqueuer) -> int:
+        for transaction_id in self.pending:
+            enqueue_transaction_categorization(queue, transaction_id)
+        return len(self.pending)
+
+
 def _handlers(
     queue: FakeQueue,
     extraction: FakeExtraction | None = None,
     reconciliation: FakeReconciliation | None = None,
-    notify_categorization_needed: Callable[[], None] | None = None,
+    categorizer: FakeCategorizer | None = None,
 ) -> dict[str, JobHandler]:
     return worker_handlers(
         queue,
         extraction or FakeExtraction(ExtractionStatus.ACCEPTED),
         reconciliation or FakeReconciliation(),
-        notify_categorization_needed=notify_categorization_needed,
+        categorizer or FakeCategorizer(),
+    )
+
+
+def _confirmation_run(account_id: UUID, transaction_id: UUID) -> ReconciliationRun:
+    return ReconciliationRun(
+        financial_account_id=account_id,
+        candidates=(),
+        confirmations=(
+            ReconciliationConfirmation(
+                transaction_id=transaction_id,
+                statement_claim_id=uuid4(),
+                real_time_claim_id=None,
+                source="statement_only",
+            ),
+        ),
+        ambiguous_review_ids=(),
+        unconfirmed_claim_ids=(),
+        no_match_real_time_claim_ids=(),
     )
 
 
@@ -131,14 +176,34 @@ def test_reconciliation_handler_and_invalid_payloads_are_bounded() -> None:
         handlers["extract_statement"]({})
     with pytest.raises(TerminalJobError, match="invalid_reconciliation_job"):
         handlers["reconcile_financial_account"]({})
-    assert "categorize_transaction" not in handlers
+    with pytest.raises(TerminalJobError, match="invalid_categorize_job"):
+        handlers[CATEGORIZE_TRANSACTION_JOB]({})
 
 
-def test_reconciliation_does_not_enqueue_in_app_categorize_jobs() -> None:
+def test_reconciliation_enqueues_categorize_jobs_for_confirmations() -> None:
     queue = FakeQueue()
     transaction_id = uuid4()
     account_id = uuid4()
-    statement_id = uuid4()
+    reconciliation = FakeReconciliation()
+    reconciliation.run = _confirmation_run(account_id, transaction_id)
+    handlers = _handlers(queue, reconciliation=reconciliation)
+
+    handlers["reconcile_financial_account"]({"financial_account_id": str(account_id)})
+
+    assert queue.enqueued == [
+        (
+            CATEGORIZE_TRANSACTION_JOB,
+            {"transaction_id": str(transaction_id)},
+            str(transaction_id),
+        )
+    ]
+
+
+def test_matched_real_time_confirmation_uses_the_same_categorize_hook() -> None:
+    queue = FakeQueue()
+    transaction_id = uuid4()
+    account_id = uuid4()
+    real_time_id = uuid4()
     reconciliation = FakeReconciliation()
     reconciliation.run = ReconciliationRun(
         financial_account_id=account_id,
@@ -146,9 +211,9 @@ def test_reconciliation_does_not_enqueue_in_app_categorize_jobs() -> None:
         confirmations=(
             ReconciliationConfirmation(
                 transaction_id=transaction_id,
-                statement_claim_id=statement_id,
-                real_time_claim_id=None,
-                source="statement_only",
+                statement_claim_id=uuid4(),
+                real_time_claim_id=real_time_id,
+                source="matched",
             ),
         ),
         ambiguous_review_ids=(),
@@ -159,90 +224,78 @@ def test_reconciliation_does_not_enqueue_in_app_categorize_jobs() -> None:
 
     handlers["reconcile_financial_account"]({"financial_account_id": str(account_id)})
 
-    assert queue.enqueued == []
-
-
-def test_statement_confirmations_notify_jev_webhook() -> None:
-    queue = FakeQueue()
-    account_id = uuid4()
-    notified: list[str] = []
-    reconciliation = FakeReconciliation()
-    reconciliation.run = ReconciliationRun(
-        financial_account_id=account_id,
-        candidates=(),
-        confirmations=(
-            ReconciliationConfirmation(
-                transaction_id=uuid4(),
-                statement_claim_id=uuid4(),
-                real_time_claim_id=None,
-                source="statement_only",
-            ),
-        ),
-        ambiguous_review_ids=(),
-        unconfirmed_claim_ids=(),
-        no_match_real_time_claim_ids=(),
-    )
-    handlers = _handlers(
-        queue,
-        reconciliation=reconciliation,
-        notify_categorization_needed=lambda: notified.append("posted"),
-    )
-
-    handlers["extract_statement"](
-        {"artifact_id": str(uuid4()), "financial_account_id": str(account_id)}
-    )
-    handlers["reconcile_financial_account"]({"financial_account_id": str(account_id)})
-
-    assert notified == ["posted"]
     assert queue.enqueued == [
         (
-            "reconcile_financial_account",
-            {"financial_account_id": str(account_id)},
-            str(account_id),
+            CATEGORIZE_TRANSACTION_JOB,
+            {"transaction_id": str(transaction_id)},
+            str(transaction_id),
         )
     ]
 
 
-def test_empty_reconciliation_does_not_notify_jev_webhook() -> None:
-    notified: list[str] = []
-    handlers = _handlers(
-        FakeQueue(),
-        notify_categorization_needed=lambda: notified.append("posted"),
-    )
+def test_categorize_handler_runs_the_transaction_pass() -> None:
+    queue = FakeQueue()
+    categorizer = FakeCategorizer()
+    transaction_id = uuid4()
+    handlers = _handlers(queue, categorizer=categorizer)
 
-    handlers["reconcile_financial_account"]({"financial_account_id": str(uuid4())})
+    handlers[CATEGORIZE_TRANSACTION_JOB]({"transaction_id": str(transaction_id)})
 
-    assert notified == []
+    assert categorizer.received == [transaction_id]
 
 
-def test_jev_webhook_failure_does_not_fail_reconciliation() -> None:
-    account_id = uuid4()
-    reconciliation = FakeReconciliation()
-    reconciliation.run = ReconciliationRun(
-        financial_account_id=account_id,
-        candidates=(),
-        confirmations=(
-            ReconciliationConfirmation(
-                transaction_id=uuid4(),
-                statement_claim_id=uuid4(),
-                real_time_claim_id=None,
-                source="statement_only",
-            ),
-        ),
-        ambiguous_review_ids=(),
-        unconfirmed_claim_ids=(),
-        no_match_real_time_claim_ids=(),
-    )
+def test_categorize_handler_retries_typesafe_failures() -> None:
+    categorizer = FakeCategorizer()
+    categorizer.error = JevError("typesafe systemone failed")
+    handlers = _handlers(FakeQueue(), categorizer=categorizer)
 
-    def boom() -> None:
-        raise RuntimeError("forge unavailable")
+    with pytest.raises(RetryableJobError, match="jev_unavailable"):
+        handlers[CATEGORIZE_TRANSACTION_JOB]({"transaction_id": str(uuid4())})
 
-    handlers = _handlers(
-        FakeQueue(),
-        reconciliation=reconciliation,
-        notify_categorization_needed=boom,
-    )
 
-    handlers["reconcile_financial_account"]({"financial_account_id": str(account_id)})
+def test_categorize_handler_terminates_policy_failures() -> None:
+    categorizer = FakeCategorizer()
+    categorizer.error = CategorizerError("Transaction was not found")
+    handlers = _handlers(FakeQueue(), categorizer=categorizer)
 
-    assert reconciliation.received == [account_id]
+    with pytest.raises(TerminalJobError, match="invalid_categorize_job"):
+        handlers[CATEGORIZE_TRANSACTION_JOB]({"transaction_id": str(uuid4())})
+
+
+def test_catch_up_enqueues_pending_reviews_and_is_quiet_when_empty() -> None:
+    queue = FakeQueue()
+    categorizer = FakeCategorizer()
+    handlers = _handlers(queue, categorizer=categorizer)
+    handlers[JEV_CATCH_UP_JOB]({"run_date": "2026-09-18"})
+    assert queue.enqueued == []
+
+    pending_id = uuid4()
+    categorizer.pending = (pending_id,)
+    handlers[JEV_CATCH_UP_JOB]({"run_date": "2026-09-18"})
+    assert queue.enqueued == [
+        (CATEGORIZE_TRANSACTION_JOB, {"transaction_id": str(pending_id)}, str(pending_id))
+    ]
+
+
+def test_catchup_scheduler_is_due_at_or_after_local_hour() -> None:
+    scheduler = JevCatchupScheduler(hour=21, timezone=ZoneInfo("Asia/Singapore"))
+    before = datetime(2026, 9, 18, 12, 59, tzinfo=ZoneInfo("Asia/Singapore"))
+    at_hour = datetime(2026, 9, 18, 21, 0, tzinfo=ZoneInfo("Asia/Singapore"))
+    later = datetime(2026, 9, 18, 22, 15, tzinfo=ZoneInfo("Asia/Singapore"))
+    next_day = datetime(2026, 9, 19, 21, 0, tzinfo=ZoneInfo("Asia/Singapore"))
+
+    assert scheduler.catchup_date(before) is None
+    assert scheduler.catchup_date(at_hour) == "2026-09-18"
+    assert scheduler.catchup_date(later) is None
+    assert scheduler.catchup_date(next_day) == "2026-09-19"
+
+
+def test_enqueue_catch_up_uses_run_date_dedupe() -> None:
+    queue = FakeQueue()
+    enqueue_jev_catch_up(queue, "2026-09-18")
+    assert queue.enqueued == [(JEV_CATCH_UP_JOB, {"run_date": "2026-09-18"}, "2026-09-18")]
+
+
+def test_webhook_notifier_is_removed() -> None:
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("billzebub.jev_webhook")

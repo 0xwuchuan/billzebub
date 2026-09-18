@@ -1,4 +1,5 @@
 from datetime import UTC, date, datetime
+from decimal import Decimal
 from uuid import UUID
 
 import pytest
@@ -9,6 +10,8 @@ from billzebub.categories import CategoryCatalog
 from billzebub.claims import ClaimBook, ClaimDraft, ClaimType
 from billzebub.financial_history import Confirmation, FinancialHistory, TransactionKind
 from billzebub.identity import OwnerIdentity
+from billzebub.jev import JevSubject, Proposal
+from billzebub.jev_categorizer import JevCategorizer
 from billzebub.money import Money
 from billzebub.owner_actors import OwnerActors
 from billzebub.owner_transaction_actions import OwnerCategorizationCommand, OwnerTransactionActions
@@ -278,3 +281,78 @@ def test_provisional_claim_projection_does_not_guess_categories(
     assert items["Synthetic Unknown Vendor"].category_splits == ()
     assert items["Synthetic Taxi Transfer"].category_splits == ()
     assert items["Synthetic Taxi Transfer"].kind is TransactionKind.TRANSFER
+
+
+class _FixedProposer:
+    def __init__(self, proposal: Proposal) -> None:
+        self.proposal = proposal
+        self.subjects: list[JevSubject] = []
+
+    def propose(self, subject: JevSubject, categories: object) -> Proposal:
+        del categories
+        self.subjects.append(subject)
+        return self.proposal
+
+
+@pytest.mark.integration
+def test_worker_jev_applies_category_at_half_confidence(
+    database: Database,
+    evidence: tuple[UUID, UUID, UUID],
+) -> None:
+    gifts = CategoryCatalog(database).create("Gifts")
+    transaction_id = _confirm_expense(database, evidence, counterparty="Synthetic Florist")
+    proposer = _FixedProposer(
+        Proposal(
+            action="apply",
+            category_id=gifts.id,
+            category_name="Gifts",
+            confidence=Decimal("0.5"),
+            model="jev-1.13.0",
+        )
+    )
+
+    updated = JevCategorizer(database, proposer).categorize_transaction(transaction_id)
+    current = FinancialHistory(database).get(transaction_id)
+
+    assert updated is not None
+    assert current.category_splits[0].category_id == gifts.id
+    assert _pending_categorization(database, transaction_id) is None
+    assert proposer.subjects[0].counterparty == "Synthetic Florist"
+    assert str(transaction_id) not in proposer.subjects[0].counterparty
+
+
+@pytest.mark.integration
+def test_worker_jev_below_threshold_or_missing_key_leaves_review(
+    database: Database,
+    evidence: tuple[UUID, UUID, UUID],
+) -> None:
+    CategoryCatalog(database).create("Gifts")
+    skipped_id = _confirm_expense(database, evidence, counterparty="Synthetic Skip Shop")
+    missing_key_id = _confirm_expense(
+        database,
+        evidence,
+        counterparty="Synthetic No Key",
+        amount="-3.00",
+        day=date(2026, 3, 8),
+    )
+    skip_proposer = _FixedProposer(
+        Proposal(
+            action="skip",
+            category_id=None,
+            category_name=None,
+            confidence=Decimal("0.49"),
+            model="jev-1.13.0",
+        )
+    )
+
+    assert JevCategorizer(database, skip_proposer).categorize_transaction(skipped_id) is None
+    assert JevCategorizer(database, None).categorize_transaction(missing_key_id) is None
+    assert FinancialHistory(database).get(skipped_id).category_splits[0].category_name == (
+        "Uncategorized"
+    )
+    assert _pending_categorization(database, skipped_id) is not None
+    assert _pending_categorization(database, missing_key_id) is not None
+    assert JevCategorizer(database, skip_proposer).pending_transaction_ids() == (
+        skipped_id,
+        missing_key_id,
+    )

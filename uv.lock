@@ -59,6 +59,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "sqlalchemy" },
+    { name = "typesafe-sdk" },
     { name = "uuid6" },
     { name = "uvicorn" },
 ]
@@ -89,6 +90,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.10,<3" },
     { name = "pydantic-settings", specifier = ">=2.8,<3" },
     { name = "sqlalchemy", specifier = ">=2.0,<3" },
+    { name = "typesafe-sdk", specifier = ">=0.7,<1" },
     { name = "typesafe-sdk", marker = "extra == 'agent'", specifier = ">=0.7,<1" },
     { name = "uuid6", specifier = ">=2024.7,<2027" },
     { name = "uvicorn", specifier = ">=0.34,<1" },

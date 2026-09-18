@@ -1,11 +1,11 @@
 # In-app Expense categorization
 
-Billzebub does **not** auto-assign a Category in the NAS app. After statement confirmation or Real-time Claim projection, an Expense or Cash Withdrawal stays `Uncategorized` and keeps a `categorization_needed` Attention Review until the **owner** or **Jev** assigns a Category. There is no LLM, learned map, or keyword scorer in the NAS containers.
+After statement confirmation or a Real-time Claim becoming a Transaction, an Expense or Cash Withdrawal starts `Uncategorized` with a `categorization_needed` Attention Review. The **NAS worker** then calls **Jev** (TypeSafe System One) and applies a Category when confidence is at least **0.5**. Below that floor the Review stays open. There is no learned Counterparty map, keyword scorer, or Codex runner.
 
-## When Reviews appear
+## When Reviews appear and Jev runs
 
-1. **Statement confirmation.** After Reconciliation establishes a Transaction (statement-only or matched Real-time Claim), Financial History records `Uncategorized` Category Splits for spending kinds and opens `categorization_needed`. The worker then POSTs the forge Jev webhook (fail-open).
-2. **Real-time Claim → Transaction projection.** Owner workspace projections of eligible provisional Real-time Claims do not guess a Category. Display splits stay empty until a Statement Claim confirms a Transaction and a later owner or Jev assignment. Wallet ingest does not POST the webhook; a daily forge cron covers catch-up.
+1. **Statement confirmation.** After Reconciliation establishes a Transaction (statement-only or matched Real-time Claim), Financial History records `Uncategorized` Category Splits for spending kinds and opens `categorization_needed`. The worker enqueues the same `categorize_transaction` job for every confirmation and calls Jev.
+2. **Real-time Claim → Transaction.** When Reconciliation confirms a Wallet/PayLah Real-time Claim into a Transaction, that confirmation uses the same categorize hook. Owner-workspace projections of *provisional* Real-time Claims (not yet Transactions) do not call TypeSafe on read; they stay without Category Splits until confirmation. Daily NAS catch-up covers leftover uncategorized Transactions, including Wallet-originated ones Jev missed on the inline pass.
 
 Transfers, Income, Refunds, and Reimbursements are never given Expense Categories.
 
@@ -13,8 +13,8 @@ Transfers, Income, Refunds, and Reimbursements are never given Expense Categorie
 
 Owner categorization uses `OwnerTransactionActions.categorize` with an ETag/version check and Correction reason `owner_categorization`. That cancels the Review. It does **not** upsert a Counterparty→Category map. A later Transaction with the same Counterparty stays Uncategorized until the owner or Jev assigns it again.
 
-Agent categorization uses the same owner-safe mutation path with reason `agent_categorization` and also does not write a map.
+Agent categorization uses the same owner-safe mutation path with reason `agent_categorization` and also does not write a map. In-worker Jev uses reason `jev_categorization`.
 
-## External auto-categorizer (host-side only)
+## Auto-categorizer (NAS worker)
 
-Unknowns stay as Reviews. Cascade: statement import → fail-open forge webhook → host-side **Jev** (`scripts/agent/jev_categorize.py`, TypeSafe System One `jev-1.13.0`). Owner categorization still works at any time. A daily forge cron is separate and covers Wallet catch-up. Jev is not a Grok Bot and must not be added to `compose.nas.yaml` or the `api`/`worker` images. See [`docs/jev-categorizer.md`](jev-categorizer.md).
+Unknowns stay as Reviews until Jev applies or the owner assigns. Cascade: statement import / Real-time Claim confirmation → worker Jev (threshold 0.5) → owner. A daily in-worker catch-up (`0 21 * * *` Asia/Singapore, env-overridable) drains remaining `categorization_needed` Reviews. This is not a Grok Bot and is not scheduled on forge. See [`docs/jev-categorizer.md`](jev-categorizer.md).
