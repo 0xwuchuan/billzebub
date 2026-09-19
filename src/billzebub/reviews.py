@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -31,6 +32,43 @@ class PendingReviewStatus(StrEnum):
 
 class ReviewError(ValueError):
     """Review policy or optimistic concurrency rejected a command."""
+
+
+def categorization_needed_context(
+    *,
+    transaction_id: UUID,
+    counterparty: str,
+    amount: str,
+    currency: str,
+    account: str,
+    financial_account_id: UUID,
+    effective_date: str,
+    version: int,
+    kind: str,
+) -> dict[str, Any]:
+    """Display fields so a categorization card can render without a Transaction join."""
+    return {
+        "transaction_id": str(transaction_id),
+        "counterparty": counterparty,
+        "amount": amount,
+        "currency": currency,
+        "account": account,
+        "financial_account_id": str(financial_account_id),
+        "effective_date": effective_date,
+        "version": version,
+        "kind": kind,
+    }
+
+
+def merge_categorization_context(
+    context: Mapping[str, Any],
+    display: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Overlay live Transaction display fields without dropping other context keys."""
+    merged = dict(context)
+    if display:
+        merged.update(display)
+    return merged
 
 
 @dataclass(frozen=True, slots=True)

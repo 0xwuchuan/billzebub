@@ -7,13 +7,18 @@ import { useDeskMedia } from "../hooks/useDeskMedia";
 import { useEntrance } from "../hooks/useEntrance";
 import {
   activityAmount,
+  categorizationAmount,
+  categorizationCounterparty,
   contextString,
   contextStrings,
   filterReviews,
   importForReview,
   jevAttemptFromContext,
+  type JevAttempt,
   nextPendingReviewId,
+  reviewTransactionId,
   transactionForReview,
+  transactionFromReviewContext,
 } from "../lib/workspace";
 import {
   dayMonthLabel,
@@ -70,6 +75,8 @@ export function ReviewPage({
   );
   const selected =
     items.find((item) => item.id === selectedId) ?? items[0] ?? null;
+  const selectedAssignId =
+    selected === null ? null : reviewTransactionId(selected);
 
   function advancePast(reviewId: string) {
     onSelect(nextPendingReviewId(items, reviewId));
@@ -190,9 +197,9 @@ export function ReviewPage({
               importRecord={importForReview(selected, imports)}
               categories={categories}
               draft={
-                selected.subject_type === "transaction"
-                  ? (drafts[selected.subject_id] ?? "")
-                  : ""
+                selectedAssignId === null
+                  ? ""
+                  : (drafts[selectedAssignId] ?? "")
               }
               saving={saving}
               today={today}
@@ -227,10 +234,11 @@ function QueueItem({
   onSelect: (id: string) => void;
 }) {
   const blocking = review.severity === "blocking";
-  const amount =
+  const amountMoney =
     transaction === undefined
-      ? null
-      : formatUnsigned(activityAmount(transaction));
+      ? categorizationAmount(review.context)
+      : activityAmount(transaction);
+  const amount = amountMoney === null ? null : formatUnsigned(amountMoney);
   return (
     <button
       className={`queue-item${blocking ? " is-blocking" : ""}`}
@@ -289,33 +297,40 @@ function Evidence({
   const fresh = useEntrance(`review:${review.id}`);
   const blocking = review.severity === "blocking";
   const claims = contextStrings(review.context, "claims");
+  const assignable = transaction ?? transactionFromReviewContext(review);
   const raw =
     contextString(review.context, "raw") ??
-    transaction?.counterparty ??
+    assignable?.counterparty ??
     review.subject_id;
   const account =
     contextString(review.context, "account") ??
-    transaction?.financial_account.name ??
+    assignable?.financial_account.name ??
     importRecord?.financial_account_name ??
-    review.subject_type;
+    (review.condition_code === "categorization_needed"
+      ? ""
+      : review.subject_type);
   const categorization = review.condition_code === "categorization_needed";
   const jevAttempt = categorization
     ? jevAttemptFromContext(review.context)
     : null;
+  const jevLine = jevDecisionLine(jevAttempt);
   const needsSetup =
     review.condition_code === "apple_wallet_unmapped_card" ||
     review.condition_code === "paylah_account_missing" ||
     review.condition_code === "paylah_account_ambiguous";
-  const amount =
-    transaction === undefined
-      ? null
-      : formatUnsigned(activityAmount(transaction));
-  const subject = decisionSubject(review, transaction, importRecord);
+  const amountMoney =
+    transaction !== undefined
+      ? activityAmount(transaction)
+      : categorizationAmount(review.context);
+  const amount = amountMoney === null ? null : formatUnsigned(amountMoney);
+  const subject = decisionSubject(review, assignable, importRecord);
   const meta = [
     account,
     transaction !== undefined
       ? dayMonthLabel(transaction.effective_date)
-      : null,
+      : contextString(review.context, "effective_date") !== null
+        ? dayMonthLabel(contextString(review.context, "effective_date") ?? "")
+        : null,
     openedLabel(review.created_at, today),
   ]
     .filter((part): part is string => part !== null && part !== "")
@@ -359,23 +374,24 @@ function Evidence({
             <p className="decision-amount amount">{amount}</p>
           ) : null}
           <p className="decision-meta">{meta}</p>
+          {jevLine !== null ? <p className="decision-meta">{jevLine}</p> : null}
         </div>
         <section className="review-decision">
           <div className="review-actions">
-            {categorization && transaction !== undefined ? (
+            {categorization && assignable !== undefined ? (
               <>
                 <label
                   className="sr-only"
-                  htmlFor={`review-cat-${transaction.id}`}
+                  htmlFor={`review-cat-${assignable.id}`}
                 >
-                  Category for {transaction.counterparty}
+                  Category for {assignable.counterparty}
                 </label>
                 <select
                   className="select"
-                  id={`review-cat-${transaction.id}`}
+                  id={`review-cat-${assignable.id}`}
                   value={draft}
                   onChange={(event) => {
-                    onDraft(transaction.id, event.target.value);
+                    onDraft(assignable.id, event.target.value);
                   }}
                 >
                   <option value="">Choose Category</option>
@@ -387,17 +403,14 @@ function Evidence({
                 </select>
                 <Button
                   variant="primary"
-                  disabled={draft === "" || saving === transaction.id}
+                  disabled={draft === "" || saving === assignable.id}
                   onClick={() => {
-                    onAssign(transaction);
+                    onAssign(assignable);
                   }}
                 >
-                  {saving === transaction.id ? "Saving…" : "Assign Category"}
+                  {saving === assignable.id ? "Saving…" : "Assign Category"}
                 </Button>
               </>
-            ) : null}
-            {categorization && transaction === undefined ? (
-              <span className="muted">Transaction action required</span>
             ) : null}
             {needsSetup
               ? review.allowed_decisions.map((choice) => (
@@ -430,74 +443,76 @@ function Evidence({
               : null}
           </div>
         </section>
-        <details className="import-details review-details">
-          <summary>Review details</summary>
-          <p className={`prompt${blocking ? " is-blocking" : ""}`}>
-            {evidenceBody(review, transaction)}
-          </p>
-          {jevAttempt !== null ? (
+        {categorization ? null : (
+          <details className="import-details review-details">
+            <summary>Review details</summary>
+            <p className={`prompt${blocking ? " is-blocking" : ""}`}>
+              {evidenceBody(review, transaction)}
+            </p>
+            {jevAttempt !== null ? (
+              <section>
+                <h3 className="eyebrow">Last Jev attempt</h3>
+                <dl className="kv">
+                  <dt>Action</dt>
+                  <dd>{jevAttempt.action}</dd>
+                  <dt>Choice</dt>
+                  <dd>{jevAttempt.choice ?? "none"}</dd>
+                  <dt>Confidence</dt>
+                  <dd>{jevAttempt.choice_confidence ?? "—"}</dd>
+                  <dt>Evidence noul</dt>
+                  <dd>{jevAttempt.noul ?? "—"}</dd>
+                  <dt>Category</dt>
+                  <dd>
+                    {jevAttempt.action === "apply"
+                      ? (jevAttempt.category_name ?? "—")
+                      : "skip"}
+                  </dd>
+                  <dt>Model</dt>
+                  <dd>{jevAttempt.model}</dd>
+                  {jevAttempt.error_class !== null ? (
+                    <>
+                      <dt>TypeSafe error</dt>
+                      <dd>
+                        {jevAttempt.error_class}
+                        {jevAttempt.error_message !== null
+                          ? `: ${jevAttempt.error_message}`
+                          : ""}
+                      </dd>
+                    </>
+                  ) : null}
+                </dl>
+              </section>
+            ) : null}
+            <dl className="kv">
+              <dt>Condition</dt>
+              <dd>{review.condition_code}</dd>
+              <dt>Review</dt>
+              <dd>{review.id}</dd>
+              <dt>Subject</dt>
+              <dd>
+                {review.subject_type} {review.subject_id}
+              </dd>
+              <dt>Financial Account</dt>
+              <dd>{account}</dd>
+              <dt>Amount in question</dt>
+              <dd>{amount ?? "No Claims created"}</dd>
+              <dt>Raw source</dt>
+              <dd>{raw}</dd>
+            </dl>
             <section>
-              <h3 className="eyebrow">Last Jev attempt</h3>
-              <dl className="kv">
-                <dt>Action</dt>
-                <dd>{jevAttempt.action}</dd>
-                <dt>Choice</dt>
-                <dd>{jevAttempt.choice ?? "none"}</dd>
-                <dt>Confidence</dt>
-                <dd>{jevAttempt.choice_confidence ?? "—"}</dd>
-                <dt>Evidence noul</dt>
-                <dd>{jevAttempt.noul ?? "—"}</dd>
-                <dt>Category</dt>
-                <dd>
-                  {jevAttempt.action === "apply"
-                    ? (jevAttempt.category_name ?? "—")
-                    : "skip"}
-                </dd>
-                <dt>Model</dt>
-                <dd>{jevAttempt.model}</dd>
-                {jevAttempt.error_class !== null ? (
-                  <>
-                    <dt>TypeSafe error</dt>
-                    <dd>
-                      {jevAttempt.error_class}
-                      {jevAttempt.error_message !== null
-                        ? `: ${jevAttempt.error_message}`
-                        : ""}
-                    </dd>
-                  </>
-                ) : null}
-              </dl>
+              <h3 className="eyebrow">Claim evidence</h3>
+              {claims.length === 0 ? (
+                <p className="claim">No linked Claims in this Review.</p>
+              ) : (
+                claims.map((claim) => (
+                  <p className="claim" key={claim}>
+                    {claim}
+                  </p>
+                ))
+              )}
             </section>
-          ) : null}
-          <dl className="kv">
-            <dt>Condition</dt>
-            <dd>{review.condition_code}</dd>
-            <dt>Review</dt>
-            <dd>{review.id}</dd>
-            <dt>Subject</dt>
-            <dd>
-              {review.subject_type} {review.subject_id}
-            </dd>
-            <dt>Financial Account</dt>
-            <dd>{account}</dd>
-            <dt>Amount in question</dt>
-            <dd>{amount ?? "No Claims created"}</dd>
-            <dt>Raw source</dt>
-            <dd>{raw}</dd>
-          </dl>
-          <section>
-            <h3 className="eyebrow">Claim evidence</h3>
-            {claims.length === 0 ? (
-              <p className="claim">No linked Claims in this Review.</p>
-            ) : (
-              claims.map((claim) => (
-                <p className="claim" key={claim}>
-                  {claim}
-                </p>
-              ))
-            )}
-          </section>
-        </details>
+          </details>
+        )}
       </div>
     </>
   );
@@ -512,6 +527,10 @@ function queueTitle(
 }
 
 function queueFallbackAmount(review: Review): string {
+  const money = categorizationAmount(review.context);
+  if (money !== null) {
+    return formatUnsigned(money);
+  }
   if (
     review.subject_type === "source_artifact" ||
     review.subject_type === "extraction"
@@ -529,9 +548,7 @@ function decisionSubject(
   if (transaction !== undefined) {
     return transaction.counterparty;
   }
-  const fromContext =
-    contextString(review.context, "subject") ??
-    contextString(review.context, "raw");
+  const fromContext = categorizationCounterparty(review.context);
   if (fromContext !== null) {
     return fromContext;
   }
@@ -541,7 +558,21 @@ function decisionSubject(
   if (importRecord?.adapter_key != null) {
     return importRecord.adapter_key;
   }
+  if (review.condition_code === "categorization_needed") {
+    return "Unknown Counterparty";
+  }
   return reviewTitle(review.condition_code);
+}
+
+function jevDecisionLine(attempt: JevAttempt | null): string | null {
+  if (attempt === null || attempt.choice === null) {
+    return null;
+  }
+  const parts = [`Jev ${attempt.action}`, attempt.choice];
+  if (attempt.choice_confidence !== null) {
+    parts.push(attempt.choice_confidence);
+  }
+  return parts.join(" · ");
 }
 
 function evidenceBody(

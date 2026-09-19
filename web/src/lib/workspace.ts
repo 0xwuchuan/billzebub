@@ -1,4 +1,4 @@
-import type { ImportRecord, Review, Transaction } from "../api";
+import type { ImportRecord, Money, Review, Transaction } from "../api";
 import { amountToCents, centsToMoney } from "./money";
 import { isoDate } from "./labels";
 
@@ -356,14 +356,80 @@ export function transactionForReview(
   review: Review,
   transactions: Transaction[],
 ): Transaction | undefined {
+  const ids = new Set<string>();
   if (
-    review.subject_type !== "transaction" &&
-    review.subject_type !== "claim"
+    review.subject_type === "transaction" ||
+    review.subject_type === "claim"
   ) {
+    ids.add(review.subject_id);
+  }
+  const contextId = contextString(review.context, "transaction_id");
+  if (contextId !== null) {
+    ids.add(contextId);
+  }
+  if (ids.size === 0) {
     return undefined;
   }
-  return transactions.find(
-    (transaction) => transaction.id === review.subject_id,
+  return transactions.find((transaction) => ids.has(transaction.id));
+}
+
+export function reviewTransactionId(review: Review): string | null {
+  return (
+    contextString(review.context, "transaction_id") ??
+    (review.subject_type === "transaction" ? review.subject_id : null)
+  );
+}
+
+export function categorizationCounterparty(
+  context: Record<string, unknown>,
+): string | null {
+  return (
+    contextString(context, "counterparty") ??
+    contextString(context, "subject") ??
+    contextString(context, "raw") ??
+    nestedContextString(context, "jev_attempt", "counterparty")
+  );
+}
+
+export function categorizationAmount(
+  context: Record<string, unknown>,
+): Money | null {
+  return contextMoney(context) ?? nestedContextMoney(context, "jev_attempt");
+}
+
+export function transactionFromReviewContext(
+  review: Review,
+): Transaction | undefined {
+  const id = reviewTransactionId(review);
+  if (id === null) {
+    return undefined;
+  }
+  const amount = categorizationAmount(review.context);
+  return {
+    id,
+    version: contextVersion(review.context),
+    financial_account: {
+      id: contextString(review.context, "financial_account_id") ?? "",
+      name: contextString(review.context, "account") ?? "",
+    },
+    counterparty:
+      categorizationCounterparty(review.context) ?? "Unknown Counterparty",
+    posted_amount: amount ?? { amount: "0", currency: "SGD" },
+    authorized_amount: null,
+    effective_date: contextString(review.context, "effective_date") ?? "",
+    kind: contextString(review.context, "kind") ?? "expense",
+    category_splits: [],
+    reviews: [],
+  };
+}
+
+export function resolveReviewTransaction(
+  review: Review,
+  transactions: Transaction[],
+): Transaction | undefined {
+  return (
+    transactionForReview(review, transactions) ??
+    transactionFromReviewContext(review)
   );
 }
 
@@ -387,7 +453,67 @@ export function contextString(
   key: string,
 ): string | null {
   const value = context[key];
-  return typeof value === "string" ? value : null;
+  return typeof value === "string" && value !== "" ? value : null;
+}
+
+function contextVersion(context: Record<string, unknown>): number {
+  const value = context.version;
+  if (typeof value === "number" && Number.isInteger(value) && value >= 1) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isInteger(parsed) && parsed >= 1) {
+      return parsed;
+    }
+  }
+  return 1;
+}
+
+function contextMoney(context: Record<string, unknown>): Money | null {
+  const amount = context.amount;
+  const currency = context.currency;
+  if (typeof amount === "string" && typeof currency === "string") {
+    return { amount, currency };
+  }
+  if (amount !== null && typeof amount === "object" && !Array.isArray(amount)) {
+    const record = amount as Record<string, unknown>;
+    if (
+      typeof record.amount === "string" &&
+      typeof record.currency === "string"
+    ) {
+      return { amount: record.amount, currency: record.currency };
+    }
+  }
+  return null;
+}
+
+function nestedContext(
+  context: Record<string, unknown>,
+  key: string,
+): Record<string, unknown> | null {
+  const value = context[key];
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function nestedContextString(
+  context: Record<string, unknown>,
+  key: string,
+  field: string,
+): string | null {
+  const nested = nestedContext(context, key);
+  return nested === null ? null : contextString(nested, field);
+}
+
+function nestedContextMoney(
+  context: Record<string, unknown>,
+  key: string,
+): Money | null {
+  const nested = nestedContext(context, key);
+  return nested === null ? null : contextMoney(nested);
 }
 
 export function contextStrings(
