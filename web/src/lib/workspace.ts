@@ -341,6 +341,17 @@ export function filterReviews(
   );
 }
 
+export function nextPendingReviewId(
+  items: Review[],
+  currentId: string,
+): string {
+  const index = items.findIndex((item) => item.id === currentId);
+  if (index === -1) {
+    return items[0]?.id ?? "";
+  }
+  return items[index + 1]?.id ?? "";
+}
+
 export function transactionForReview(
   review: Review,
   transactions: Transaction[],
