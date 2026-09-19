@@ -176,8 +176,7 @@ def jev_questions(categories: Sequence[JevCategory]) -> dict[str, Choice]:
     return {
         CHOICE_QUESTION: Choice(
             instructions=(
-                "Choose exactly one existing catalog Category for this Expense or "
-                "Cash Withdrawal."
+                "Choose exactly one existing catalog Category for this Expense or Cash Withdrawal."
             ),
             criteria=choice_criteria(categories),
         ),

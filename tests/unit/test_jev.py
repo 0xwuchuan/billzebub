@@ -206,9 +206,7 @@ def test_jev_client_parses_choice(monkeypatch: pytest.MonkeyPatch) -> None:
     FakeTypeSafeClient.last_init = {}
     FakeTypeSafeClient.last_call = {}
     FakeTypeSafeClient.error = None
-    FakeTypeSafeClient.response = FakeSystemOneResponse(
-        choice="Synthetic Food", confidence=0.51
-    )
+    FakeTypeSafeClient.response = FakeSystemOneResponse(choice="Synthetic Food", confidence=0.51)
     monkeypatch.setattr("billzebub.jev.TypeSafeClient", FakeTypeSafeClient)
     proposal = JevProposer(_config()).propose(_subject(), (_category(),))
     assert proposal.action == "apply"
