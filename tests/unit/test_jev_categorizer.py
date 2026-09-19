@@ -112,13 +112,12 @@ def test_attempt_info_log_includes_decision_without_secrets(
         confidence=Decimal("0.49"),
         model="jev-1.13.0",
         choice="Synthetic Food",
-        noul=Decimal("0.40"),
     )
     with caplog.at_level(logging.INFO, logger="billzebub.jev_categorizer"):
         _log_attempt(TXN_ID, proposal)
     assert "action=skip" in caplog.text
     assert "confidence=0.49" in caplog.text
-    assert "noul=0.40" in caplog.text
+    assert "noul=-" in caplog.text
     assert "category=skip" in caplog.text
     assert str(TXN_ID) in caplog.text
     assert "synthetic-typesafe-key" not in caplog.text

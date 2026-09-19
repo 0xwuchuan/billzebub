@@ -17,8 +17,7 @@ There is no in-app Counterparty map, keyword scorer, Codex runner, or forge webh
 2. Load the Transaction and active catalog Categories. Skip Transfers, Income, Refunds, Reimbursements, and rows that already have a non-`Uncategorized` split.
 3. POST `https://api.typesafe.ai/v1/systemone` via `typesafe-sdk` with:
    - `state`: Counterparty, amount, currency, effective date, Transaction kind (agent-safe fields only)
-   - `questions.category`: Choice over active catalog Category names plus an explicit `uncategorized` skip option
-   - `questions.enough_evidence`: Noul — enough evidence to assign confidently
+   - `questions.category`: Choice over active catalog Category names only (Uncategorized is excluded; there is no skip / `uncategorized` option)
 4. Apply a proposal only when fail-closed checks all pass, through `OwnerTransactionActions` with reason `jev_categorization`. Anything else leaves the Review in place.
 5. After every Jev propose (apply or skip, including TypeSafe failures), append a `jev_categorization_attempt` row and emit an info log line. Catch-up uses this same `categorize_transaction` path.
 
@@ -35,12 +34,12 @@ Each row is append-only and uses the same agent-safe snapshot sent to TypeSafe (
 | `model` | Jev model, default `jev-1.13.0` |
 | `counterparty`, `amount`, `currency`, `effective_date`, `kind` | State snapshot sent to TypeSafe |
 | `choice` | Raw Choice, or null when undetermined |
-| `choice_confidence`, `noul` | Unit-interval scores, or null |
+| `choice_confidence`, `noul` | Choice confidence is a unit-interval score, or null. `noul` is unused (null / omitted); the evidence Noul question is no longer asked. |
 | `action` | `apply` or `skip` |
 | `category_id`, `category_name` | Set only when `action` is `apply` |
 | `error_class`, `error_message` | Optional TypeSafe/Jev error, already scrubbed of API keys |
 
-The worker info line is `jev attempt action=… confidence=… noul=… category=… transaction_id=…`, where category is the catalog name on apply and `skip` otherwise.
+The worker info line is `jev attempt action=… confidence=… noul=… category=… transaction_id=…`, where category is the catalog name on apply and `skip` otherwise. `noul` is `-` when omitted.
 
 ## Daily NAS catch-up (Wallet leftovers)
 
@@ -113,16 +112,16 @@ The CLI still needs an agent token with `agent:read` and `agent:categorize`. Iss
 
 The worker never prints tokens or API keys. The TypeSafe client receives the key as a constructor argument, not a CLI flag.
 
-`BILLZEBUB_JEV_MIN_CONFIDENCE` defaults to `0.5`. Both Choice confidence **and** the evidence Noul must clear that floor before a Category is applied.
+`BILLZEBUB_JEV_MIN_CONFIDENCE` defaults to `0.5`. Only Choice confidence must clear that floor; there is no second Noul gate. Low confidence is the abstain path (leave Uncategorized + `categorization_needed`).
+
+The host CLI (`scripts/agent/jev_categorize.py`) and the NAS worker both call `billzebub.jev` for propose/apply.
 
 ## Fail-closed policy
 
 The worker applies a Category only when all of these hold:
 
 - Transaction kind is `expense` or `cash_withdrawal`
-- Jev Choice is a real catalog `category_id` (not `uncategorized` / skip)
 - Choice `confidence` is at least `BILLZEBUB_JEV_MIN_CONFIDENCE`
-- Noul `enough_evidence` is at least `BILLZEBUB_JEV_MIN_CONFIDENCE`
-- `category_name` matches that catalog row uniquely
+- Jev Choice maps uniquely to one active catalog Category (Uncategorized is never a Choice option)
 
 Anything else, including a missing TypeSafe key or a TypeSafe failure, leaves the Review in place. TypeSafe failures retry the `categorize_transaction` job; missing key completes the job without applying.

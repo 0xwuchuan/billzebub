@@ -6,13 +6,13 @@ from typing import Any, ClassVar
 from uuid import UUID, uuid4
 
 import pytest
-from typesafe_sdk import Choice, Noul, TypeSafeError
+from typesafe_sdk import Choice, TypeSafeError
 
 from billzebub.jev import (
     DEFAULT_MIN_CONFIDENCE,
     DEFAULT_MODEL,
-    SKIP_OPTION,
     TYPESAFE_ENDPOINT,
+    UNCATEGORIZED_NAME,
     JevCategory,
     JevClientConfig,
     JevConfigurationError,
@@ -58,24 +58,17 @@ class FakeChoiceAnswer:
         self.confidence = confidence
 
 
-class FakeNoulAnswer:
-    def __init__(self, noul: float) -> None:
-        self.noul = noul
-
-
 class FakeSystemOneResponse:
     def __init__(
         self,
         *,
         choice: str = "Synthetic Food",
         confidence: float = 0.91,
-        noul: float = 0.93,
         model: str = DEFAULT_MODEL,
     ) -> None:
         self.model = model
         self.choices = {"category": FakeChoiceAnswer(choice, confidence)}
-        self.nouls = {"enough_evidence": FakeNoulAnswer(noul)}
-        self.answers = {**self.choices, **self.nouls}
+        self.answers = dict(self.choices)
 
 
 class FakeTypeSafeClient:
@@ -109,15 +102,13 @@ def test_proposal_gating_is_fail_closed() -> None:
     low_confidence = parse_jev_proposal(
         "Synthetic Food",
         0.49,
-        0.99,
         categories,
         Decimal("0.5"),
         model=DEFAULT_MODEL,
     )
-    low_noul = parse_jev_proposal(
+    omitted_noul = parse_jev_proposal(
         "Synthetic Food",
         0.99,
-        0.49,
         categories,
         Decimal("0.5"),
         model=DEFAULT_MODEL,
@@ -125,14 +116,12 @@ def test_proposal_gating_is_fail_closed() -> None:
     boundary = parse_jev_proposal(
         "Synthetic Food",
         0.5,
-        0.5,
         categories,
         Decimal("0.5"),
         model=DEFAULT_MODEL,
     )
-    skip_option = parse_jev_proposal(
-        SKIP_OPTION,
-        0.99,
+    uncategorized_choice = parse_jev_proposal(
+        UNCATEGORIZED_NAME,
         0.99,
         categories,
         Decimal("0.5"),
@@ -141,7 +130,6 @@ def test_proposal_gating_is_fail_closed() -> None:
     unknown = parse_jev_proposal(
         "Invented",
         0.99,
-        0.99,
         categories,
         Decimal("0.5"),
         model=DEFAULT_MODEL,
@@ -149,29 +137,33 @@ def test_proposal_gating_is_fail_closed() -> None:
     apply = parse_jev_proposal(
         "Synthetic Food",
         0.51,
-        0.6,
         categories,
         Decimal("0.5"),
         model=DEFAULT_MODEL,
     )
     assert low_confidence.action == "skip"
-    assert low_noul.action == "skip"
+    assert omitted_noul.action == "apply"
+    assert omitted_noul.noul is None
     assert boundary.action == "apply"
-    assert skip_option.action == "skip"
+    assert uncategorized_choice.action == "skip"
     assert unknown.action == "skip"
     assert apply.action == "apply"
     assert apply.category_id == FOOD_ID
     assert apply.choice == "Synthetic Food"
-    assert apply.noul == Decimal("0.6")
+    assert apply.noul is None
     assert low_confidence.choice == "Synthetic Food"
-    assert low_confidence.noul == Decimal("0.99")
-    assert skip_option.choice == SKIP_OPTION
+    assert low_confidence.noul is None
+    assert uncategorized_choice.choice == UNCATEGORIZED_NAME
 
 
-def test_state_is_agent_safe_and_questions_include_skip() -> None:
+def test_state_is_agent_safe_and_questions_are_catalog_choice_only() -> None:
     state = jev_state(_subject())
-    criteria = choice_criteria((_category(),))
-    questions = jev_questions((_category(),))
+    catalog = (
+        _category(),
+        JevCategory(id=uuid4(), name="Uncategorized"),
+    )
+    criteria = choice_criteria(catalog)
+    questions = jev_questions(catalog)
     assert state == {
         "counterparty": "Synthetic Coffee",
         "amount": "-12.34",
@@ -180,10 +172,12 @@ def test_state_is_agent_safe_and_questions_include_skip() -> None:
         "kind": "expense",
     }
     assert "source_artifact_id" not in state
-    assert criteria["Synthetic Food"] == "Synthetic Food"
-    assert SKIP_OPTION in criteria
+    assert criteria == {"Synthetic Food": "Synthetic Food"}
+    assert UNCATEGORIZED_NAME not in {name.casefold() for name in criteria}
+    assert "skip" not in criteria
+    assert tuple(questions) == ("category",)
     assert isinstance(questions["category"], Choice)
-    assert isinstance(questions["enough_evidence"], Noul)
+    assert "enough_evidence" not in questions
     assert TYPESAFE_KEY not in str(state)
 
 
@@ -208,23 +202,22 @@ def test_jev_client_pins_model_and_does_not_post_on_sdk_error(
     assert FakeTypeSafeClient.last_call["model"] == DEFAULT_MODEL
 
 
-def test_jev_client_parses_choice_and_noul(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_jev_client_parses_choice(monkeypatch: pytest.MonkeyPatch) -> None:
     FakeTypeSafeClient.last_init = {}
     FakeTypeSafeClient.last_call = {}
     FakeTypeSafeClient.error = None
-    FakeTypeSafeClient.response = FakeSystemOneResponse(
-        choice="Synthetic Food", confidence=0.51, noul=0.6
-    )
+    FakeTypeSafeClient.response = FakeSystemOneResponse(choice="Synthetic Food", confidence=0.51)
     monkeypatch.setattr("billzebub.jev.TypeSafeClient", FakeTypeSafeClient)
     proposal = JevProposer(_config()).propose(_subject(), (_category(),))
     assert proposal.action == "apply"
     assert proposal.category_id == FOOD_ID
     assert proposal.model == DEFAULT_MODEL
+    assert proposal.noul is None
     state = FakeTypeSafeClient.last_call["state"]
     questions = FakeTypeSafeClient.last_call["questions"]
     assert state["counterparty"] == "Synthetic Coffee"
-    assert SKIP_OPTION in questions["category"].criteria
-    assert "enough_evidence" in questions
+    assert questions["category"].criteria == {"Synthetic Food": "Synthetic Food"}
+    assert "enough_evidence" not in questions
 
 
 def test_duplicate_catalog_names_fail_closed() -> None:
@@ -234,7 +227,6 @@ def test_duplicate_catalog_names_fail_closed() -> None:
     )
     proposal = parse_jev_proposal(
         "Synthetic Food",
-        0.99,
         0.99,
         categories,
         Decimal("0.5"),
