@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
+import type { Transaction } from "./api";
 import { AppShell } from "./components/AppShell";
 import { TransactionDrawer } from "./components/TransactionDrawer";
 import { useRoute } from "./hooks/useRoute";
@@ -136,18 +137,19 @@ export function App() {
     });
   }
 
-  async function assignCategory(transactionId: string): Promise<boolean> {
-    const transaction = workspace.workspace.transactions.items.find(
-      (item) => item.id === transactionId,
+  async function assignCategory(transaction: Transaction): Promise<boolean> {
+    const listed = workspace.workspace.transactions.items.find(
+      (item) => item.id === transaction.id,
     );
-    const categoryId = categoryDraft[transactionId] ?? "";
-    if (transaction === undefined || categoryId === "") {
+    const target = listed ?? transaction;
+    const categoryId = categoryDraft[target.id] ?? "";
+    if (categoryId === "") {
       return false;
     }
-    const ok = await workspace.saveCategory(transaction, categoryId);
+    const ok = await workspace.saveCategory(target, categoryId);
     if (ok) {
-      setCategoryDraft((current) => ({ ...current, [transactionId]: "" }));
-      setToast(`Category assigned to ${transaction.counterparty}`);
+      setCategoryDraft((current) => ({ ...current, [target.id]: "" }));
+      setToast(`Category assigned to ${target.counterparty}`);
     }
     return ok;
   }
@@ -261,7 +263,7 @@ export function App() {
                 [transactionId]: categoryId,
               }));
             }}
-            onAssign={(transaction) => assignCategory(transaction.id)}
+            onAssign={assignCategory}
             onDecide={(review, choice) =>
               workspace.resolveReview(review, choice).then((ok) => {
                 if (ok) {
@@ -383,7 +385,7 @@ export function App() {
           }));
         }}
         onSave={(transaction) => {
-          void assignCategory(transaction.id);
+          void assignCategory(transaction);
         }}
         onClose={() => {
           go({ ...route, drawerId: null });

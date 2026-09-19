@@ -4,12 +4,17 @@ import type { Transaction } from "../api";
 import type { Review } from "../api";
 import {
   activityAmount,
+  categorizationAmount,
+  categorizationCounterparty,
   categoryTotalsForMonths,
   isProvisional,
   jevAttemptFromContext,
   monthTotals,
   monthlySpending,
   nextPendingReviewId,
+  resolveReviewTransaction,
+  transactionForReview,
+  transactionFromReviewContext,
   weekComparison,
 } from "./workspace";
 
@@ -215,6 +220,52 @@ describe("nextPendingReviewId", () => {
     expect(nextPendingReviewId([first, second], first.id)).toBe(second.id);
     expect(nextPendingReviewId([first, second], second.id)).toBe("");
     expect(nextPendingReviewId([], first.id)).toBe("");
+  });
+});
+
+describe("review Transaction join and context fallthrough", () => {
+  it("joins a categorization Review to the matching Transaction", () => {
+    const listed = transaction({
+      id: "00000000-0000-0000-0000-000000000201",
+      kind: "expense",
+      posted: "-12.34",
+      counterparty: "Synthetic Coffee",
+    });
+    const review = reviewStub(listed.id);
+    expect(transactionForReview(review, [listed])).toEqual(listed);
+    expect(resolveReviewTransaction(review, [listed])).toEqual(listed);
+  });
+
+  it("rebuilds Counterparty and amount from Review context when the list misses", () => {
+    const review = {
+      ...reviewStub("00000000-0000-0000-0000-000000000202"),
+      context: {
+        transaction_id: "00000000-0000-0000-0000-000000000202",
+        counterparty: "Synthetic Orphan Cafe",
+        amount: "-18.50",
+        currency: "SGD",
+        account: "Synthetic Card",
+        effective_date: "2026-01-10",
+        version: 3,
+      },
+    };
+    expect(transactionForReview(review, [])).toBeUndefined();
+    expect(categorizationCounterparty(review.context)).toBe(
+      "Synthetic Orphan Cafe",
+    );
+    expect(categorizationAmount(review.context)).toEqual({
+      amount: "-18.50",
+      currency: "SGD",
+    });
+    const resolved = transactionFromReviewContext(review);
+    expect(resolved?.id).toBe(review.subject_id);
+    expect(resolved?.counterparty).toBe("Synthetic Orphan Cafe");
+    expect(resolved?.posted_amount).toEqual({
+      amount: "-18.50",
+      currency: "SGD",
+    });
+    expect(resolved?.version).toBe(3);
+    expect(resolveReviewTransaction(review, [])).toEqual(resolved);
   });
 });
 

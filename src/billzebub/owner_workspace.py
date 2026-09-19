@@ -32,7 +32,12 @@ from billzebub.persistence.models import (
     TransactionClaim,
     TransactionVersion,
 )
-from billzebub.reviews import PendingReviewStatus, ReviewSeverity
+from billzebub.reviews import (
+    PendingReviewStatus,
+    ReviewSeverity,
+    categorization_needed_context,
+    merge_categorization_context,
+)
 
 if TYPE_CHECKING:
     from billzebub.persistence.database import Database
@@ -472,19 +477,22 @@ class OwnerWorkspace:
         session: Session,
         reviews: Sequence[PendingReview],
     ) -> tuple[OwnerReview, ...]:
-        attempts = latest_jev_attempts(
-            session,
-            (
-                review.subject_id
-                for review in reviews
-                if review.subject_type == "transaction"
-                and review.condition_code == "categorization_needed"
-            ),
-        )
+        categorization_ids = [
+            review.subject_id
+            for review in reviews
+            if review.subject_type == "transaction"
+            and review.condition_code == "categorization_needed"
+        ]
+        attempts = latest_jev_attempts(session, categorization_ids)
+        display = OwnerWorkspace._categorization_display(session, categorization_ids)
         return tuple(
             OwnerWorkspace._review(
                 review,
                 attempts.get(review.subject_id)
+                if review.subject_type == "transaction"
+                and review.condition_code == "categorization_needed"
+                else None,
+                display.get(review.subject_id)
                 if review.subject_type == "transaction"
                 and review.condition_code == "categorization_needed"
                 else None,
@@ -493,9 +501,56 @@ class OwnerWorkspace:
         )
 
     @staticmethod
+    def _categorization_display(
+        session: Session,
+        transaction_ids: Sequence[UUID],
+    ) -> dict[UUID, dict[str, Any]]:
+        ids = tuple(dict.fromkeys(transaction_ids))
+        if not ids:
+            return {}
+        rows = session.execute(
+            select(FinancialTransaction, TransactionVersion, FinancialAccount)
+            .join(
+                TransactionVersion,
+                and_(
+                    TransactionVersion.transaction_id == FinancialTransaction.id,
+                    TransactionVersion.version == FinancialTransaction.current_version,
+                ),
+            )
+            .join(
+                FinancialAccount,
+                FinancialAccount.id == FinancialTransaction.financial_account_id,
+            )
+            .where(FinancialTransaction.id.in_(ids))
+        ).all()
+        display: dict[UUID, dict[str, Any]] = {}
+        for transaction, version, account in rows:
+            posted = Money(version.posted_amount, version.posted_currency)
+            amount = posted
+            if (
+                posted.amount == 0
+                and version.authorized_amount is not None
+                and version.authorized_currency is not None
+            ):
+                amount = Money(version.authorized_amount, version.authorized_currency)
+            display[transaction.id] = categorization_needed_context(
+                transaction_id=transaction.id,
+                counterparty=version.counterparty,
+                amount=format(amount.amount, "f"),
+                currency=amount.currency,
+                account=account.display_name,
+                financial_account_id=account.id,
+                effective_date=version.effective_date.isoformat(),
+                version=version.version,
+                kind=version.kind,
+            )
+        return display
+
+    @staticmethod
     def _review(
         review: PendingReview,
         jev_attempt: JevCategorizationAttempt | None = None,
+        display: dict[str, Any] | None = None,
     ) -> OwnerReview:
         return OwnerReview(
             id=review.id,
@@ -506,7 +561,10 @@ class OwnerWorkspace:
             status=PendingReviewStatus(review.status),
             version=review.version,
             allowed_decisions=tuple(review.allowed_decisions),
-            context=merge_jev_attempt_context(review.context, jev_attempt),
+            context=merge_categorization_context(
+                merge_jev_attempt_context(review.context, jev_attempt),
+                display,
+            ),
             created_at=review.created_at,
             updated_at=review.updated_at,
         )

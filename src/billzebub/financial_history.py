@@ -24,6 +24,7 @@ from billzebub.persistence.models import (
     Claim,
     ClaimDispositionEvent,
     CorrectionEvent,
+    FinancialAccount,
     FinancialTransaction,
     Journal,
     LedgerAccount,
@@ -32,7 +33,12 @@ from billzebub.persistence.models import (
     TransactionClaim,
     TransactionVersion,
 )
-from billzebub.reviews import ReviewCondition, ReviewInbox, ReviewSeverity
+from billzebub.reviews import (
+    ReviewCondition,
+    ReviewInbox,
+    ReviewSeverity,
+    categorization_needed_context,
+)
 
 if TYPE_CHECKING:
     from billzebub.persistence.database import Database
@@ -655,8 +661,47 @@ class FinancialHistory:
                 condition_code="categorization_needed",
                 severity=ReviewSeverity.ATTENTION,
                 allowed_decisions=("categorize",),
+                context=(
+                    FinancialHistory._categorization_review_context(session, transaction_id)
+                    if needs_categorization
+                    else {}
+                ),
             ),
             active=needs_categorization,
+        )
+
+    @staticmethod
+    def _categorization_review_context(session: Session, transaction_id: UUID) -> dict[str, object]:
+        transaction = session.get(FinancialTransaction, transaction_id)
+        if transaction is None:
+            return {"transaction_id": str(transaction_id)}
+        version = session.scalar(
+            select(TransactionVersion).where(
+                TransactionVersion.transaction_id == transaction.id,
+                TransactionVersion.version == transaction.current_version,
+            )
+        )
+        account = session.get(FinancialAccount, transaction.financial_account_id)
+        if version is None or account is None:
+            return {"transaction_id": str(transaction_id)}
+        posted = Money(version.posted_amount, version.posted_currency)
+        amount = posted
+        if (
+            posted.amount == 0
+            and version.authorized_amount is not None
+            and version.authorized_currency is not None
+        ):
+            amount = Money(version.authorized_amount, version.authorized_currency)
+        return categorization_needed_context(
+            transaction_id=transaction.id,
+            counterparty=version.counterparty,
+            amount=format(amount.amount, "f"),
+            currency=amount.currency,
+            account=account.display_name,
+            financial_account_id=account.id,
+            effective_date=version.effective_date.isoformat(),
+            version=version.version,
+            kind=version.kind,
         )
 
     @staticmethod

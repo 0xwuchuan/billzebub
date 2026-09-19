@@ -215,14 +215,68 @@ describe("App", () => {
 
     render(<App />);
 
-    fireEvent.click(await screen.findByText("Review details"));
     expect(
-      await screen.findByRole("heading", { name: "Last Jev attempt" }),
+      await screen.findByText("Jev skip · Synthetic Food · 0.49"),
     ).toBeInTheDocument();
-    expect(screen.getByText("0.49")).toBeInTheDocument();
-    expect(screen.getByText("0.40")).toBeInTheDocument();
-    expect(screen.getByText("jev-1.13.0")).toBeInTheDocument();
-    expect(screen.getAllByText("skip").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Review details")).not.toBeInTheDocument();
+    expect(screen.queryByText("Last Jev attempt")).not.toBeInTheDocument();
+    expect(screen.queryByText("jev-1.13.0")).not.toBeInTheDocument();
+    expect(screen.queryByText("0.40")).not.toBeInTheDocument();
+  });
+
+  it("categorizes from Review context when the Transaction list misses", async () => {
+    seedOnboarded();
+    window.location.hash = "#/review";
+    const fetchMock = mockWorkspace({
+      transactions: [],
+      reviews: [
+        {
+          ...pendingReview,
+          context: {
+            transaction_id: transaction.id,
+            counterparty: "Synthetic Orphan Cafe",
+            amount: "-18.50",
+            currency: "SGD",
+            account: "Synthetic Card",
+            effective_date: "2026-01-10",
+            version: 1,
+          },
+        },
+      ],
+      categories: [
+        {
+          id: "00000000-0000-0000-0000-000000000099",
+          name: "Synthetic Food",
+          parent_id: null,
+          active: true,
+        },
+      ],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Synthetic Orphan Cafe" }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("SGD 18.50").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Review details")).not.toBeInTheDocument();
+    fireEvent.change(
+      screen.getByLabelText("Category for Synthetic Orphan Cafe"),
+      {
+        target: { value: "00000000-0000-0000-0000-000000000099" },
+      },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Assign Category" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/transactions/00000000-0000-0000-0000-000000000010/category",
+        expect.objectContaining({
+          method: "PUT",
+        }),
+      );
+    });
   });
 
   it("categorizes a Transaction from the Review queue", async () => {

@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from uuid6 import uuid7
 
 from billzebub.api import create_app
@@ -24,6 +25,7 @@ from billzebub.persistence.models import (
     Extraction,
     FinancialAccount,
     FinancialAccountKind,
+    PendingReview,
     SourceArtifact,
 )
 from billzebub.reviews import ReviewCondition, ReviewInbox, ReviewSeverity
@@ -131,7 +133,38 @@ def test_owner_workspace_projects_current_transactions_and_review_queue(
     assert second_page.next_cursor is None
     assert {review.subject_id for review in review_page.items} == {older_id, newer_id}
     assert all(review.condition_code == "categorization_needed" for review in review_page.items)
+    older_review = next(review for review in review_page.items if review.subject_id == older_id)
+    assert older_review.context["counterparty"] == "Synthetic Older Coffee"
+    assert older_review.context["amount"] == "-12.34"
+    assert older_review.context["transaction_id"] == str(older_id)
     assert workspace.get_transaction(older_id).counterparty == "Synthetic Older Coffee"
+
+
+@pytest.mark.integration
+def test_list_reviews_enriches_empty_categorization_context_from_the_transaction(
+    database: Database,
+    workspace_transactions: tuple[UUID, UUID, UUID],
+) -> None:
+    _account_id, older_id, _newer_id = workspace_transactions
+    with database.transaction() as session:
+        reviews = session.scalars(
+            select(PendingReview).where(
+                PendingReview.subject_type == "transaction",
+                PendingReview.condition_code == "categorization_needed",
+            )
+        ).all()
+        assert reviews
+        for review in reviews:
+            review.context = {}
+
+    page = OwnerWorkspace(database).list_reviews(limit=10)
+    older = next(review for review in page.items if review.subject_id == older_id)
+    assert older.context["counterparty"] == "Synthetic Older Coffee"
+    assert older.context["amount"] == "-12.34"
+    assert older.context["currency"] == "SGD"
+    assert older.context["transaction_id"] == str(older_id)
+    assert older.context["account"] == "Synthetic Owner Workspace Card"
+    assert older.context["version"] == 1
 
 
 @pytest.mark.integration

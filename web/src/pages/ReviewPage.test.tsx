@@ -119,6 +119,30 @@ describe("ReviewPage", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("shows context Counterparty and amount in the pending queue when the list misses", () => {
+    const orphan = {
+      ...coffeeReview,
+      context: {
+        transaction_id: coffee.id,
+        counterparty: "Synthetic Orphan Cafe",
+        amount: "-18.50",
+        currency: "SGD",
+      },
+    };
+    renderPage({
+      reviews: [orphan],
+      transactions: [],
+    });
+
+    const queue = screen.getByRole("region", { name: "Pending Review queue" });
+    const row = within(queue).getByRole("button", {
+      name: /Synthetic Orphan Cafe/,
+    });
+    expect(row).toHaveTextContent("Synthetic Orphan Cafe");
+    expect(row).toHaveTextContent("SGD 18.50");
+    expect(row).not.toHaveTextContent("Category needed");
+  });
+
   it("hides the pending queue in the card-only mobile flow", () => {
     const original = window.matchMedia;
     window.matchMedia = ((query: string) => ({
@@ -148,6 +172,73 @@ describe("ReviewPage", () => {
     } finally {
       window.matchMedia = original;
     }
+  });
+
+  it("renders Counterparty and amount from Review context when the Transaction list misses", () => {
+    const orphan = {
+      ...coffeeReview,
+      context: {
+        transaction_id: coffee.id,
+        counterparty: "Synthetic Orphan Cafe",
+        amount: "-18.50",
+        currency: "SGD",
+        account: "Synthetic Card",
+        effective_date: "2026-01-10",
+        version: 1,
+      },
+    };
+    renderPage({
+      reviews: [orphan],
+      transactions: [],
+    });
+
+    const card = screen.getByRole("region", { name: "Review decision" });
+    expect(
+      within(card).getByRole("heading", { name: "Synthetic Orphan Cafe" }),
+    ).toBeInTheDocument();
+    expect(card.querySelector(".decision-amount")).toHaveTextContent(
+      "SGD 18.50",
+    );
+    expect(within(card).getByText("Assign Category")).toBeInTheDocument();
+    expect(
+      within(card).queryByRole("heading", { name: "Category needed" }),
+    ).not.toBeInTheDocument();
+    expect(within(card).queryByText("Review details")).not.toBeInTheDocument();
+    expect(
+      within(card).queryByText("Transaction action required"),
+    ).not.toBeInTheDocument();
+    expect(within(card).queryByText("condition_code")).not.toBeInTheDocument();
+  });
+
+  it("never uses Category needed as the categorization heading", () => {
+    renderPage({
+      reviews: [coffeeReview],
+      transactions: [],
+    });
+
+    expect(
+      screen.getByRole("heading", { name: "Unknown Counterparty" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Category needed" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("Assign Category")).toBeInTheDocument();
+  });
+
+  it("omits Review details chrome from categorization cards", () => {
+    renderPage({
+      reviews: [coffeeReview],
+      transactions: [coffee],
+    });
+
+    const card = screen.getByRole("region", { name: "Review decision" });
+    expect(within(card).queryByText("Review details")).not.toBeInTheDocument();
+    expect(within(card).queryByText(coffeeReview.id)).not.toBeInTheDocument();
+    expect(within(card).queryByText("Claim evidence")).not.toBeInTheDocument();
+    expect(within(card).queryByText("Raw source")).not.toBeInTheDocument();
+    expect(
+      within(card).queryByText("Amount in question"),
+    ).not.toBeInTheDocument();
   });
 
   it("shows the empty state after the last categorization assign", () => {
