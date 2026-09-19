@@ -16,17 +16,15 @@ from pathlib import Path
 from typing import Protocol
 from uuid import UUID
 
-from typesafe_sdk import Choice, Noul, TypeSafeClient, TypeSafeError
+from typesafe_sdk import Choice, TypeSafeClient, TypeSafeError
 
 from billzebub.agent_mcp import McpRequestError, assert_agent_safe
 
 DEFAULT_MODEL = "jev-1.13.0"
 DEFAULT_MIN_CONFIDENCE = Decimal("0.5")
 DEFAULT_TIMEOUT_SECONDS = 30.0
-SKIP_OPTION = "uncategorized"
-SKIP_OPTION_ALIASES = frozenset({"uncategorized", "skip"})
 CHOICE_QUESTION = "category"
-NOUL_QUESTION = "enough_evidence"
+UNCATEGORIZED_NAME = "uncategorized"
 MAX_CHOICE_OPTIONS = 255
 TYPESAFE_BASE_URL = "https://api.typesafe.ai"
 TYPESAFE_ENDPOINT = f"{TYPESAFE_BASE_URL}/v1/systemone"
@@ -166,35 +164,22 @@ def jev_state(subject: JevSubject) -> dict[str, str]:
 def choice_criteria(categories: Sequence[JevCategory]) -> dict[str, str]:
     criteria: dict[str, str] = {}
     for category in categories:
-        if category.name.casefold() in SKIP_OPTION_ALIASES:
+        if _is_uncategorized_name(category.name):
             continue
         criteria[category.name] = category.name
-    criteria[SKIP_OPTION] = (
-        "Skip and leave Uncategorized; use when no existing catalog Category is clearly correct"
-    )
     if len(criteria) > MAX_CHOICE_OPTIONS:
         raise JevError("category catalog exceeds Jev Choice limit")
     return criteria
 
 
-def jev_questions(categories: Sequence[JevCategory]) -> dict[str, Choice | Noul]:
+def jev_questions(categories: Sequence[JevCategory]) -> dict[str, Choice]:
     return {
         CHOICE_QUESTION: Choice(
             instructions=(
                 "Choose exactly one existing catalog Category for this Expense or "
-                "Cash Withdrawal. Choose uncategorized when uncertain, when two "
-                "Categories could fit, or when the activity is not an Expense Category."
+                "Cash Withdrawal."
             ),
             criteria=choice_criteria(categories),
-        ),
-        NOUL_QUESTION: Noul(
-            instructions=(
-                "There is enough evidence to assign one existing catalog Category confidently"
-            ),
-            criteria={
-                "true": "One existing Category is clearly correct for this Expense",
-                "false": "Ambiguous, skip, Uncategorized, or not an Expense Category",
-            },
         ),
     }
 
@@ -207,18 +192,15 @@ def parse_jev_response(
     model: str,
 ) -> Proposal:
     choice_answer = _named_answer(response, "choices", CHOICE_QUESTION)
-    noul_answer = _named_answer(response, "nouls", NOUL_QUESTION)
     if choice_answer is None:
         answers = getattr(response, "answers", None)
         if isinstance(answers, Mapping):
             choice_answer = answers.get(CHOICE_QUESTION)
-            noul_answer = noul_answer or answers.get(NOUL_QUESTION)
     response_model = getattr(response, "model", None)
     resolved_model = response_model if isinstance(response_model, str) and response_model else model
     return parse_jev_proposal(
         getattr(choice_answer, "choice", None) if choice_answer is not None else None,
         getattr(choice_answer, "confidence", None) if choice_answer is not None else None,
-        getattr(noul_answer, "noul", None) if noul_answer is not None else None,
         categories,
         min_confidence,
         model=resolved_model,
@@ -228,20 +210,18 @@ def parse_jev_response(
 def parse_jev_proposal(
     choice: object,
     confidence_raw: object,
-    noul_raw: object,
     categories: Sequence[JevCategory],
     min_confidence: Decimal,
     *,
     model: str,
 ) -> Proposal:
     confidence = _unit_interval(confidence_raw)
-    noul = _unit_interval(noul_raw)
     choice_text = " ".join(choice.split()) if isinstance(choice, str) and choice.strip() else None
-    if confidence is None or noul is None:
-        return _skip(model, choice=choice_text, confidence=confidence, noul=noul)
+    if confidence is None:
+        return _skip(model, choice=choice_text, confidence=confidence)
     if choice_text is None:
-        return _skip(model, confidence=confidence, noul=noul)
-    if noul < min_confidence or confidence < min_confidence:
+        return _skip(model, confidence=confidence)
+    if confidence < min_confidence:
         return Proposal(
             action="skip",
             category_id=None,
@@ -249,22 +229,11 @@ def parse_jev_proposal(
             confidence=confidence,
             model=model,
             choice=choice_text,
-            noul=noul,
-        )
-    if choice_text.casefold() in SKIP_OPTION_ALIASES:
-        return Proposal(
-            action="skip",
-            category_id=None,
-            category_name=None,
-            confidence=confidence,
-            model=model,
-            choice=choice_text,
-            noul=noul,
         )
     catalog = _unique_categories_by_name(categories)
     chosen = catalog.get(choice_text.casefold())
     if chosen is None or chosen.name.casefold() != choice_text.casefold():
-        return _skip(model, choice=choice_text, confidence=confidence, noul=noul)
+        return _skip(model, choice=choice_text, confidence=confidence)
     return Proposal(
         action="apply",
         category_id=chosen.id,
@@ -272,7 +241,6 @@ def parse_jev_proposal(
         confidence=confidence,
         model=model,
         choice=choice_text,
-        noul=noul,
     )
 
 
@@ -348,13 +316,17 @@ def _unit_interval(value: object) -> Decimal | None:
     return parsed
 
 
+def _is_uncategorized_name(name: str) -> bool:
+    return name.casefold() == UNCATEGORIZED_NAME
+
+
 def _unique_categories_by_name(categories: Sequence[JevCategory]) -> dict[str, JevCategory]:
     mapping: dict[str, JevCategory] = {}
     duplicates: set[str] = set()
     for category in categories:
-        key = category.name.casefold()
-        if key in SKIP_OPTION_ALIASES:
+        if _is_uncategorized_name(category.name):
             continue
+        key = category.name.casefold()
         if key in mapping:
             duplicates.add(key)
             continue
@@ -376,7 +348,6 @@ def _skip(
     *,
     choice: str | None = None,
     confidence: Decimal | None = None,
-    noul: Decimal | None = None,
 ) -> Proposal:
     return Proposal(
         action="skip",
@@ -385,7 +356,6 @@ def _skip(
         confidence=confidence if confidence is not None else Decimal("0"),
         model=model,
         choice=choice,
-        noul=noul,
     )
 
 

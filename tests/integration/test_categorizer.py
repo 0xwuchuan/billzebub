@@ -316,7 +316,6 @@ def test_worker_jev_applies_category_at_half_confidence(
             confidence=Decimal("0.5"),
             model="jev-1.13.0",
             choice="Gifts",
-            noul=Decimal("0.62"),
         )
     )
 
@@ -333,7 +332,7 @@ def test_worker_jev_applies_category_at_half_confidence(
     assert attempt.action == "apply"
     assert attempt.choice == "Gifts"
     assert attempt.choice_confidence == Decimal("0.5")
-    assert attempt.noul == Decimal("0.62")
+    assert attempt.noul is None
     assert attempt.category_id == gifts.id
     assert attempt.category_name == "Gifts"
     assert attempt.counterparty == "Synthetic Florist"
@@ -366,7 +365,6 @@ def test_worker_jev_below_threshold_or_missing_key_leaves_review(
             confidence=Decimal("0.49"),
             model="jev-1.13.0",
             choice="Gifts",
-            noul=Decimal("0.49"),
         )
     )
 
@@ -386,7 +384,7 @@ def test_worker_jev_below_threshold_or_missing_key_leaves_review(
     assert skip_attempt.action == "skip"
     assert skip_attempt.choice == "Gifts"
     assert skip_attempt.choice_confidence == Decimal("0.49")
-    assert skip_attempt.noul == Decimal("0.49")
+    assert skip_attempt.noul is None
     assert skip_attempt.category_id is None
     assert skip_attempt.category_name is None
     assert _latest_attempt(database, missing_key_id) is None
@@ -397,7 +395,7 @@ def test_worker_jev_below_threshold_or_missing_key_leaves_review(
     assert attempt_context["action"] == "skip"
     assert attempt_context["choice"] == "Gifts"
     assert attempt_context["choice_confidence"] == "0.49"
-    assert attempt_context["noul"] == "0.49"
+    assert attempt_context["noul"] is None
     assert attempt_context["category_name"] is None
     assert attempt_context["model"] == "jev-1.13.0"
 

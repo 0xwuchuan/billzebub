@@ -18,6 +18,7 @@ from scripts.agent.jev_categorize import (
     subject_from_transaction,
 )
 
+from billzebub import jev as shared_jev
 from billzebub.jev import DEFAULT_MODEL, JevError, Proposal, jev_state
 
 FOOD_ID = UUID("11111111-1111-1111-1111-111111111111")
@@ -269,3 +270,11 @@ def test_parser_has_no_typesafe_key_flag() -> None:
     assert "TYPESAFE" not in help_text
     assert "--api-key" not in help_text
     assert "NAS worker" in help_text
+
+
+def test_cli_uses_shared_jev_propose_path() -> None:
+    from scripts.agent import jev_categorize as cli
+
+    assert cli.JevProposer is shared_jev.JevProposer
+    assert cli.Proposal is shared_jev.Proposal
+    assert cli.DEFAULT_MIN_CONFIDENCE is shared_jev.DEFAULT_MIN_CONFIDENCE
