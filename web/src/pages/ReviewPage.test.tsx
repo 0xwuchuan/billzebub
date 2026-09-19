@@ -119,6 +119,37 @@ describe("ReviewPage", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("hides the pending queue in the card-only mobile flow", () => {
+    const original = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      addListener: () => undefined,
+      removeListener: () => undefined,
+      dispatchEvent: () => false,
+    })) as typeof window.matchMedia;
+    try {
+      renderPage({
+        reviews: [coffeeReview],
+        transactions: [coffee],
+      });
+      expect(
+        screen.queryByRole("region", { name: "Pending Review queue" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: "Synthetic Coffee" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Assign Category" }),
+      ).toBeInTheDocument();
+    } finally {
+      window.matchMedia = original;
+    }
+  });
+
   it("shows the empty state after the last categorization assign", () => {
     renderPage({
       reviews: [coffeeReview],

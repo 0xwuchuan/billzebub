@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { Category, ImportRecord, Review, Transaction } from "../api";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
+import { useDeskMedia } from "../hooks/useDeskMedia";
 import { useEntrance } from "../hooks/useEntrance";
 import {
   activityAmount,
@@ -61,6 +62,7 @@ export function ReviewPage({
   onOpenSettings: () => void;
 }) {
   const fresh = useEntrance("review");
+  const desk = useDeskMedia();
   const [hiddenIds, setHiddenIds] = useState<string[]>([]);
   const hidden = new Set(hiddenIds);
   const items = filterReviews(reviews, filter).filter(
@@ -137,34 +139,40 @@ export function ReviewPage({
           {items.length} open · blocking first
         </span>
       </div>
-      <div className="desk review-desk">
-        <section className="card queue-pane" aria-label="Pending Review queue">
-          <div className="panel-head">
-            <h2>Queue</h2>
-            <span className="muted" style={{ fontSize: "var(--bz-text-sm)" }}>
-              {items.length} open
-            </span>
-          </div>
-          {items.length === 0 ? (
-            <p className="empty">
-              No Pending Review in this filter. Confirmed history is up to date.
-            </p>
-          ) : (
-            <div className="queue-list">
-              {items.map((item) => (
-                <QueueItem
-                  key={item.id}
-                  review={item}
-                  transaction={transactionForReview(item, transactions)}
-                  importRecord={importForReview(item, imports)}
-                  current={selected !== null && selected.id === item.id}
-                  today={today}
-                  onSelect={onSelect}
-                />
-              ))}
+      <div className={`desk review-desk${desk ? "" : " is-card-flow"}`}>
+        {desk ? (
+          <section
+            className="card queue-pane"
+            aria-label="Pending Review queue"
+          >
+            <div className="panel-head">
+              <h2>Queue</h2>
+              <span className="muted" style={{ fontSize: "var(--bz-text-sm)" }}>
+                {items.length} open
+              </span>
             </div>
-          )}
-        </section>
+            {items.length === 0 ? (
+              <p className="empty">
+                No Pending Review in this filter. Confirmed history is up to
+                date.
+              </p>
+            ) : (
+              <div className="queue-list">
+                {items.map((item) => (
+                  <QueueItem
+                    key={item.id}
+                    review={item}
+                    transaction={transactionForReview(item, transactions)}
+                    importRecord={importForReview(item, imports)}
+                    current={selected !== null && selected.id === item.id}
+                    today={today}
+                    onSelect={onSelect}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+        ) : null}
         <section
           className="card evidence-pane"
           aria-live="polite"

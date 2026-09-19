@@ -1027,7 +1027,8 @@ button.coverage-chip:hover {
     position: static;
   }
 
-  .review-desk .queue-pane {
+  .review-desk .queue-pane,
+  .review-desk.is-card-flow .queue-pane {
     display: none;
   }
 
