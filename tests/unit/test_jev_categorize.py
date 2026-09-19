@@ -11,6 +11,7 @@ from scripts.agent.agent_api import AgentApiError, Category, Transaction
 from scripts.agent.jev_categorize import (
     RunnerConfig,
     RunnerError,
+    TransactionProposer,
     idempotency_key,
     main,
     run,
@@ -18,8 +19,14 @@ from scripts.agent.jev_categorize import (
     subject_from_transaction,
 )
 
-from billzebub import jev as shared_jev
-from billzebub.jev import DEFAULT_MODEL, JevError, Proposal, jev_state
+from billzebub.jev import (
+    DEFAULT_MODEL,
+    JevCategory,
+    JevError,
+    JevSubject,
+    Proposal,
+    jev_state,
+)
 
 FOOD_ID = UUID("11111111-1111-1111-1111-111111111111")
 TXN_ID = UUID("22222222-2222-2222-2222-222222222222")
@@ -273,8 +280,18 @@ def test_parser_has_no_typesafe_key_flag() -> None:
 
 
 def test_cli_uses_shared_jev_propose_path() -> None:
-    from scripts.agent import jev_categorize as cli
+    class Shared:
+        def propose(self, subject: JevSubject, categories: Sequence[JevCategory]) -> Proposal:
+            del subject, categories
+            return Proposal(
+                action="apply",
+                category_id=FOOD_ID,
+                category_name="Synthetic Food",
+                confidence=Decimal("0.5"),
+                model=DEFAULT_MODEL,
+            )
 
-    assert cli.JevProposer is shared_jev.JevProposer
-    assert cli.Proposal is shared_jev.Proposal
-    assert cli.DEFAULT_MIN_CONFIDENCE is shared_jev.DEFAULT_MIN_CONFIDENCE
+    proposal = TransactionProposer(Shared()).propose(_transaction(), (_category(),))
+    assert proposal.action == "apply"
+    assert proposal.noul is None
+    assert proposal.category_id == FOOD_ID
