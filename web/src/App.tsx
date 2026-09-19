@@ -136,17 +136,20 @@ export function App() {
     });
   }
 
-  async function assignCategory(transactionId: string) {
+  async function assignCategory(transactionId: string): Promise<boolean> {
     const transaction = workspace.workspace.transactions.items.find(
       (item) => item.id === transactionId,
     );
     const categoryId = categoryDraft[transactionId] ?? "";
     if (transaction === undefined || categoryId === "") {
-      return;
+      return false;
     }
-    await workspace.saveCategory(transaction, categoryId);
-    setCategoryDraft((current) => ({ ...current, [transactionId]: "" }));
-    setToast(`Category assigned to ${transaction.counterparty}`);
+    const ok = await workspace.saveCategory(transaction, categoryId);
+    if (ok) {
+      setCategoryDraft((current) => ({ ...current, [transactionId]: "" }));
+      setToast(`Category assigned to ${transaction.counterparty}`);
+    }
+    return ok;
   }
 
   const showOnboarding = workspaceReady && !setup.onboarded && !configured;
@@ -258,14 +261,15 @@ export function App() {
                 [transactionId]: categoryId,
               }));
             }}
-            onAssign={(transaction) => {
-              void assignCategory(transaction.id);
-            }}
-            onDecide={(review, choice) => {
-              void workspace.resolveReview(review, choice).then(() => {
-                setToast(decisionToast(choice));
-              });
-            }}
+            onAssign={(transaction) => assignCategory(transaction.id)}
+            onDecide={(review, choice) =>
+              workspace.resolveReview(review, choice).then((ok) => {
+                if (ok) {
+                  setToast(decisionToast(choice));
+                }
+                return ok;
+              })
+            }
             onOpenTransaction={openDrawer}
             onOpenImport={openImport}
             onOpenSettings={() => {

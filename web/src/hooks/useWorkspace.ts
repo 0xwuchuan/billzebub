@@ -131,9 +131,9 @@ export function useWorkspace() {
   async function saveCategory(
     transaction: Transaction,
     categoryId: string,
-  ): Promise<void> {
+  ): Promise<boolean> {
     if (categoryId === "") {
-      return;
+      return false;
     }
     setSaving(transaction.id);
     setError(null);
@@ -156,14 +156,19 @@ export function useWorkspace() {
             ),
         ),
       }));
+      return true;
     } catch (requestError) {
       setError(messageFor(requestError));
+      return false;
     } finally {
       setSaving(null);
     }
   }
 
-  async function resolveReview(review: Review, choice: string): Promise<void> {
+  async function resolveReview(
+    review: Review,
+    choice: string,
+  ): Promise<boolean> {
     setSaving(review.id);
     setError(null);
     try {
@@ -172,8 +177,10 @@ export function useWorkspace() {
         ...current,
         reviews: current.reviews.filter((item) => item.id !== review.id),
       }));
+      return true;
     } catch (requestError) {
       setError(messageFor(requestError));
+      return false;
     } finally {
       setSaving(null);
     }

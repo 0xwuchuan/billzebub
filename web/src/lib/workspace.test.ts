@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Transaction } from "../api";
+import type { Review } from "../api";
 import {
   activityAmount,
   categoryTotalsForMonths,
@@ -8,6 +9,7 @@ import {
   jevAttemptFromContext,
   monthTotals,
   monthlySpending,
+  nextPendingReviewId,
   weekComparison,
 } from "./workspace";
 
@@ -15,6 +17,22 @@ const card = {
   id: "00000000-0000-0000-0000-000000000011",
   name: "Synthetic Card",
 };
+
+function reviewStub(id: string): Review {
+  return {
+    id,
+    subject_type: "transaction",
+    subject_id: id,
+    condition_code: "categorization_needed",
+    severity: "attention",
+    status: "pending",
+    version: 1,
+    allowed_decisions: ["categorize"],
+    context: {},
+    created_at: "2026-01-10T00:00:00+00:00",
+    updated_at: "2026-01-10T00:00:00+00:00",
+  };
+}
 
 function transaction(input: {
   id: string;
@@ -187,6 +205,16 @@ describe("owner activity amounts", () => {
         ["2026-01", "2026-02", "2026-03"],
       ),
     ).toEqual([{ name: "Groceries", cents: 4567 }]);
+  });
+});
+
+describe("nextPendingReviewId", () => {
+  it("advances to the next Pending Review and clears after the last", () => {
+    const first = reviewStub("00000000-0000-0000-0000-000000000101");
+    const second = reviewStub("00000000-0000-0000-0000-000000000102");
+    expect(nextPendingReviewId([first, second], first.id)).toBe(second.id);
+    expect(nextPendingReviewId([first, second], second.id)).toBe("");
+    expect(nextPendingReviewId([], first.id)).toBe("");
   });
 });
 

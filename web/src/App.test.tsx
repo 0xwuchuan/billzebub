@@ -215,6 +215,7 @@ describe("App", () => {
 
     render(<App />);
 
+    fireEvent.click(await screen.findByText("Review details"));
     expect(
       await screen.findByRole("heading", { name: "Last Jev attempt" }),
     ).toBeInTheDocument();
@@ -244,8 +245,13 @@ describe("App", () => {
     render(<App />);
 
     expect(
-      await screen.findByRole("heading", { name: "Category needed" }),
+      await screen.findByRole("heading", { name: "Synthetic Coffee" }),
     ).toBeInTheDocument();
+    expect(screen.getByText("Category needed")).toBeInTheDocument();
+    expect(screen.getAllByText("SGD 12.34").length).toBeGreaterThan(0);
+    expect(
+      screen.queryByRole("heading", { name: "Category needed" }),
+    ).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Category for Synthetic Coffee"), {
       target: { value: "00000000-0000-0000-0000-000000000099" },
     });
@@ -415,6 +421,64 @@ describe("App", () => {
     });
   });
 
+  it("advances to the next categorization Review after assign", async () => {
+    seedOnboarded();
+    window.location.hash = "#/review";
+    const nextTransaction = {
+      ...transaction,
+      id: "00000000-0000-0000-0000-000000000020",
+      counterparty: "Synthetic Grocer",
+      posted_amount: { amount: "-8.00", currency: "SGD" },
+    };
+    const nextReview = {
+      ...pendingReview,
+      id: "00000000-0000-0000-0000-000000000021",
+      subject_id: nextTransaction.id,
+      created_at: "2026-01-11T00:00:00+00:00",
+      updated_at: "2026-01-11T00:00:00+00:00",
+    };
+    const fetchMock = mockWorkspace({
+      transactions: [transaction, nextTransaction],
+      reviews: [pendingReview, nextReview],
+      categories: [
+        {
+          id: "00000000-0000-0000-0000-000000000099",
+          name: "Synthetic Food",
+          parent_id: null,
+          active: true,
+        },
+      ],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Synthetic Coffee" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Synthetic Grocer")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Category for Synthetic Coffee"), {
+      target: { value: "00000000-0000-0000-0000-000000000099" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Assign Category" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Synthetic Grocer" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Synthetic Coffee" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Category for Synthetic Grocer")).toBe(
+      screen.getByRole("combobox"),
+    );
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/transactions/00000000-0000-0000-0000-000000000010/category",
+        expect.objectContaining({ method: "PUT" }),
+      );
+    });
+  });
+
   it("posts a permitted Review decision from the two-pane desk", async () => {
     seedOnboarded();
     window.location.hash = "#/review";
@@ -428,8 +492,11 @@ describe("App", () => {
     render(<App />);
 
     expect(
-      await screen.findByRole("heading", { name: "Failed Extraction" }),
+      await screen.findByRole("heading", {
+        name: "dbs-live-fresh-2026-08.pdf",
+      }),
     ).toBeInTheDocument();
+    expect(screen.getByText("Failed Extraction")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Retry Extraction" }));
 
     await waitFor(() => {
@@ -1217,8 +1284,24 @@ function mockWorkspace(input: {
       return json({ items: input.tokens ?? [] });
     }
     if (url.endsWith("/category") && init?.method === "PUT") {
+      const transactionId = url.slice(
+        "/api/v1/transactions/".length,
+        url.length - "/category".length,
+      );
+      const match = input.transactions.find((item) => {
+        return (
+          typeof item === "object" &&
+          item !== null &&
+          "id" in item &&
+          item.id === transactionId
+        );
+      });
+      const source =
+        match !== undefined && typeof match === "object"
+          ? { ...transaction, ...match }
+          : transaction;
       return json({
-        ...transaction,
+        ...source,
         version: 2,
         category_splits: [
           {

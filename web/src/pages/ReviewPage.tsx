@@ -1,6 +1,9 @@
+import { useState } from "react";
+
 import type { Category, ImportRecord, Review, Transaction } from "../api";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
+import { useDeskMedia } from "../hooks/useDeskMedia";
 import { useEntrance } from "../hooks/useEntrance";
 import {
   activityAmount,
@@ -9,9 +12,15 @@ import {
   filterReviews,
   importForReview,
   jevAttemptFromContext,
+  nextPendingReviewId,
   transactionForReview,
 } from "../lib/workspace";
-import { decisionLabel, openedLabel, reviewTitle } from "../lib/labels";
+import {
+  dayMonthLabel,
+  decisionLabel,
+  openedLabel,
+  reviewTitle,
+} from "../lib/labels";
 import { formatUnsigned } from "../lib/money";
 import type { ReviewFilter } from "../lib/route";
 
@@ -46,19 +55,67 @@ export function ReviewPage({
   onFilter: (filter: ReviewFilter) => void;
   onSelect: (id: string) => void;
   onDraft: (transactionId: string, categoryId: string) => void;
-  onAssign: (transaction: Transaction) => void;
-  onDecide: (review: Review, choice: string) => void;
+  onAssign: (transaction: Transaction) => void | Promise<boolean | void>;
+  onDecide: (review: Review, choice: string) => void | Promise<boolean | void>;
   onOpenTransaction: (id: string) => void;
   onOpenImport: (id: string) => void;
   onOpenSettings: () => void;
 }) {
   const fresh = useEntrance("review");
-  const items = filterReviews(reviews, filter);
+  const desk = useDeskMedia();
+  const [hiddenIds, setHiddenIds] = useState<string[]>([]);
+  const hidden = new Set(hiddenIds);
+  const items = filterReviews(reviews, filter).filter(
+    (item) => !hidden.has(item.id),
+  );
   const selected =
     items.find((item) => item.id === selectedId) ?? items[0] ?? null;
+
+  function advancePast(reviewId: string) {
+    onSelect(nextPendingReviewId(items, reviewId));
+    const live = new Set(reviews.map((review) => review.id));
+    setHiddenIds((current) => {
+      const next = current.filter((id) => live.has(id));
+      return next.includes(reviewId) ? next : [...next, reviewId];
+    });
+  }
+
+  function restore(reviewId: string) {
+    setHiddenIds((current) => current.filter((id) => id !== reviewId));
+    onSelect(reviewId);
+  }
+
+  function finishAdvance(
+    reviewId: string,
+    result: boolean | void,
+  ): boolean | void {
+    if (result === false) {
+      restore(reviewId);
+    }
+    return result;
+  }
+
+  function assignAndAdvance(transaction: Transaction) {
+    if (selected === null) {
+      return;
+    }
+    const reviewId = selected.id;
+    advancePast(reviewId);
+    void Promise.resolve(onAssign(transaction)).then((result) => {
+      finishAdvance(reviewId, result);
+    });
+  }
+
+  function decideAndAdvance(review: Review, choice: string) {
+    advancePast(review.id);
+    void Promise.resolve(onDecide(review, choice)).then((result) => {
+      finishAdvance(review.id, result);
+    });
+  }
+
   return (
-    <>
-      <div className={`filters${fresh ? " stage-enter" : ""}`}>
+    <div className={`review-page${fresh ? " stage-enter" : ""}`}>
+      <div className="filters">
         {(
           [
             ["", "All"],
@@ -78,35 +135,49 @@ export function ReviewPage({
             {label}
           </button>
         ))}
+        <span className="muted review-queue-count">
+          {items.length} open · blocking first
+        </span>
       </div>
-      <div className="desk">
-        <section className="card queue-pane" aria-label="Pending Review queue">
-          <div className="panel-head">
-            <h2>Queue</h2>
-            <span className="muted" style={{ fontSize: "var(--bz-text-sm)" }}>
-              {items.length} open · blocking first
-            </span>
-          </div>
-          {items.length === 0 ? (
-            <p className="empty">
-              No Pending Review in this filter. Confirmed history is up to date.
-            </p>
-          ) : (
-            <div className="queue-list">
-              {items.map((item) => (
-                <QueueItem
-                  key={item.id}
-                  review={item}
-                  transaction={transactionForReview(item, transactions)}
-                  current={selected !== null && selected.id === item.id}
-                  today={today}
-                  onSelect={onSelect}
-                />
-              ))}
+      <div className={`desk review-desk${desk ? "" : " is-card-flow"}`}>
+        {desk ? (
+          <section
+            className="card queue-pane"
+            aria-label="Pending Review queue"
+          >
+            <div className="panel-head">
+              <h2>Queue</h2>
+              <span className="muted" style={{ fontSize: "var(--bz-text-sm)" }}>
+                {items.length} open
+              </span>
             </div>
-          )}
-        </section>
-        <section className="card evidence-pane" aria-live="polite">
+            {items.length === 0 ? (
+              <p className="empty">
+                No Pending Review in this filter. Confirmed history is up to
+                date.
+              </p>
+            ) : (
+              <div className="queue-list">
+                {items.map((item) => (
+                  <QueueItem
+                    key={item.id}
+                    review={item}
+                    transaction={transactionForReview(item, transactions)}
+                    importRecord={importForReview(item, imports)}
+                    current={selected !== null && selected.id === item.id}
+                    today={today}
+                    onSelect={onSelect}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+        ) : null}
+        <section
+          className="card evidence-pane"
+          aria-live="polite"
+          aria-label="Review decision"
+        >
           {selected === null ? (
             <p className="empty">
               Nothing to decide. Pick another filter or come back after the next
@@ -125,9 +196,10 @@ export function ReviewPage({
               }
               saving={saving}
               today={today}
+              remaining={items.length}
               onDraft={onDraft}
-              onAssign={onAssign}
-              onDecide={onDecide}
+              onAssign={assignAndAdvance}
+              onDecide={decideAndAdvance}
               onOpenTransaction={onOpenTransaction}
               onOpenImport={onOpenImport}
               onOpenSettings={onOpenSettings}
@@ -135,24 +207,30 @@ export function ReviewPage({
           )}
         </section>
       </div>
-    </>
+    </div>
   );
 }
 
 function QueueItem({
   review,
   transaction,
+  importRecord,
   current,
   today,
   onSelect,
 }: {
   review: Review;
   transaction: Transaction | undefined;
+  importRecord: ImportRecord | undefined;
   current: boolean;
   today: Date;
   onSelect: (id: string) => void;
 }) {
   const blocking = review.severity === "blocking";
+  const amount =
+    transaction === undefined
+      ? null
+      : formatUnsigned(activityAmount(transaction));
   return (
     <button
       className={`queue-item${blocking ? " is-blocking" : ""}`}
@@ -164,21 +242,14 @@ function QueueItem({
     >
       <span>
         <span className="queue-title">
-          {reviewTitle(review.condition_code)}
+          {queueTitle(review, transaction, importRecord)}
         </span>
         <span className="queue-reason">
-          {queueSubject(review, transaction)}
+          {openedLabel(review.created_at, today)}
         </span>
       </span>
       <span className="queue-right">
-        <span className="amount">
-          {transaction === undefined
-            ? "Source Artifact"
-            : formatUnsigned(activityAmount(transaction))}
-        </span>
-        <span className="queue-age">
-          {openedLabel(review.created_at, today)}
-        </span>
+        <span className="amount">{amount ?? queueFallbackAmount(review)}</span>
       </span>
     </button>
   );
@@ -192,6 +263,7 @@ function Evidence({
   draft,
   saving,
   today,
+  remaining,
   onDraft,
   onAssign,
   onDecide,
@@ -206,6 +278,7 @@ function Evidence({
   draft: string;
   saving: string | null;
   today: Date;
+  remaining: number;
   onDraft: (transactionId: string, categoryId: string) => void;
   onAssign: (transaction: Transaction) => void;
   onDecide: (review: Review, choice: string) => void;
@@ -223,6 +296,7 @@ function Evidence({
   const account =
     contextString(review.context, "account") ??
     transaction?.financial_account.name ??
+    importRecord?.financial_account_name ??
     review.subject_type;
   const categorization = review.condition_code === "categorization_needed";
   const jevAttempt = categorization
@@ -232,14 +306,31 @@ function Evidence({
     review.condition_code === "apple_wallet_unmapped_card" ||
     review.condition_code === "paylah_account_missing" ||
     review.condition_code === "paylah_account_ambiguous";
+  const amount =
+    transaction === undefined
+      ? null
+      : formatUnsigned(activityAmount(transaction));
+  const subject = decisionSubject(review, transaction, importRecord);
+  const meta = [
+    account,
+    transaction !== undefined
+      ? dayMonthLabel(transaction.effective_date)
+      : null,
+    openedLabel(review.created_at, today),
+  ]
+    .filter((part): part is string => part !== null && part !== "")
+    .join(" · ");
   return (
     <>
       <div className="panel-head">
-        <div>
+        <div className="decision-badges">
           <Badge tone={blocking ? "blocking" : "attention"}>
             {review.severity}
           </Badge>
-          <h2 style={{ marginTop: 8 }}>{reviewTitle(review.condition_code)}</h2>
+          <Badge tone={blocking ? "blocking" : "attention"}>
+            {reviewTitle(review.condition_code)}
+          </Badge>
+          <span className="muted review-remaining">{remaining} left</span>
         </div>
         {transaction !== undefined ? (
           <Button
@@ -262,76 +353,14 @@ function Evidence({
         ) : null}
       </div>
       <div className={`evidence-body${fresh ? " stage-enter" : ""}`}>
-        <p className={`prompt${blocking ? " is-blocking" : ""}`}>
-          {evidenceBody(review, transaction)}
-        </p>
-        <dl className="kv">
-          <dt>Financial Account</dt>
-          <dd>{account}</dd>
-          <dt>Amount in question</dt>
-          <dd>
-            {transaction === undefined
-              ? "No Claims created"
-              : formatUnsigned(activityAmount(transaction))}
-          </dd>
-          <dt>Raw source</dt>
-          <dd>{raw}</dd>
-          <dt>Opened</dt>
-          <dd>{openedLabel(review.created_at, today)}</dd>
-        </dl>
-        {jevAttempt !== null ? (
-          <section>
-            <h3 className="eyebrow">Last Jev attempt</h3>
-            <dl className="kv">
-              <dt>Action</dt>
-              <dd>{jevAttempt.action}</dd>
-              <dt>Choice</dt>
-              <dd>{jevAttempt.choice ?? "none"}</dd>
-              <dt>Confidence</dt>
-              <dd>{jevAttempt.choice_confidence ?? "—"}</dd>
-              <dt>Evidence noul</dt>
-              <dd>{jevAttempt.noul ?? "—"}</dd>
-              <dt>Category</dt>
-              <dd>
-                {jevAttempt.action === "apply"
-                  ? (jevAttempt.category_name ?? "—")
-                  : "skip"}
-              </dd>
-              <dt>Model</dt>
-              <dd>{jevAttempt.model}</dd>
-              {jevAttempt.error_class !== null ? (
-                <>
-                  <dt>TypeSafe error</dt>
-                  <dd>
-                    {jevAttempt.error_class}
-                    {jevAttempt.error_message !== null
-                      ? `: ${jevAttempt.error_message}`
-                      : ""}
-                  </dd>
-                </>
-              ) : null}
-            </dl>
-          </section>
-        ) : null}
-        <section>
-          <h3 className="eyebrow">Claim evidence</h3>
-          {claims.length === 0 ? (
-            <p className="claim">No linked Claims in this Review.</p>
-          ) : (
-            claims.map((claim) => (
-              <p className="claim" key={claim}>
-                {claim}
-              </p>
-            ))
-          )}
-        </section>
-        <section>
-          <h3
-            className="eyebrow"
-            style={{ display: "block", marginBottom: 12 }}
-          >
-            Permitted actions
-          </h3>
+        <div className="decision-hero">
+          <h2 className="decision-subject">{subject}</h2>
+          {amount !== null ? (
+            <p className="decision-amount amount">{amount}</p>
+          ) : null}
+          <p className="decision-meta">{meta}</p>
+        </div>
+        <section className="review-decision">
           <div className="review-actions">
             {categorization && transaction !== undefined ? (
               <>
@@ -401,23 +430,118 @@ function Evidence({
               : null}
           </div>
         </section>
+        <details className="import-details review-details">
+          <summary>Review details</summary>
+          <p className={`prompt${blocking ? " is-blocking" : ""}`}>
+            {evidenceBody(review, transaction)}
+          </p>
+          {jevAttempt !== null ? (
+            <section>
+              <h3 className="eyebrow">Last Jev attempt</h3>
+              <dl className="kv">
+                <dt>Action</dt>
+                <dd>{jevAttempt.action}</dd>
+                <dt>Choice</dt>
+                <dd>{jevAttempt.choice ?? "none"}</dd>
+                <dt>Confidence</dt>
+                <dd>{jevAttempt.choice_confidence ?? "—"}</dd>
+                <dt>Evidence noul</dt>
+                <dd>{jevAttempt.noul ?? "—"}</dd>
+                <dt>Category</dt>
+                <dd>
+                  {jevAttempt.action === "apply"
+                    ? (jevAttempt.category_name ?? "—")
+                    : "skip"}
+                </dd>
+                <dt>Model</dt>
+                <dd>{jevAttempt.model}</dd>
+                {jevAttempt.error_class !== null ? (
+                  <>
+                    <dt>TypeSafe error</dt>
+                    <dd>
+                      {jevAttempt.error_class}
+                      {jevAttempt.error_message !== null
+                        ? `: ${jevAttempt.error_message}`
+                        : ""}
+                    </dd>
+                  </>
+                ) : null}
+              </dl>
+            </section>
+          ) : null}
+          <dl className="kv">
+            <dt>Condition</dt>
+            <dd>{review.condition_code}</dd>
+            <dt>Review</dt>
+            <dd>{review.id}</dd>
+            <dt>Subject</dt>
+            <dd>
+              {review.subject_type} {review.subject_id}
+            </dd>
+            <dt>Financial Account</dt>
+            <dd>{account}</dd>
+            <dt>Amount in question</dt>
+            <dd>{amount ?? "No Claims created"}</dd>
+            <dt>Raw source</dt>
+            <dd>{raw}</dd>
+          </dl>
+          <section>
+            <h3 className="eyebrow">Claim evidence</h3>
+            {claims.length === 0 ? (
+              <p className="claim">No linked Claims in this Review.</p>
+            ) : (
+              claims.map((claim) => (
+                <p className="claim" key={claim}>
+                  {claim}
+                </p>
+              ))
+            )}
+          </section>
+        </details>
       </div>
     </>
   );
 }
 
-function queueSubject(
+function queueTitle(
   review: Review,
   transaction: Transaction | undefined,
+  importRecord: ImportRecord | undefined,
 ): string {
-  const fromContext = contextString(review.context, "subject");
+  return decisionSubject(review, transaction, importRecord);
+}
+
+function queueFallbackAmount(review: Review): string {
+  if (
+    review.subject_type === "source_artifact" ||
+    review.subject_type === "extraction"
+  ) {
+    return "Source Artifact";
+  }
+  return "—";
+}
+
+function decisionSubject(
+  review: Review,
+  transaction: Transaction | undefined,
+  importRecord: ImportRecord | undefined,
+): string {
+  if (transaction !== undefined) {
+    return transaction.counterparty;
+  }
+  const fromContext =
+    contextString(review.context, "subject") ??
+    contextString(review.context, "raw");
   if (fromContext !== null) {
     return fromContext;
   }
-  if (transaction !== undefined) {
-    return `${transaction.counterparty} · ${transaction.financial_account.name}`;
+  if (importRecord?.financial_account_name != null) {
+    return importRecord.financial_account_name;
   }
-  return `${review.subject_type} ${review.subject_id}`;
+  if (importRecord?.adapter_key != null) {
+    return importRecord.adapter_key;
+  }
+  return reviewTitle(review.condition_code);
 }
 
 function evidenceBody(
