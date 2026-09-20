@@ -199,10 +199,11 @@ button.statement-cell:hover {
 
 .row {
   display: grid;
-  grid-template-columns: 5.4rem minmax(0, 1fr) auto auto;
+  grid-template-columns: 5.4rem minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--bz-space-3);
   width: 100%;
+  min-width: 0;
   min-height: var(--bz-row-h);
   padding: 0.55rem var(--bz-space-5);
   border: 0;
@@ -211,6 +212,16 @@ button.statement-cell:hover {
   background: transparent;
   color: inherit;
   text-align: left;
+}
+
+.row-trailing,
+.tx-row-trailing {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--bz-space-3);
+  flex: 0 0 auto;
+  min-width: 0;
 }
 
 .row:last-child {
@@ -952,6 +963,7 @@ button.coverage-chip:hover {
 .spending-page {
   display: grid;
   gap: var(--bz-space-4);
+  min-width: 0;
   padding-bottom: var(--bz-space-6);
 }
 
@@ -1006,6 +1018,7 @@ button.coverage-chip:hover {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--bz-space-4);
+  min-width: 0;
   padding-bottom: var(--bz-space-6);
 }
 
@@ -1076,7 +1089,12 @@ button.coverage-chip:hover {
 .tx-page {
   display: grid;
   gap: var(--bz-space-4);
-  padding-bottom: 5.5rem;
+  min-width: 0;
+  padding-bottom: var(--bz-space-6);
+}
+
+.tx-page.has-bulk {
+  padding-bottom: 7.5rem;
 }
 
 .tx-toolbar {
@@ -1173,10 +1191,11 @@ button.coverage-chip:hover {
 
 .tx-row-main {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--bz-space-3);
   width: 100%;
+  min-width: 0;
   min-height: var(--bz-row-h);
   padding: 0.55rem var(--bz-space-5) 0.55rem var(--bz-space-3);
   border: 0;
@@ -1211,12 +1230,13 @@ button.coverage-chip:hover {
   position: fixed;
   left: 50%;
   bottom: var(--bz-space-6);
-  z-index: 36;
+  z-index: 18;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--bz-space-2);
   min-height: 3rem;
+  max-width: calc(100vw - 2rem);
   padding: 0.45rem 0.55rem 0.45rem 0.9rem;
   border: 1px solid var(--bz-border-strong);
   border-radius: 999px;
@@ -1344,20 +1364,47 @@ button.coverage-chip:hover {
     grid-template-columns: minmax(0, 1fr) auto;
   }
 
-  .tx-row-main {
-    grid-template-columns: minmax(0, 1.4fr) auto;
-  }
-
   .tx-row-main .cat-pill {
     display: none;
+  }
+
+  .tx-page.has-bulk {
+    padding-bottom: 11rem;
   }
 
   .bulk-bar {
     left: var(--bz-space-4);
     right: var(--bz-space-4);
     bottom: var(--bz-space-4);
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    max-width: none;
+    padding: var(--bz-space-3);
     border-radius: var(--bz-radius-lg);
     transform: none;
+    padding-bottom: calc(var(--bz-space-3) + env(safe-area-inset-bottom, 0px));
+  }
+
+  .bulk-bar .select,
+  .bulk-bar .btn-primary {
+    grid-column: 1 / -1;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .panel-head,
+  .recent-head,
+  .coverage-head {
+    flex-wrap: wrap;
+    gap: var(--bz-space-2);
+  }
+
+  .dash-card,
+  .metric-card,
+  .analytics-card,
+  .tx-list,
+  .spend-hero {
+    max-width: 100%;
   }
 
   .tx-toolbar .field,
@@ -1365,6 +1412,12 @@ button.coverage-chip:hover {
   .add-filter-menu {
     width: 100%;
     max-width: 100%;
+  }
+
+  .tx-summary {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--bz-space-2) var(--bz-space-4);
   }
 
   .row .when {

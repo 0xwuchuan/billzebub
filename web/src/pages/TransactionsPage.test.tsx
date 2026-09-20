@@ -73,10 +73,13 @@ describe("TransactionsPage", () => {
       "1 transaction",
     );
     expect(screen.getByText("Uncategorized")).toBeInTheDocument();
+    expect(document.querySelector(".tx-row-trailing")).not.toBeNull();
+    expect(document.querySelector(".tx-page.has-bulk")).toBeNull();
     fireEvent.click(
       screen.getByRole("checkbox", { name: "Select Synthetic Coffee" }),
     );
     expect(screen.getByRole("toolbar", { name: "Bulk actions" })).toBeVisible();
+    expect(document.querySelector(".tx-page.has-bulk")).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Add filter" }));
     expect(screen.getByLabelText("Financial Account")).toBeInTheDocument();
     expect(screen.getByLabelText("Category")).toBeInTheDocument();

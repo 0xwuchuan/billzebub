@@ -442,7 +442,12 @@ describe("App", () => {
     window.location.hash = "#/overview";
     vi.stubGlobal(
       "fetch",
-      mockWorkspace({ transactions: [], reviews: [], categories: [] }),
+      mockWorkspace({
+        transactions: [],
+        reviews: [],
+        categories: [],
+        accounts: [configuredAccount()],
+      }),
     );
 
     render(<App />);
@@ -450,6 +455,9 @@ describe("App", () => {
     expect(await screen.findByText("Billzebub")).toBeInTheDocument();
     expect(document.querySelector(".rail")).not.toBeNull();
     expect(document.querySelector("main.stage")).not.toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Switch to light theme" }),
+    ).toBeInTheDocument();
     fireEvent.click(
       screen.getByRole("button", { name: "Open navigation", hidden: true }),
     );
@@ -461,6 +469,10 @@ describe("App", () => {
     expect(
       within(drawer).getByRole("button", { name: "Settings" }),
     ).toBeVisible();
+    expect(
+      within(drawer).getByRole("button", { name: "Citi PremierMiles" }),
+    ).toBeVisible();
+    expect(within(drawer).getByText("Credit card")).toBeInTheDocument();
     expect(
       within(drawer).queryByRole("button", { name: "Setup" }),
     ).not.toBeInTheDocument();
@@ -682,6 +694,7 @@ describe("App", () => {
     fireEvent.click(
       screen.getByRole("checkbox", { name: "Select Synthetic Coffee" }),
     );
+    expect(document.querySelector(".tx-page.has-bulk")).not.toBeNull();
     const bulk = screen.getByRole("toolbar", { name: "Bulk actions" });
     expect(bulk).toHaveTextContent("1 selected");
     expect(

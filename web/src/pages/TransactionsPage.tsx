@@ -99,7 +99,9 @@ export function TransactionsPage({
   }
 
   return (
-    <div className={`tx-page${fresh ? " stage-enter" : ""}`}>
+    <div
+      className={`tx-page${fresh ? " stage-enter" : ""}${selected.length > 0 ? " has-bulk" : ""}`}
+    >
       <div className="tx-toolbar">
         <label className="sr-only" htmlFor="q">
           Search counterparties

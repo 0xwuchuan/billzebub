@@ -53,20 +53,22 @@ export function TransactionRow({
             {compact ? "" : ` · ${categoryLabel(transaction)}`}
           </span>
         </span>
-        {transfer ? <Badge tone="count">Transfer</Badge> : null}
-        {!transfer && state === "provisional" ? (
-          <Badge tone="provisional">Provisional</Badge>
-        ) : null}
-        {!transfer && review ? (
-          compact ? (
-            <Badge tone="attention">Needs review</Badge>
-          ) : (
-            <i className="review-dot" title="Needs review" />
-          )
-        ) : null}
-        <strong className={`amount${transfer ? " muted" : ""}`}>
-          {amount}
-        </strong>
+        <span className="row-trailing">
+          {transfer ? <Badge tone="count">Transfer</Badge> : null}
+          {!transfer && state === "provisional" ? (
+            <Badge tone="provisional">Provisional</Badge>
+          ) : null}
+          {!transfer && review ? (
+            compact ? (
+              <Badge tone="attention">Needs review</Badge>
+            ) : (
+              <i className="review-dot" title="Needs review" />
+            )
+          ) : null}
+          <strong className={`amount${transfer ? " muted" : ""}`}>
+            {amount}
+          </strong>
+        </span>
       </button>
     );
   }
@@ -94,15 +96,17 @@ export function TransactionRow({
           <strong>{transaction.counterparty}</strong>
           <span className="meta">{transaction.financial_account.name}</span>
         </span>
-        <CategoryPill name={categoryLabel(transaction)} />
-        {transfer ? <Badge tone="count">Transfer</Badge> : null}
-        {!transfer && state === "provisional" ? (
-          <Badge tone="provisional">Provisional</Badge>
-        ) : null}
-        {review ? <i className="review-dot" title="Needs review" /> : null}
-        <strong className={`amount tx-amount${transfer ? " muted" : ""}`}>
-          {amount}
-        </strong>
+        <span className="tx-row-trailing">
+          <CategoryPill name={categoryLabel(transaction)} />
+          {transfer ? <Badge tone="count">Transfer</Badge> : null}
+          {!transfer && state === "provisional" ? (
+            <Badge tone="provisional">Provisional</Badge>
+          ) : null}
+          {review ? <i className="review-dot" title="Needs review" /> : null}
+          <strong className={`amount tx-amount${transfer ? " muted" : ""}`}>
+            {amount}
+          </strong>
+        </span>
       </button>
     </div>
   );
