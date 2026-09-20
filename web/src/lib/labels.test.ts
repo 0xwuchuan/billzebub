@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { formatOwnerCardLabel, shortMonthLabel } from "./labels";
+import {
+  dateGroupLabel,
+  formatOwnerCardLabel,
+  shortMonthLabel,
+} from "./labels";
 
 describe("formatOwnerCardLabel", () => {
   it("shows card names without bullet-masking", () => {
@@ -23,5 +27,14 @@ describe("formatOwnerCardLabel", () => {
   it("abbreviates calendar months for coverage chips", () => {
     expect(shortMonthLabel("2026-04")).toBe("Apr");
     expect(shortMonthLabel("2026-09")).toBe("Sep");
+  });
+});
+
+describe("dateGroupLabel", () => {
+  it("uses Today, Yesterday, and a weekday heading", () => {
+    const today = new Date(2026, 0, 12);
+    expect(dateGroupLabel("2026-01-12", today)).toBe("Today");
+    expect(dateGroupLabel("2026-01-11", today)).toBe("Yesterday");
+    expect(dateGroupLabel("2026-01-10", today)).toBe("Saturday, January 10");
   });
 });

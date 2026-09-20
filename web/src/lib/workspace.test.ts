@@ -7,6 +7,8 @@ import {
   categorizationAmount,
   categorizationCounterparty,
   categoryTotalsForMonths,
+  filterSummary,
+  groupTransactions,
   isProvisional,
   jevAttemptFromContext,
   monthTotals,
@@ -266,6 +268,61 @@ describe("review Transaction join and context fallthrough", () => {
     });
     expect(resolved?.version).toBe(3);
     expect(resolveReviewTransaction(review, [])).toEqual(resolved);
+  });
+});
+
+describe("transaction list grouping and totals", () => {
+  it("groups consecutive dates with Today and weekday labels", () => {
+    const today = new Date(2026, 0, 12);
+    const groups = groupTransactions(
+      [
+        transaction({
+          id: "00000000-0000-0000-0000-000000000301",
+          kind: "expense",
+          posted: "-12.00",
+          date: "2026-01-12",
+        }),
+        transaction({
+          id: "00000000-0000-0000-0000-000000000302",
+          kind: "expense",
+          posted: "-8.00",
+          date: "2026-01-10",
+        }),
+      ],
+      today,
+    );
+    expect(groups.map((group) => group.key)).toEqual([
+      "Today",
+      "Saturday, January 10",
+    ]);
+    expect(groups[0]?.rows).toHaveLength(1);
+  });
+
+  it("summarizes spent, income, and net from filtered rows without inventing streams", () => {
+    const summary = filterSummary([
+      transaction({
+        id: "00000000-0000-0000-0000-000000000311",
+        kind: "expense",
+        posted: "-12.34",
+      }),
+      transaction({
+        id: "00000000-0000-0000-0000-000000000312",
+        kind: "income",
+        posted: "40.00",
+      }),
+      transaction({
+        id: "00000000-0000-0000-0000-000000000313",
+        kind: "transfer",
+        posted: "-20.00",
+      }),
+    ]);
+    expect(summary).toEqual({
+      count: 3,
+      spentCents: 1234,
+      incomeCents: 4000,
+      netCents: 1234 - 4000,
+      currency: "SGD",
+    });
   });
 });
 

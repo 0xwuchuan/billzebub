@@ -5,6 +5,7 @@ import { AppShell } from "./components/AppShell";
 import { TransactionDrawer } from "./components/TransactionDrawer";
 import { useRoute } from "./hooks/useRoute";
 import { useSetup } from "./hooks/useSetup";
+import { useTheme } from "./hooks/useTheme";
 import { useWorkspace } from "./hooks/useWorkspace";
 import { isoDate, monthYearLabel } from "./lib/labels";
 import {
@@ -36,10 +37,12 @@ export function App() {
   const workspaceReady = !workspace.loading;
   const onboarded = setup.onboarded || (workspaceReady && configured);
   const { route, go } = useRoute(onboarded);
+  const { theme, toggleTheme } = useTheme();
   const [categoryDraft, setCategoryDraft] = useState<Record<string, string>>(
     {},
   );
   const [listCategory, setListCategory] = useState("");
+  const [listAccount, setListAccount] = useState("");
   const [reviewSelection, setReviewSelection] = useState("");
   const [toast, setToast] = useState("");
   const today = useMemo(() => new Date(), []);
@@ -71,7 +74,6 @@ export function App() {
   const blockingCount = workspace.workspace.reviews.filter(
     (review) => review.severity === "blocking",
   ).length;
-  const accounts = uniqueAccounts(workspace.workspace.transactions.items);
   const drawerTransaction =
     workspace.workspace.transactions.items.find(
       (item) => item.id === route.drawerId,
@@ -84,8 +86,13 @@ export function App() {
     });
   }
 
-  function openTransactions(confirmation: ConfirmationFilter, category = "") {
+  function openTransactions(
+    confirmation: ConfirmationFilter,
+    category = "",
+    accountId = "",
+  ) {
     setListCategory(category);
+    setListAccount(accountId);
     go({
       page: "transactions",
       reviewFilter: "",
@@ -154,6 +161,17 @@ export function App() {
     return ok;
   }
 
+  async function assignMany(ids: string[], categoryId: string): Promise<void> {
+    const items = workspace.workspace.transactions.items;
+    for (const id of ids) {
+      const target = items.find((item) => item.id === id);
+      if (target === undefined) {
+        continue;
+      }
+      await workspace.saveCategory(target, categoryId);
+    }
+  }
+
   const showOnboarding = workspaceReady && !setup.onboarded && !configured;
   if (showOnboarding) {
     return (
@@ -208,8 +226,54 @@ export function App() {
         periodLabel={monthYearLabel(isoDate(today))}
         reviewCount={workspace.workspace.reviews.length}
         reviewBlocking={blockingCount > 0}
+        accounts={workspace.workspace.accounts}
+        selectedAccountId={listAccount}
+        theme={theme}
         error={workspace.error}
+        detailOpen={drawerTransaction !== null}
         onNavigate={navigate}
+        onSelectAccount={(accountId) => {
+          if (listAccount === accountId && route.page === "transactions") {
+            setListAccount("");
+            return;
+          }
+          openTransactions(
+            route.page === "transactions" ? route.confirmation : "",
+            listCategory,
+            accountId,
+          );
+        }}
+        onToggleTheme={toggleTheme}
+        detail={
+          <TransactionDrawer
+            transaction={drawerTransaction}
+            categories={ownerCategories}
+            draft={
+              drawerTransaction === null
+                ? ""
+                : (categoryDraft[drawerTransaction.id] ?? "")
+            }
+            saving={
+              drawerTransaction !== null &&
+              workspace.saving === drawerTransaction.id
+            }
+            onDraft={(categoryId) => {
+              if (drawerTransaction === null) {
+                return;
+              }
+              setCategoryDraft((current) => ({
+                ...current,
+                [drawerTransaction.id]: categoryId,
+              }));
+            }}
+            onSave={(transaction) => {
+              void assignCategory(transaction);
+            }}
+            onClose={() => {
+              go({ ...route, drawerId: null });
+            }}
+          />
+        }
       >
         {route.page === "overview" ? (
           <OverviewPage
@@ -319,12 +383,18 @@ export function App() {
           <TransactionsPage
             transactions={workspace.workspace.transactions.items}
             categories={ownerCategories}
-            accounts={accounts}
+            accounts={workspace.workspace.accounts.map((account) => ({
+              id: account.id,
+              name: account.display_name,
+            }))}
             confirmation={route.confirmation}
             category={listCategory}
+            accountId={listAccount}
+            selectedId={route.drawerId}
             today={today}
             loadingMore={workspace.loadingMore}
             hasMore={workspace.workspace.transactions.next_cursor !== null}
+            saving={workspace.saving}
             onConfirmation={(value) => {
               go({
                 page: "transactions",
@@ -336,10 +406,12 @@ export function App() {
               });
             }}
             onCategory={setListCategory}
+            onAccount={setListAccount}
             onOpen={openDrawer}
             onLoadMore={() => {
               void workspace.loadMoreTransactions();
             }}
+            onCategorizeMany={assignMany}
           />
         ) : null}
         {route.page === "settings" ? (
@@ -360,37 +432,11 @@ export function App() {
             onRevokeToken={workspace.removeToken}
             onDismissIssuedToken={workspace.dismissIssuedToken}
             onOpenAccountImports={openAccountImports}
+            theme={theme}
+            onToggleTheme={toggleTheme}
           />
         ) : null}
       </AppShell>
-      <TransactionDrawer
-        transaction={drawerTransaction}
-        categories={ownerCategories}
-        draft={
-          drawerTransaction === null
-            ? ""
-            : (categoryDraft[drawerTransaction.id] ?? "")
-        }
-        saving={
-          drawerTransaction !== null &&
-          workspace.saving === drawerTransaction.id
-        }
-        onDraft={(categoryId) => {
-          if (drawerTransaction === null) {
-            return;
-          }
-          setCategoryDraft((current) => ({
-            ...current,
-            [drawerTransaction.id]: categoryId,
-          }));
-        }}
-        onSave={(transaction) => {
-          void assignCategory(transaction);
-        }}
-        onClose={() => {
-          go({ ...route, drawerId: null });
-        }}
-      />
       {toast !== "" ? (
         <div className="toast" role="status">
           {toast}
@@ -398,19 +444,6 @@ export function App() {
       ) : null}
     </>
   );
-}
-
-function uniqueAccounts(
-  transactions: Array<{ financial_account: { id: string; name: string } }>,
-): Array<{ id: string; name: string }> {
-  const seen = new Map<string, string>();
-  for (const transaction of transactions) {
-    seen.set(
-      transaction.financial_account.id,
-      transaction.financial_account.name,
-    );
-  }
-  return [...seen.entries()].map(([id, name]) => ({ id, name }));
 }
 
 function decisionToast(choice: string): string {

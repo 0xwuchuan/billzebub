@@ -11,12 +11,14 @@ import type {
   StatementCoverageReport,
 } from "../api";
 import { StatementCoveragePanel } from "../components/StatementCoveragePanel";
+import { ThemeToggle } from "../components/ThemeToggle";
 import { AccountsPanel } from "../components/settings/AccountsPanel";
 import { CategoriesPanel } from "../components/settings/CategoriesPanel";
 import { SourcesPanel } from "../components/settings/SourcesPanel";
 import { TokensPanel } from "../components/settings/TokensPanel";
 import { Button } from "../components/ui/Button";
 import { useEntrance } from "../hooks/useEntrance";
+import type { Theme } from "../lib/theme";
 
 type SettingsModal = "account" | "alias" | "category" | "token";
 
@@ -37,6 +39,8 @@ export function SettingsPage({
   onRevokeToken,
   onDismissIssuedToken,
   onOpenAccountImports,
+  theme,
+  onToggleTheme,
 }: {
   identity: OwnerIdentity | null;
   accounts: FinancialAccount[];
@@ -54,6 +58,8 @@ export function SettingsPage({
   onRevokeToken: (tokenId: string) => Promise<void>;
   onDismissIssuedToken: () => void;
   onOpenAccountImports: (accountId: string) => void;
+  theme: Theme;
+  onToggleTheme: () => void;
 }) {
   const fresh = useEntrance("settings");
   const [modal, setModal] = useState<SettingsModal | null>(null);
@@ -92,6 +98,19 @@ export function SettingsPage({
             </dd>
           </div>
         </dl>
+      </section>
+
+      <section className="card settings-section settings-appearance">
+        <div className="theme-row">
+          <div>
+            <h2>Appearance</h2>
+            <span className="muted">
+              {theme === "dark" ? "Dark" : "Light"} theme. Saved on this
+              machine.
+            </span>
+          </div>
+          <ThemeToggle theme={theme} onToggle={onToggleTheme} />
+        </div>
       </section>
 
       <div className="settings-grid">

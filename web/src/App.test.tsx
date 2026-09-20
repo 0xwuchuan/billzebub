@@ -91,6 +91,8 @@ afterEach(() => {
   window.localStorage.clear();
   window.sessionStorage.clear();
   window.location.hash = "";
+  document.documentElement.removeAttribute("data-theme");
+  document.documentElement.style.colorScheme = "";
 });
 
 describe("App", () => {
@@ -475,6 +477,30 @@ describe("App", () => {
     });
   });
 
+  it("toggles light and dark theme and persists the choice", async () => {
+    seedOnboarded();
+    window.location.hash = "#/overview";
+    vi.stubGlobal(
+      "fetch",
+      mockWorkspace({ transactions: [], reviews: [], categories: [] }),
+    );
+
+    render(<App />);
+
+    expect(await screen.findByText("Billzebub")).toBeInTheDocument();
+    expect(document.documentElement.dataset.theme).toBe("dark");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Switch to light theme" }),
+    );
+    expect(document.documentElement.dataset.theme).toBe("light");
+    expect(window.localStorage.getItem("bz.theme")).toBe("light");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Switch to dark theme" }),
+    );
+    expect(document.documentElement.dataset.theme).toBe("dark");
+    expect(window.localStorage.getItem("bz.theme")).toBe("dark");
+  });
+
   it("advances to the next categorization Review after assign", async () => {
     seedOnboarded();
     window.location.hash = "#/review";
@@ -611,6 +637,63 @@ describe("App", () => {
     expect(
       screen.queryByRole("button", { name: "Categorize" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("shows Transactions with date groups, summary totals, and a bulk bar", async () => {
+    seedOnboarded();
+    window.location.hash = "#/transactions";
+    vi.stubGlobal(
+      "fetch",
+      mockWorkspace({
+        transactions: [transaction],
+        reviews: [pendingReview],
+        categories: [
+          {
+            id: "00000000-0000-0000-0000-000000000099",
+            name: "Synthetic Food",
+            parent_id: null,
+            active: true,
+          },
+        ],
+        accounts: [configuredAccount()],
+      }),
+    );
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Transactions" }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Filtered totals")).toHaveTextContent(
+      "Total spent",
+    );
+    expect(screen.getByLabelText("Filtered totals")).toHaveTextContent(
+      "Total income",
+    );
+    expect(screen.getByLabelText("Filtered totals")).toHaveTextContent("Net");
+    expect(
+      screen.getByRole("button", { name: "Add filter" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("checkbox", { name: "Select Synthetic Coffee" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Credit card")).toBeInTheDocument();
+    expect(screen.getByText("Citi PremierMiles")).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "Select Synthetic Coffee" }),
+    );
+    const bulk = screen.getByRole("toolbar", { name: "Bulk actions" });
+    expect(bulk).toHaveTextContent("1 selected");
+    expect(
+      within(bulk).getByRole("button", { name: "Clear selection" }),
+    ).toBeInTheDocument();
+    expect(
+      within(bulk).getByRole("button", { name: "Apply Category" }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Synthetic Coffee/ }));
+    expect(await screen.findByRole("dialog")).toHaveTextContent(
+      "Synthetic Coffee",
+    );
   });
 
   it("lists Extractions on Imports and opens them from a Blocking review", async () => {

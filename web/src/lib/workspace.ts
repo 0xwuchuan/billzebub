@@ -1,6 +1,6 @@
 import type { ImportRecord, Money, Review, Transaction } from "../api";
+import { dateGroupLabel, isoDate } from "./labels";
 import { amountToCents, centsToMoney } from "./money";
-import { isoDate } from "./labels";
 
 export type ConfirmationFilter = "" | "confirmed" | "provisional" | "review";
 
@@ -34,7 +34,16 @@ export type MonthlySpending = {
 
 export type TransactionGroup = {
   key: string;
+  date: string;
   rows: Transaction[];
+};
+
+export type FilterSummary = {
+  count: number;
+  spentCents: number;
+  incomeCents: number;
+  netCents: number;
+  currency: string;
 };
 
 export function isExpense(transaction: Transaction): boolean {
@@ -67,6 +76,44 @@ export function confirmationState(
   transaction: Transaction,
 ): "confirmed" | "provisional" {
   return isProvisional(transaction) ? "provisional" : "confirmed";
+}
+
+export function canCategorize(transaction: Transaction): boolean {
+  return (
+    isExpense(transaction) && confirmationState(transaction) === "confirmed"
+  );
+}
+
+export function filterSummary(items: Transaction[]): FilterSummary {
+  let spentCents = 0;
+  let incomeCents = 0;
+  const currency = items[0]?.posted_amount.currency ?? "SGD";
+  for (const transaction of items) {
+    const cents = Math.abs(amountToCents(activityAmount(transaction).amount));
+    if (transaction.kind === "income") {
+      incomeCents += cents;
+      continue;
+    }
+    if (transaction.kind === "transfer") {
+      continue;
+    }
+    if (transaction.kind === "refund" || transaction.kind === "reimbursement") {
+      spentCents -= cents;
+      continue;
+    }
+    spentCents += cents;
+  }
+  return {
+    count: items.length,
+    spentCents,
+    incomeCents,
+    netCents: spentCents - incomeCents,
+    currency,
+  };
+}
+
+export function groupSpentCents(rows: Transaction[]): number {
+  return filterSummary(rows).spentCents;
 }
 
 export function reportingPeriod(
@@ -263,44 +310,20 @@ export function groupTransactions(
   items: Transaction[],
   today: Date,
 ): TransactionGroup[] {
-  const todayKey = isoDate(today);
-  const yesterday = new Date(today);
-  yesterday.setDate(today.getDate() - 1);
-  const yesterdayKey = isoDate(yesterday);
-  const weekStart = isoDate(startOfWeek(today));
-  const buckets: TransactionGroup[] = [
-    { key: "Today", rows: [] },
-    { key: "Yesterday", rows: [] },
-    { key: "This week", rows: [] },
-    { key: `Earlier in ${monthName(today)}`, rows: [] },
-  ];
-  const todayBucket = buckets[0];
-  const yesterdayBucket = buckets[1];
-  const weekBucket = buckets[2];
-  const earlierBucket = buckets[3];
-  if (
-    todayBucket === undefined ||
-    yesterdayBucket === undefined ||
-    weekBucket === undefined ||
-    earlierBucket === undefined
-  ) {
-    return [];
-  }
+  const groups: TransactionGroup[] = [];
   for (const item of items) {
-    if (item.effective_date === todayKey) {
-      todayBucket.rows.push(item);
-    } else if (item.effective_date === yesterdayKey) {
-      yesterdayBucket.rows.push(item);
-    } else if (
-      item.effective_date >= weekStart &&
-      item.effective_date < todayKey
-    ) {
-      weekBucket.rows.push(item);
-    } else {
-      earlierBucket.rows.push(item);
+    const last = groups[groups.length - 1];
+    if (last !== undefined && last.date === item.effective_date) {
+      last.rows.push(item);
+      continue;
     }
+    groups.push({
+      key: dateGroupLabel(item.effective_date, today),
+      date: item.effective_date,
+      rows: [item],
+    });
   }
-  return buckets.filter((bucket) => bucket.rows.length > 0);
+  return groups;
 }
 
 export function sortTransactions(items: Transaction[]): Transaction[] {
@@ -590,8 +613,4 @@ function startOfWeek(today: Date): Date {
   const mondayOffset = day === 0 ? -6 : 1 - day;
   date.setDate(date.getDate() + mondayOffset);
   return date;
-}
-
-function monthName(today: Date): string {
-  return today.toLocaleString("en-SG", { month: "long" });
 }
