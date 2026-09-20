@@ -270,6 +270,14 @@ export function TransactionsPage({
       {selected.length > 0 ? (
         <div className="bulk-bar" role="toolbar" aria-label="Bulk actions">
           <span className="muted">{selected.length} selected</span>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              setSelected([]);
+            }}
+          >
+            Clear selection
+          </Button>
           <select
             className="select"
             aria-label="Bulk Category"
@@ -293,14 +301,6 @@ export function TransactionsPage({
             }}
           >
             {saving !== null ? "Saving…" : "Apply Category"}
-          </Button>
-          <Button
-            variant="ghost"
-            onClick={() => {
-              setSelected([]);
-            }}
-          >
-            Clear selection
           </Button>
         </div>
       ) : null}

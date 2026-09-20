@@ -1226,6 +1226,10 @@ button.coverage-chip:hover {
   font-weight: 600;
 }
 
+.app.has-detail .bulk-bar {
+  display: none;
+}
+
 .bulk-bar {
   position: fixed;
   left: 50%;
@@ -1369,7 +1373,7 @@ button.coverage-chip:hover {
   }
 
   .tx-page.has-bulk {
-    padding-bottom: 11rem;
+    padding-bottom: 8.5rem;
   }
 
   .bulk-bar {
@@ -1387,9 +1391,7 @@ button.coverage-chip:hover {
 
   .bulk-bar .select,
   .bulk-bar .btn-primary {
-    grid-column: 1 / -1;
     min-width: 0;
-    width: 100%;
   }
 
   .panel-head,
