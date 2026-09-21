@@ -54,12 +54,14 @@ p {
 .btn,
 .icon-btn,
 .rail-item,
+.rail-account,
 .chip,
 .coverage-chip,
 .step-dot,
 .account-toggle,
 .statement-cell,
-.queue-item {
+.queue-item,
+.tx-row-main {
   transition:
     transform var(--bz-t-press) var(--bz-ease-out),
     background-color var(--bz-t-ui) var(--bz-ease-out),
@@ -70,11 +72,13 @@ p {
 .btn:active,
 .icon-btn:active,
 .rail-item:active,
+.rail-account:active,
 .chip:active,
 .coverage-chip:active,
 .account-toggle:active,
 .statement-cell[data-action]:active,
-.queue-item:active {
+.queue-item:active,
+.tx-row-main:active {
   transform: scale(var(--bz-press));
 }
 
@@ -168,18 +172,18 @@ p {
 .btn-primary {
   border-color: var(--bz-accent);
   background: var(--bz-accent);
-  color: #100f0f;
+  color: var(--bz-on-accent);
   font-weight: 600;
 }
 
 .btn-primary:hover {
-  background: color-mix(in srgb, #3aa99f 86%, #cecdc3);
+  background: color-mix(in srgb, var(--bz-accent) 86%, var(--bz-text));
 }
 
 .btn-danger {
-  border-color: color-mix(in srgb, #d14d41 50%, #282726);
+  border-color: color-mix(in srgb, var(--bz-danger) 50%, var(--bz-border));
   color: var(--bz-danger);
-  background: color-mix(in srgb, #d14d41 10%, #1c1b1a);
+  background: color-mix(in srgb, var(--bz-danger) 10%, var(--bz-surface));
 }
 
 .icon-btn {
@@ -203,9 +207,11 @@ p {
 .btn:focus-visible,
 .icon-btn:focus-visible,
 .rail-item:focus-visible,
+.rail-account:focus-visible,
 .chip:focus-visible,
 .coverage-chip:focus-visible,
 .row:focus-visible,
+.tx-row-main:focus-visible,
 .account-toggle:focus-visible {
   outline: 2px solid var(--bz-accent);
   outline-offset: 2px;
@@ -214,8 +220,8 @@ p {
 .select {
   appearance: none;
   background-image:
-    linear-gradient(45deg, transparent 50%, #878580 50%),
-    linear-gradient(135deg, #878580 50%, transparent 50%);
+    linear-gradient(45deg, transparent 50%, var(--bz-muted) 50%),
+    linear-gradient(135deg, var(--bz-muted) 50%, transparent 50%);
   background-position:
     calc(100% - 14px) 16px,
     calc(100% - 9px) 16px;
@@ -257,22 +263,22 @@ p {
 }
 
 .badge-attention {
-  background: color-mix(in srgb, #d0a215 16%, #1c1b1a);
+  background: color-mix(in srgb, var(--bz-provisional) 16%, var(--bz-surface));
   color: var(--bz-provisional);
 }
 
 .badge-blocking {
-  background: color-mix(in srgb, #d14d41 16%, #1c1b1a);
+  background: color-mix(in srgb, var(--bz-danger) 16%, var(--bz-surface));
   color: var(--bz-danger);
 }
 
 .badge-confirmed {
-  background: color-mix(in srgb, #879a39 14%, #1c1b1a);
+  background: color-mix(in srgb, var(--bz-positive) 14%, var(--bz-surface));
   color: var(--bz-positive);
 }
 
 .badge-provisional {
-  background: color-mix(in srgb, #d0a215 14%, #1c1b1a);
+  background: color-mix(in srgb, var(--bz-provisional) 14%, var(--bz-surface));
   color: var(--bz-provisional);
 }
 
@@ -280,6 +286,34 @@ p {
   border: 1px solid var(--bz-border);
   border-radius: var(--bz-radius-lg);
   background: var(--bz-surface);
+  box-shadow: var(--bz-card-shadow);
+}
+
+.cat-pill {
+  display: inline-flex;
+  align-items: center;
+  max-width: 9.75rem;
+  min-height: 1.25rem;
+  overflow: hidden;
+  padding: 0 0.55rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--cat-color) 16%, var(--bz-surface));
+  color: var(--cat-color, var(--bz-muted));
+  font-size: var(--bz-text-xs);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.review-dot {
+  flex: 0 0 auto;
+  width: 0.42rem;
+  height: 0.42rem;
+  border-radius: 99px;
+  background: var(--bz-review-dot);
+  box-shadow: 0 0 0 3px
+    color-mix(in srgb, var(--bz-review-dot) 22%, transparent);
 }
 
 .eyebrow {
@@ -319,7 +353,7 @@ p {
   border-radius: var(--bz-radius-md);
   padding: 0.8rem 1rem;
   color: var(--bz-text);
-  background: color-mix(in srgb, #d14d41 18%, #1c1b1a);
+  background: color-mix(in srgb, var(--bz-danger) 18%, var(--bz-surface));
 }
 
 @media (prefers-reduced-motion: reduce) {

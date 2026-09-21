@@ -1,3 +1,5 @@
+import type { CSSProperties } from "react";
+
 import type { Transaction } from "../api";
 import {
   DitherBarChart,
@@ -76,22 +78,23 @@ export function OverviewPage({
   const recent = sortTransactions(transactions).slice(0, 6);
   const attention = Math.max(0, reviewCount - blockingCount);
   const failed = blockingCount > 0;
+  const categoryTotal = categories.reduce((sum, item) => sum + item.cents, 0);
   return (
-    <>
-      <section className={`card statement${fresh ? " stage-enter" : ""}`}>
-        <div className="statement-cell">
-          <p className="eyebrow">
-            {monthYearLabel(`${period}-01`)} · {totals.currency}
-          </p>
-          <p className="hero-value amount">
-            {formatUnsigned(
-              centsToMoney(totals.estimatedCents, totals.currency),
-            )}
-          </p>
-          <p className="hero-sub">
-            Estimated spending. Confirmed uses Posted Amount. Provisional uses
-            eligible Real-time Claims.
-          </p>
+    <div className={`dash-grid${fresh ? " stage-enter" : ""}`}>
+      <section className="card dash-card">
+        <div className="dash-card-body">
+          <div>
+            <p className="eyebrow">Monthly spending</p>
+            <p className="hero-value amount">
+              {formatUnsigned(
+                centsToMoney(totals.estimatedCents, totals.currency),
+              )}
+            </p>
+            <p className="hero-sub">
+              {monthYearLabel(`${period}-01`)} · confirmed uses Posted Amount.
+              Provisional uses eligible Real-time Claims.
+            </p>
+          </div>
           <DitherBarChart
             data={week}
             series={CONFIRMATION_SERIES}
@@ -102,48 +105,62 @@ export function OverviewPage({
             }
             stacked
           />
+          <div className="dash-metrics">
+            <button
+              className="dash-metric"
+              type="button"
+              data-action="filter-state"
+              onClick={onFilterConfirmed}
+            >
+              <span className="cell-label">
+                <i className="cell-dot confirmed" />
+                Confirmed
+              </span>
+              <span className="cell-value amount">
+                {formatUnsigned(
+                  centsToMoney(totals.confirmedCents, totals.currency),
+                )}
+              </span>
+              <span className="cell-foot">
+                <strong>{totals.confirmedCount}</strong> Transactions with a
+                Posted Amount
+              </span>
+            </button>
+            <button
+              className="dash-metric tone-yellow"
+              type="button"
+              onClick={onFilterProvisional}
+            >
+              <span className="cell-label">
+                <i className="cell-dot provisional" />
+                Provisional
+              </span>
+              <span className="cell-value amount">
+                {formatUnsigned(
+                  centsToMoney(totals.provisionalCents, totals.currency),
+                )}
+              </span>
+              <span className="cell-foot">
+                <strong>{totals.provisionalCount}</strong> awaiting a Statement
+                Claim
+              </span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section className="card dash-card">
+        <div className="panel-head">
+          <div>
+            <p className="eyebrow">Attention</p>
+            <h2>Transactions to review</h2>
+          </div>
+          <Button variant="ghost" onClick={onOpenReview}>
+            Review
+          </Button>
         </div>
         <button
-          className="statement-cell"
-          type="button"
-          data-action="filter-state"
-          onClick={onFilterConfirmed}
-        >
-          <span className="cell-label">
-            <i className="cell-dot confirmed" />
-            Confirmed
-          </span>
-          <span className="cell-value amount">
-            {formatUnsigned(
-              centsToMoney(totals.confirmedCents, totals.currency),
-            )}
-          </span>
-          <span className="cell-foot">
-            <strong>{totals.confirmedCount}</strong> Transactions with a Posted
-            Amount
-          </span>
-        </button>
-        <button
-          className="statement-cell tone-yellow"
-          type="button"
-          onClick={onFilterProvisional}
-        >
-          <span className="cell-label">
-            <i className="cell-dot provisional" />
-            Provisional
-          </span>
-          <span className="cell-value amount">
-            {formatUnsigned(
-              centsToMoney(totals.provisionalCents, totals.currency),
-            )}
-          </span>
-          <span className="cell-foot">
-            <strong>{totals.provisionalCount}</strong> awaiting a Statement
-            Claim
-          </span>
-        </button>
-        <button
-          className={`statement-cell${failed ? " tone-red" : ""}`}
+          className={`dash-metric dash-review-metric${failed ? " tone-red" : ""}`}
           type="button"
           onClick={onOpenReview}
         >
@@ -159,51 +176,80 @@ export function OverviewPage({
           </span>
         </button>
       </section>
-      <article className="card split">
-        <div className="ring-wrap">
-          <DitherDonutChart
-            data={categories.map((category, index) => ({
-              label: category.name,
-              value: category.cents,
-              color:
-                DITHER_CATEGORY_COLORS[index % DITHER_CATEGORY_COLORS.length] ??
-                "#878580",
-            }))}
-            ariaLabel="Confirmed spending by category"
-          />
-          <p className="muted">Confirmed by Category</p>
+
+      <article className="card dash-card">
+        <div className="panel-head">
+          <div>
+            <p className="eyebrow">This month</p>
+            <h2>Top categories</h2>
+          </div>
         </div>
-        <div className="cat-list">
-          {categories.length === 0 ? (
-            <p className="empty">No confirmed Expenses in this month yet.</p>
-          ) : (
-            categories.map((category) => (
-              <button
-                className="cat-row"
-                type="button"
-                key={category.name}
-                onClick={() => {
-                  onFilterCategory(category.name);
-                }}
-              >
-                <span>
-                  <i
-                    className="swatch"
-                    style={{ background: categoryColor(category.name) }}
-                  />
-                  {category.name}
-                </span>
-                <span className="amount">
-                  {formatUnsigned(
-                    centsToMoney(category.cents, totals.currency),
-                  )}
-                </span>
-              </button>
-            ))
-          )}
+        <div className="split">
+          <div className="ring-wrap">
+            <DitherDonutChart
+              data={categories.map((item, index) => ({
+                label: item.name,
+                value: item.cents,
+                color:
+                  DITHER_CATEGORY_COLORS[
+                    index % DITHER_CATEGORY_COLORS.length
+                  ] ?? "#878580",
+              }))}
+              ariaLabel="Confirmed spending by category"
+            />
+            <p className="muted">Confirmed by Category</p>
+          </div>
+          <div className="cat-list">
+            {categories.length === 0 ? (
+              <p className="empty">No confirmed Expenses in this month yet.</p>
+            ) : (
+              categories.map((item) => {
+                const share =
+                  categoryTotal === 0
+                    ? 0
+                    : Math.round((item.cents / categoryTotal) * 100);
+                return (
+                  <button
+                    className="cat-row"
+                    type="button"
+                    key={item.name}
+                    onClick={() => {
+                      onFilterCategory(item.name);
+                    }}
+                  >
+                    <span className="cat-row-stack">
+                      <span>
+                        <i
+                          className="swatch"
+                          style={{ background: categoryColor(item.name) }}
+                        />
+                        {item.name}
+                      </span>
+                      <span
+                        className="cat-meter"
+                        style={
+                          {
+                            "--cat-color": categoryColor(item.name),
+                          } as CSSProperties
+                        }
+                      >
+                        <i style={{ width: `${share}%` }} />
+                      </span>
+                    </span>
+                    <span className="amount">
+                      {formatUnsigned(
+                        centsToMoney(item.cents, totals.currency),
+                      )}
+                    </span>
+                  </button>
+                );
+              })
+            )}
+          </div>
         </div>
       </article>
-      <section className="card recent">
+
+      <section className="card dash-card recent">
         <div className="recent-head">
           <h2>Recent activity</h2>
           <Button variant="ghost" onClick={onOpenTransactions}>
@@ -225,6 +271,6 @@ export function OverviewPage({
           ))
         )}
       </section>
-    </>
+    </div>
   );
 }

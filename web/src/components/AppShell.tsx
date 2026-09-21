@@ -1,7 +1,11 @@
 import { useEffect, useId, useState, type ReactNode } from "react";
 
+import type { FinancialAccount } from "../api";
+import { accountKindColor, groupedAccounts } from "../lib/accounts";
+import type { Theme } from "../lib/theme";
 import type { Route, RoutePage } from "../lib/route";
 import { titleFor } from "../lib/route";
+import { ThemeToggle } from "./ThemeToggle";
 import { Badge } from "./ui/Badge";
 import {
   CloseIcon,
@@ -30,9 +34,16 @@ type AppShellProps = {
   periodLabel: string;
   reviewCount: number;
   reviewBlocking: boolean;
+  accounts: FinancialAccount[];
+  selectedAccountId: string;
+  theme: Theme;
   error: string | null;
+  detailOpen?: boolean;
   onNavigate: (page: RoutePage) => void;
+  onSelectAccount: (accountId: string) => void;
+  onToggleTheme: () => void;
   children: ReactNode;
+  detail?: ReactNode;
 };
 
 export function AppShell({
@@ -40,9 +51,16 @@ export function AppShell({
   periodLabel,
   reviewCount,
   reviewBlocking,
+  accounts,
+  selectedAccountId,
+  theme,
   error,
+  detailOpen = false,
   onNavigate,
+  onSelectAccount,
+  onToggleTheme,
   children,
+  detail,
 }: AppShellProps) {
   const [navOpen, setNavOpen] = useState(false);
   const titleId = useId();
@@ -97,7 +115,7 @@ export function AppShell({
   }
 
   return (
-    <div className="app">
+    <div className={`app${detailOpen ? " has-detail" : ""}`}>
       <a className="sr-only" href="#stage">
         Skip to content
       </a>
@@ -105,8 +123,14 @@ export function AppShell({
         <RailContent
           dailyItems={dailyItems}
           settingsItem={settingsItem}
+          accounts={accounts}
           current={route.page}
+          selectedAccountId={selectedAccountId}
           onNavigate={go}
+          onSelectAccount={(accountId) => {
+            setNavOpen(false);
+            onSelectAccount(accountId);
+          }}
         />
       </aside>
       <div className="main">
@@ -127,6 +151,9 @@ export function AppShell({
             <p className="eyebrow">{periodLabel}</p>
             <h1>{titleFor(route.page)}</h1>
           </div>
+          <div className="topbar-actions">
+            <ThemeToggle theme={theme} onToggle={onToggleTheme} />
+          </div>
         </header>
         <main className="stage" id="stage">
           {error !== null ? (
@@ -137,6 +164,7 @@ export function AppShell({
           {children}
         </main>
       </div>
+      {detail}
       {navOpen ? (
         <>
           <button
@@ -170,8 +198,14 @@ export function AppShell({
             <RailContent
               dailyItems={dailyItems}
               settingsItem={settingsItem}
+              accounts={accounts}
               current={route.page}
+              selectedAccountId={selectedAccountId}
               onNavigate={go}
+              onSelectAccount={(accountId) => {
+                setNavOpen(false);
+                onSelectAccount(accountId);
+              }}
             />
           </nav>
         </>
@@ -183,14 +217,21 @@ export function AppShell({
 function RailContent({
   dailyItems,
   settingsItem,
+  accounts,
   current,
+  selectedAccountId,
   onNavigate,
+  onSelectAccount,
 }: {
   dailyItems: NavItem[];
   settingsItem: NavItem;
+  accounts: FinancialAccount[];
   current: RoutePage;
+  selectedAccountId: string;
   onNavigate: (page: RoutePage) => void;
+  onSelectAccount: (accountId: string) => void;
 }) {
+  const groups = groupedAccounts(accounts);
   return (
     <>
       <div className="rail-body">
@@ -201,7 +242,6 @@ function RailContent({
           <strong>Billzebub</strong>
         </div>
         <div className="rail-group">
-          <p className="rail-label">Daily</p>
           {dailyItems.map((item) => (
             <RailItem
               key={item.id}
@@ -211,9 +251,36 @@ function RailContent({
             />
           ))}
         </div>
+        {groups.map((group) => (
+          <div className="rail-accounts" key={group.kind}>
+            <p className="rail-label">{group.label}</p>
+            {group.accounts.map((account) => (
+              <button
+                className="rail-account"
+                type="button"
+                key={account.id}
+                aria-current={
+                  current === "transactions" && selectedAccountId === account.id
+                    ? "true"
+                    : undefined
+                }
+                onClick={() => {
+                  onSelectAccount(account.id);
+                }}
+              >
+                <i
+                  className="rail-account-dot"
+                  style={{ background: accountKindColor(account.kind) }}
+                />
+                <span className="rail-account-name">
+                  {account.display_name}
+                </span>
+              </button>
+            ))}
+          </div>
+        ))}
       </div>
       <div className="rail-foot">
-        <p className="rail-label">Workspace</p>
         <RailItem
           item={settingsItem}
           current={current}

@@ -134,3 +134,52 @@ export function MenuIcon() {
     </svg>
   );
 }
+
+export function SunIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+    >
+      <circle cx="8" cy="8" r="2.6" />
+      <path d="M8 2.2v1.4M8 12.4v1.4M2.2 8h1.4M12.4 8h1.4M3.9 3.9l1 1M11.1 11.1l1 1M12.1 3.9l-1 1M4.9 11.1l-1 1" />
+    </svg>
+  );
+}
+
+export function MoonIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+    >
+      <path d="M10.2 2.8A5.4 5.4 0 1 0 13.2 11 4.4 4.4 0 0 1 10.2 2.8Z" />
+    </svg>
+  );
+}
+
+export function PlusIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+    >
+      <path d="M8 3.5v9M3.5 8h9" />
+    </svg>
+  );
+}

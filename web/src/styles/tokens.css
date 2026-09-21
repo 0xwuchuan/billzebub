@@ -1,5 +1,6 @@
 :root {
   --bz-bg: #100f0f;
+  --bz-rail-bg: #100f0f;
   --bz-surface: #1c1b1a;
   --bz-surface-hover: color-mix(in srgb, #282726 60%, #1c1b1a);
   --bz-border: #282726;
@@ -8,6 +9,7 @@
   --bz-muted: #878580;
   --bz-accent: #3aa99f;
   --bz-accent-dim: color-mix(in srgb, #3aa99f 16%, #1c1b1a);
+  --bz-on-accent: #100f0f;
   --bz-positive: #879a39;
   --bz-provisional: #d0a215;
   --bz-danger: #d14d41;
@@ -18,10 +20,14 @@
   --bz-cat-health: #879a39;
   --bz-cat-shopping: color-mix(in srgb, #3aa99f 55%, #cecdc3);
   --bz-cat-gifts: color-mix(in srgb, #d14d41 45%, #cecdc3);
-  --bz-cat-uncat: #343331;
+  --bz-cat-uncat: #878580;
+  --bz-review-dot: #7eb8d4;
+  --bz-overlay: color-mix(in srgb, #100f0f 62%, transparent);
+  --bz-shadow: 0 18px 48px color-mix(in srgb, #100f0f 45%, transparent);
+  --bz-card-shadow: none;
   --bz-radius-sm: 6px;
-  --bz-radius-md: 8px;
-  --bz-radius-lg: 12px;
+  --bz-radius-md: 10px;
+  --bz-radius-lg: 16px;
   --bz-space-1: 4px;
   --bz-space-2: 8px;
   --bz-space-3: 12px;
@@ -35,13 +41,43 @@
   --bz-text-md: 0.875rem;
   --bz-text-lg: 1.25rem;
   --bz-text-hero: 2.25rem;
-  --bz-rail: 15.5rem;
+  --bz-rail: 16.5rem;
+  --bz-detail: 24rem;
   --bz-control-h: 2.25rem;
-  --bz-row-h: 2.75rem;
+  --bz-row-h: 2.85rem;
   --bz-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --bz-t-press: 90ms;
   --bz-t-ui: 180ms;
   --bz-t-enter: 220ms;
   --bz-t-drawer: 240ms;
   --bz-press: 0.97;
+}
+
+:root[data-theme="light"] {
+  --bz-bg: #f5f6f8;
+  --bz-rail-bg: #f3f4f6;
+  --bz-surface: #ffffff;
+  --bz-surface-hover: #f2f4f7;
+  --bz-border: #e6e8ed;
+  --bz-border-strong: #d5d8de;
+  --bz-text: #1c1d21;
+  --bz-muted: #6f7580;
+  --bz-accent: #3b82f6;
+  --bz-accent-dim: #e8f1fe;
+  --bz-on-accent: #ffffff;
+  --bz-positive: #16a34a;
+  --bz-provisional: #ca8a04;
+  --bz-danger: #e11d48;
+  --bz-cat-groceries: #0f9f8a;
+  --bz-cat-dining: #d97706;
+  --bz-cat-transport: #ca8a04;
+  --bz-cat-utilities: #64748b;
+  --bz-cat-health: #dc2626;
+  --bz-cat-shopping: #2563eb;
+  --bz-cat-gifts: #db2777;
+  --bz-cat-uncat: #94a3b8;
+  --bz-review-dot: #60a5fa;
+  --bz-overlay: color-mix(in srgb, #1c1d21 38%, transparent);
+  --bz-shadow: 0 18px 48px color-mix(in srgb, #1c1d21 12%, transparent);
+  --bz-card-shadow: 0 1px 2px color-mix(in srgb, #1c1d21 5%, transparent);
 }

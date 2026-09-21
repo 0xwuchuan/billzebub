@@ -74,6 +74,36 @@ export function openedLabel(createdAt: string, now: Date): string {
   return `opened ${days} ${days === 1 ? "day" : "days"} ago`;
 }
 
+export function dateGroupLabel(isoDay: string, today: Date): string {
+  const todayKey = isoDate(today);
+  if (isoDay === todayKey) {
+    return "Today";
+  }
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  if (isoDay === isoDate(yesterday)) {
+    return "Yesterday";
+  }
+  const parts = isoDay.split("-");
+  const year = Number(parts[0]);
+  const month = Number(parts[1]);
+  const day = Number(parts[2]);
+  if (
+    !Number.isFinite(year) ||
+    !Number.isFinite(month) ||
+    !Number.isFinite(day)
+  ) {
+    return isoDay;
+  }
+  const date = new Date(year, month - 1, day);
+  const weekday = date.toLocaleDateString("en-US", { weekday: "long" });
+  const monthName = date.toLocaleDateString("en-US", { month: "long" });
+  if (year !== today.getFullYear()) {
+    return `${weekday}, ${monthName} ${day}, ${year}`;
+  }
+  return `${weekday}, ${monthName} ${day}`;
+}
+
 export function dayMonthLabel(isoDate: string): string {
   const parts = isoDate.split("-");
   const day = parts[2];

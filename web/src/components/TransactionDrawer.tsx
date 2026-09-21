@@ -2,7 +2,8 @@ import type { Category, Transaction } from "../api";
 import { CloseIcon } from "./icons";
 import { Badge } from "./ui/Badge";
 import { Button } from "./ui/Button";
-import { categoryLabel, kindLabel } from "../lib/labels";
+import { CategoryPill } from "./ui/CategoryPill";
+import { categoryLabel, dayMonthLabel, kindLabel } from "../lib/labels";
 import { formatUnsigned } from "../lib/money";
 import {
   activityAmount,
@@ -88,15 +89,11 @@ function DrawerBody({
       <div className="drawer-head">
         <div>
           <p className="eyebrow">
-            {transaction.effective_date} · {transaction.financial_account.name}
+            {dayMonthLabel(transaction.effective_date)} ·{" "}
+            {transaction.financial_account.name}
           </p>
           <h2 id="drawer-title">{transaction.counterparty}</h2>
-          <p
-            className="hero-value amount"
-            style={{ fontSize: "1.6rem", marginTop: 12 }}
-          >
-            {formatUnsigned(amount)}
-          </p>
+          <p className="hero-value amount">{formatUnsigned(amount)}</p>
         </div>
         <button
           className="icon-btn"
@@ -110,14 +107,14 @@ function DrawerBody({
       <div className="drawer-body">
         <dl className="kv">
           <dt>{provisional ? "Authorized Amount" : "Posted Amount"}</dt>
-          <dd>{formatUnsigned(amount)} SGD</dd>
+          <dd>{formatUnsigned(amount)}</dd>
           <dt>Financial Account</dt>
           <dd>{transaction.financial_account.name}</dd>
           <dt>Transaction Kind</dt>
           <dd>{kindLabel(transaction.kind)}</dd>
           <dt>Category</dt>
           <dd>
-            {categoryLabel(transaction)}
+            <CategoryPill name={categoryLabel(transaction)} />
             {!needsCategorization(transaction) &&
             categoryLabel(transaction) !== "Uncategorized" ? (
               <>
