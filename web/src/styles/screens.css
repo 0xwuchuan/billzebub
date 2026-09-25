@@ -1338,6 +1338,11 @@ button.coverage-chip:hover {
     min-height: calc(100dvh - 9.25rem);
   }
 
+  .review-desk .evidence-pane.is-empty {
+    display: block;
+    min-height: 0;
+  }
+
   .review-desk .review-actions {
     flex-direction: column;
     align-items: stretch;
@@ -1383,14 +1388,40 @@ button.coverage-chip:hover {
   }
 
   .tx-check {
+    flex: 0 0 2.75rem;
+    width: 2.75rem;
     min-width: 2.75rem;
-    padding-right: var(--bz-space-2);
+    min-height: 2.75rem;
+    padding: 0;
   }
 
   .tx-check input {
     width: 1.25rem;
     height: 1.25rem;
     margin: 0;
+  }
+
+  .tx-row-main {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: 0.2rem;
+  }
+
+  .tx-row-copy strong {
+    display: -webkit-box;
+    white-space: normal;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .tx-row-trailing {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .tx-row-trailing .tx-amount {
+    margin-left: auto;
   }
 
   .tx-page.has-bulk {
@@ -1429,10 +1460,28 @@ button.coverage-chip:hover {
     max-width: 100%;
   }
 
-  .tx-toolbar .field,
-  .add-filter,
+  .tx-toolbar {
+    position: relative;
+  }
+
+  .tx-toolbar .field {
+    flex: 1 1 100%;
+    width: auto;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .add-filter {
+    position: static;
+    width: auto;
+    max-width: max-content;
+  }
+
   .add-filter-menu {
-    width: 100%;
+    right: 0;
+    left: 0;
+    width: auto;
+    min-width: 0;
     max-width: 100%;
   }
 

@@ -45,6 +45,39 @@ describe("phone layout contracts", () => {
     expect(screens).toMatch(/\.settings-dialog-body\s*\{[^}]*min-height:\s*0/);
   });
 
+  it("gives transaction checkboxes a 44px phone hit target", () => {
+    const phone = blockAfter(screens, "@media (max-width: 52rem)");
+    const check = phone.slice(
+      phone.indexOf(".tx-check {"),
+      phone.indexOf(".tx-check input"),
+    );
+    expect(check).toMatch(/min-width:\s*2\.75rem/);
+    expect(check).toMatch(/min-height:\s*2\.75rem/);
+  });
+
+  it("lets phone counterparty names use two lines instead of one clipped line", () => {
+    const phone = blockAfter(screens, "@media (max-width: 52rem)");
+    const name = phone.slice(phone.indexOf(".tx-row-copy strong {"));
+    expect(name).toMatch(/white-space:\s*normal/);
+    expect(name).toMatch(/-webkit-line-clamp:\s*2/);
+  });
+
+  it("lets transaction filter chips share a row", () => {
+    const phone = blockAfter(screens, "@media (max-width: 52rem)");
+    const filter = phone.slice(
+      phone.indexOf(".add-filter {"),
+      phone.indexOf(".add-filter-menu"),
+    );
+    expect(filter).toMatch(/width:\s*auto/);
+    expect(filter).not.toMatch(/width:\s*100%/);
+  });
+
+  it("does not stretch an empty Review card to the viewport", () => {
+    const tablet = blockAfter(screens, "@media (max-width: 64rem)");
+    const empty = tablet.slice(tablet.indexOf(".evidence-pane.is-empty"));
+    expect(empty).toMatch(/min-height:\s*0/);
+  });
+
   it("clears the transactions bulk bar, including the safe area", () => {
     const phone = blockAfter(screens, "@media (max-width: 52rem)");
     expect(phone).toMatch(
