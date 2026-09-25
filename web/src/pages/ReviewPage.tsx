@@ -181,7 +181,7 @@ export function ReviewPage({
           </section>
         ) : null}
         <section
-          className="card evidence-pane"
+          className={`card evidence-pane${selected === null ? " is-empty" : ""}`}
           aria-live="polite"
           aria-label="Review decision"
         >

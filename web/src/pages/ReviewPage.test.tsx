@@ -169,6 +169,7 @@ describe("ReviewPage", () => {
       expect(
         screen.getByRole("button", { name: "Assign Category" }),
       ).toBeInTheDocument();
+      expect(screen.queryByText("Review details")).not.toBeInTheDocument();
     } finally {
       window.matchMedia = original;
     }
@@ -255,6 +256,32 @@ describe("ReviewPage", () => {
         "Nothing to decide. Pick another filter or come back after the next Extraction.",
       ),
     ).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Review decision" })).toHaveClass(
+      "is-empty",
+    );
+  });
+
+  it("does not stretch the empty decision card, and keeps a filled card compact-capable", () => {
+    const { unmount } = renderPage({ reviews: [], transactions: [] });
+    expect(screen.getByRole("region", { name: "Review decision" })).toHaveClass(
+      "is-empty",
+    );
+    unmount();
+
+    renderPage({
+      reviews: [coffeeReview],
+      transactions: [coffee],
+    });
+    expect(
+      screen.getByRole("region", { name: "Review decision" }),
+    ).not.toHaveClass("is-empty");
+    expect(
+      screen.getByRole("heading", { name: "Synthetic Coffee" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Assign Category" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Review details")).not.toBeInTheDocument();
   });
 });
 

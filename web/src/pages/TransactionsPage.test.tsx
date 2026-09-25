@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { Category, Transaction } from "../api";
@@ -78,7 +78,15 @@ describe("TransactionsPage", () => {
     fireEvent.click(
       screen.getByRole("checkbox", { name: "Select Synthetic Coffee" }),
     );
-    expect(screen.getByRole("toolbar", { name: "Bulk actions" })).toBeVisible();
+    const bulk = screen.getByRole("toolbar", { name: "Bulk actions" });
+    expect(bulk).toBeVisible();
+    expect(
+      within(bulk).getByRole("button", { name: "Clear selection" }),
+    ).toBeVisible();
+    expect(
+      within(bulk).getByRole("button", { name: "Apply Category" }),
+    ).toBeVisible();
+    expect(within(bulk).getByLabelText("Bulk Category")).toBeVisible();
     expect(document.querySelector(".tx-page.has-bulk")).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Add filter" }));
     expect(screen.getByLabelText("Financial Account")).toBeInTheDocument();
