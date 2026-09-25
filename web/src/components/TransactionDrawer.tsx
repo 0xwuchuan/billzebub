@@ -2,7 +2,7 @@ import type { Category, Transaction } from "../api";
 import { CloseIcon } from "./icons";
 import { Badge } from "./ui/Badge";
 import { Button } from "./ui/Button";
-import { CategoryPill } from "./ui/CategoryPill";
+import { CategoryChip } from "./ui/CategoryChip";
 import { categoryLabel, dayMonthLabel, kindLabel } from "../lib/labels";
 import { formatUnsigned } from "../lib/money";
 import {
@@ -114,7 +114,7 @@ function DrawerBody({
           <dd>{kindLabel(transaction.kind)}</dd>
           <dt>Category</dt>
           <dd>
-            <CategoryPill name={categoryLabel(transaction)} />
+            <CategoryChip name={categoryLabel(transaction)} />
             {!needsCategorization(transaction) &&
             categoryLabel(transaction) !== "Uncategorized" ? (
               <>

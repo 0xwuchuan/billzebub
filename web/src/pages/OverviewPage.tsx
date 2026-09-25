@@ -6,7 +6,7 @@ import {
   DitherDonutChart,
   type DitherSeries,
 } from "../components/dither-kit/DitherCharts";
-import { TransactionRow } from "../components/TransactionRow";
+import { TxRow } from "../components/TxRow";
 import { Button } from "../components/ui/Button";
 import { useEntrance } from "../hooks/useEntrance";
 import { categoryColor, monthYearLabel } from "../lib/labels";
@@ -262,10 +262,9 @@ export function OverviewPage({
           </p>
         ) : (
           recent.map((transaction) => (
-            <TransactionRow
+            <TxRow
               key={transaction.id}
               transaction={transaction}
-              compact
               onOpen={onOpenTransaction}
             />
           ))

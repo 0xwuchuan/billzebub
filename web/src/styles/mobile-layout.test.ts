@@ -45,6 +45,13 @@ describe("phone layout contracts", () => {
     expect(screens).toMatch(/\.settings-dialog-body\s*\{[^}]*min-height:\s*0/);
   });
 
+  it("keeps the phone theme toggle in the top bar", () => {
+    const phone = blockAfter(shell, "@media (max-width: 52rem)");
+    expect(phone).toMatch(
+      /\.nav-drawer \.rail-foot \.theme-toggle\s*\{[^}]*display:\s*none/,
+    );
+  });
+
   it("gives transaction checkboxes a 44px phone hit target", () => {
     const phone = blockAfter(screens, "@media (max-width: 52rem)");
     const check = phone.slice(

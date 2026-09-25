@@ -1,7 +1,7 @@
 import { useState } from "react";
 
 import type { Category, Transaction } from "../api";
-import { TransactionRow } from "../components/TransactionRow";
+import { TxRow } from "../components/TxRow";
 import { Button } from "../components/ui/Button";
 import { PlusIcon } from "../components/icons";
 import { useEntrance } from "../hooks/useEntrance";
@@ -245,10 +245,9 @@ export function TransactionsPage({
                 </span>
               </div>
               {group.rows.map((transaction) => (
-                <TransactionRow
+                <TxRow
                   key={transaction.id}
                   transaction={transaction}
-                  compact={false}
                   selectable
                   selected={selectedId === transaction.id}
                   checked={selectedSet.has(transaction.id)}

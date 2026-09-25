@@ -548,6 +548,10 @@
     min-height: 2.75rem;
   }
 
+  .nav-drawer .rail-foot .theme-toggle {
+    display: none;
+  }
+
   .drawer {
     top: auto;
     bottom: 0;
