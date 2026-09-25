@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 
 import type { Category, ImportRecord, Review, Transaction } from "../api";
+import { CategoryPicker } from "../components/CategoryPicker";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { useDeskMedia } from "../hooks/useDeskMedia";
@@ -28,6 +29,10 @@ import {
 } from "../lib/labels";
 import { formatUnsigned } from "../lib/money";
 import type { ReviewFilter } from "../lib/route";
+
+const CLOSED_PICKER = { open: false, query: "", index: 0 };
+
+type PickerState = typeof CLOSED_PICKER;
 
 export function ReviewPage({
   reviews,
@@ -77,6 +82,15 @@ export function ReviewPage({
     items.find((item) => item.id === selectedId) ?? items[0] ?? null;
   const selectedAssignId =
     selected === null ? null : reviewTransactionId(selected);
+  const [picker, setPicker] = useState<PickerState>(CLOSED_PICKER);
+  const [pickerReviewId, setPickerReviewId] = useState(selected?.id ?? "");
+  if ((selected?.id ?? "") !== pickerReviewId) {
+    setPickerReviewId(selected?.id ?? "");
+    setPicker(CLOSED_PICKER);
+  }
+  const cardRef = useRef<HTMLElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const keyboardRef = useRef<KeyboardSnapshot | null>(null);
 
   function advancePast(reviewId: string) {
     onSelect(nextPendingReviewId(items, reviewId));
@@ -119,6 +133,158 @@ export function ReviewPage({
       finishAdvance(review.id, result);
     });
   }
+
+  function openPicker(query: string) {
+    setPicker({ open: true, query, index: 0 });
+  }
+
+  function closePicker() {
+    setPicker(CLOSED_PICKER);
+    cardRef.current?.focus();
+  }
+
+  function chooseCategory(categoryId: string) {
+    if (selectedAssignId !== null) {
+      onDraft(selectedAssignId, categoryId);
+    }
+    setPicker(CLOSED_PICKER);
+    cardRef.current?.focus();
+  }
+
+  function moveQueue(delta: number) {
+    const index = items.findIndex((item) => item.id === selected?.id);
+    const start = index < 0 ? 0 : index;
+    const next = Math.min(items.length - 1, Math.max(0, start + delta));
+    const id = items[next]?.id;
+    if (id === undefined || id === selected?.id) {
+      return;
+    }
+    setPicker(CLOSED_PICKER);
+    onSelect(id);
+    cardRef.current?.focus();
+  }
+
+  function highlightCategory(index: number) {
+    setPicker((current) => ({ ...current, index }));
+  }
+
+  function appendQuery(character: string) {
+    setPicker((current) => ({
+      ...current,
+      open: true,
+      query: `${current.query}${character}`,
+      index: 0,
+    }));
+  }
+
+  function confirmCurrent() {
+    if (selected === null || isSetupReview(selected)) {
+      return;
+    }
+    if (selected.condition_code === "categorization_needed") {
+      const assignable =
+        transactionForReview(selected, transactions) ??
+        transactionFromReviewContext(selected);
+      if (assignable === undefined) {
+        return;
+      }
+      const draftId =
+        selectedAssignId === null ? "" : (drafts[selectedAssignId] ?? "");
+      if (draftId === "") {
+        openPicker("");
+        return;
+      }
+      assignAndAdvance(assignable);
+      return;
+    }
+    const choice = primaryDecision(selected);
+    if (choice !== null) {
+      decideAndAdvance(selected, choice);
+    }
+  }
+
+  useEffect(() => {
+    keyboardRef.current = {
+      categories,
+      picker,
+      openPicker,
+      closePicker,
+      chooseCategory,
+      moveQueue,
+      highlightCategory,
+      appendQuery,
+      confirmCurrent,
+      categorization: selected?.condition_code === "categorization_needed",
+    };
+  });
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      const snapshot = keyboardRef.current;
+      if (snapshot === null || event.metaKey || event.ctrlKey || event.altKey) {
+        return;
+      }
+      if (event.isComposing || isTextEntry(event.target)) {
+        return;
+      }
+      const searchFocused = isCategorySearch(event.target);
+      if (searchFocused) {
+        handlePickerKey(event, snapshot);
+        return;
+      }
+      if (snapshot.picker.open) {
+        handlePickerKey(event, snapshot);
+        return;
+      }
+      if (event.key === "ArrowDown" || event.key === "j") {
+        event.preventDefault();
+        snapshot.moveQueue(1);
+        return;
+      }
+      if (event.key === "ArrowUp" || event.key === "k") {
+        event.preventDefault();
+        snapshot.moveQueue(-1);
+        return;
+      }
+      if (!onDecisionCard(event.target)) {
+        return;
+      }
+      if (event.key === "Enter" && !isActivationTarget(event.target)) {
+        event.preventDefault();
+        snapshot.confirmCurrent();
+        return;
+      }
+      if (!snapshot.categorization) {
+        return;
+      }
+      if (event.key === "/") {
+        event.preventDefault();
+        snapshot.openPicker("");
+        return;
+      }
+      if (isQueryChar(event.key, false)) {
+        event.preventDefault();
+        snapshot.openPicker(event.key);
+      }
+    }
+    window.addEventListener("keydown", onKey, true);
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!picker.open) {
+      return;
+    }
+    const field = searchRef.current;
+    if (field === null) {
+      return;
+    }
+    field.focus();
+    const end = field.value.length;
+    field.setSelectionRange(end, end);
+  }, [picker.open]);
 
   return (
     <div className={`review-page${fresh ? " stage-enter" : ""}`}>
@@ -181,9 +347,12 @@ export function ReviewPage({
           </section>
         ) : null}
         <section
+          ref={cardRef}
+          id="review-decision"
           className={`card evidence-pane${selected === null ? " is-empty" : ""}`}
           aria-live="polite"
           aria-label="Review decision"
+          tabIndex={-1}
         >
           {selected === null ? (
             <p className="empty">
@@ -204,9 +373,20 @@ export function ReviewPage({
               saving={saving}
               today={today}
               remaining={items.length}
-              onDraft={onDraft}
               onAssign={assignAndAdvance}
               onDecide={decideAndAdvance}
+              picker={picker}
+              searchRef={searchRef}
+              onPickerOpen={() => {
+                openPicker("");
+              }}
+              onPickerQuery={(query) => {
+                setPicker((current) => ({ ...current, query, index: 0 }));
+              }}
+              onPickerHighlight={(index) => {
+                setPicker((current) => ({ ...current, index }));
+              }}
+              onPickerChoose={chooseCategory}
               onOpenTransaction={onOpenTransaction}
               onOpenImport={onOpenImport}
               onOpenSettings={onOpenSettings}
@@ -272,9 +452,14 @@ function Evidence({
   saving,
   today,
   remaining,
-  onDraft,
   onAssign,
   onDecide,
+  picker,
+  searchRef,
+  onPickerOpen,
+  onPickerQuery,
+  onPickerHighlight,
+  onPickerChoose,
   onOpenTransaction,
   onOpenImport,
   onOpenSettings,
@@ -287,9 +472,14 @@ function Evidence({
   saving: string | null;
   today: Date;
   remaining: number;
-  onDraft: (transactionId: string, categoryId: string) => void;
   onAssign: (transaction: Transaction) => void;
   onDecide: (review: Review, choice: string) => void;
+  picker: PickerState;
+  searchRef: RefObject<HTMLInputElement | null>;
+  onPickerOpen: () => void;
+  onPickerQuery: (query: string) => void;
+  onPickerHighlight: (index: number) => void;
+  onPickerChoose: (categoryId: string) => void;
   onOpenTransaction: (id: string) => void;
   onOpenImport: (id: string) => void;
   onOpenSettings: () => void;
@@ -386,21 +576,21 @@ function Evidence({
                 >
                   Category for {assignable.counterparty}
                 </label>
-                <select
-                  className="select"
-                  id={`review-cat-${assignable.id}`}
-                  value={draft}
-                  onChange={(event) => {
-                    onDraft(assignable.id, event.target.value);
-                  }}
-                >
-                  <option value="">Choose Category</option>
-                  {categories.map((category) => (
-                    <option key={category.id} value={category.id}>
-                      {category.name}
-                    </option>
-                  ))}
-                </select>
+                <CategoryPicker
+                  categories={categories}
+                  matches={filterCategories(categories, picker.query)}
+                  draftId={draft}
+                  open={picker.open}
+                  query={picker.query}
+                  activeIndex={picker.index}
+                  inputId={`review-cat-${assignable.id}`}
+                  listId={`review-cat-list-${assignable.id}`}
+                  searchRef={searchRef}
+                  onOpen={onPickerOpen}
+                  onQuery={onPickerQuery}
+                  onHighlight={onPickerHighlight}
+                  onChoose={onPickerChoose}
+                />
                 <Button
                   variant="primary"
                   disabled={draft === "" || saving === assignable.id}
@@ -442,6 +632,15 @@ function Evidence({
                 ))
               : null}
           </div>
+          <ShortcutList
+            categorization={categorization}
+            canAssign={categorization && draft !== ""}
+            confirmLabel={confirmShortcutLabel(
+              review,
+              categorization,
+              needsSetup,
+            )}
+          />
         </section>
         {categorization ? null : (
           <details className="import-details review-details">
@@ -590,4 +789,190 @@ function evidenceBody(
     return `${transaction.counterparty} is a confirmed Transaction on ${transaction.financial_account.name}. Posted Amount is ${formatUnsigned(transaction.posted_amount)}. The statement text does not map to a Category.`;
   }
   return "Review the permitted decision.";
+}
+
+type KeyboardSnapshot = {
+  categories: Category[];
+  picker: PickerState;
+  categorization: boolean;
+  openPicker: (query: string) => void;
+  closePicker: () => void;
+  chooseCategory: (categoryId: string) => void;
+  moveQueue: (delta: number) => void;
+  highlightCategory: (index: number) => void;
+  appendQuery: (character: string) => void;
+  confirmCurrent: () => void;
+};
+
+function filterCategories(categories: Category[], query: string): Category[] {
+  const needle = query.trim().toLowerCase();
+  if (needle === "") {
+    return categories;
+  }
+  return categories.filter((category) =>
+    category.name.toLowerCase().includes(needle),
+  );
+}
+
+function handlePickerKey(event: KeyboardEvent, snapshot: KeyboardSnapshot) {
+  const matches = filterCategories(snapshot.categories, snapshot.picker.query);
+  if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    snapshot.closePicker();
+    return;
+  }
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (matches.length === 0) {
+      return;
+    }
+    snapshot.highlightCategory(
+      Math.min(matches.length - 1, snapshot.picker.index + 1),
+    );
+    return;
+  }
+  if (event.key === "ArrowUp") {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    snapshot.highlightCategory(Math.max(0, snapshot.picker.index - 1));
+    return;
+  }
+  if (event.key === "Enter") {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    const choice = matches[snapshot.picker.index];
+    if (choice !== undefined) {
+      snapshot.chooseCategory(choice.id);
+    }
+    return;
+  }
+  if (!isCategorySearch(event.target) && isQueryChar(event.key, true)) {
+    event.preventDefault();
+    snapshot.appendQuery(event.key);
+  }
+}
+
+function ShortcutList({
+  categorization,
+  canAssign,
+  confirmLabel,
+}: {
+  categorization: boolean;
+  canAssign: boolean;
+  confirmLabel: string | null;
+}) {
+  const enter = categorization
+    ? canAssign
+      ? "assign and next"
+      : "open category search"
+    : confirmLabel === null
+      ? null
+      : `${confirmLabel} and next`;
+  return (
+    <ul className="review-shortcuts" aria-label="Keyboard shortcuts">
+      {enter === null ? null : (
+        <li>
+          <kbd>Enter</kbd> {enter}
+        </li>
+      )}
+      <li>
+        <kbd>↑</kbd>
+        <kbd>↓</kbd> or <kbd>j</kbd>
+        <kbd>k</kbd> move queue
+      </li>
+      {categorization ? (
+        <>
+          <li>
+            <kbd>/</kbd> or type-ahead opens category search
+          </li>
+          <li>
+            <kbd>↑</kbd>
+            <kbd>↓</kbd> in search move matches
+          </li>
+          <li>
+            <kbd>Enter</kbd> in search chooses the Category
+          </li>
+          <li>
+            <kbd>Esc</kbd> closes search
+          </li>
+        </>
+      ) : null}
+    </ul>
+  );
+}
+
+function confirmShortcutLabel(
+  review: Review,
+  categorization: boolean,
+  needsSetup: boolean,
+): string | null {
+  if (categorization || needsSetup) {
+    return null;
+  }
+  const choice = primaryDecision(review);
+  return choice === null ? null : decisionLabel(choice);
+}
+
+function primaryDecision(review: Review): string | null {
+  return (
+    review.allowed_decisions.find(
+      (choice) => !choice.includes("exclude") && choice !== "keep_quarantine",
+    ) ?? null
+  );
+}
+
+function isSetupReview(review: Review): boolean {
+  return (
+    review.condition_code === "apple_wallet_unmapped_card" ||
+    review.condition_code === "paylah_account_missing" ||
+    review.condition_code === "paylah_account_ambiguous"
+  );
+}
+
+function isCategorySearch(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement && target.dataset.catSearch === "true";
+}
+
+function isTextEntry(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement) || isCategorySearch(target)) {
+    return false;
+  }
+  const tag = target.tagName;
+  return (
+    tag === "INPUT" ||
+    tag === "TEXTAREA" ||
+    tag === "SELECT" ||
+    target.isContentEditable
+  );
+}
+
+function isActivationTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest("button, a") !== null;
+}
+
+function onDecisionCard(target: EventTarget | null): boolean {
+  if (
+    target === window ||
+    target === document ||
+    target === document.body ||
+    target === document.documentElement
+  ) {
+    return true;
+  }
+  if (!(target instanceof Node)) {
+    return false;
+  }
+  return document.getElementById("review-decision")?.contains(target) ?? false;
+}
+
+function isQueryChar(key: string, allowVim: boolean): boolean {
+  if (key.length !== 1 || !/[a-z0-9]/i.test(key)) {
+    return false;
+  }
+  if (!allowVim && (key === "j" || key === "k" || key === "J" || key === "K")) {
+    return false;
+  }
+  return true;
 }

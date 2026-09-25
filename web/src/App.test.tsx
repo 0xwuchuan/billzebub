@@ -263,12 +263,7 @@ describe("App", () => {
     ).toBeInTheDocument();
     expect(screen.getAllByText("SGD 18.50").length).toBeGreaterThan(0);
     expect(screen.queryByText("Review details")).not.toBeInTheDocument();
-    fireEvent.change(
-      screen.getByLabelText("Category for Synthetic Orphan Cafe"),
-      {
-        target: { value: "00000000-0000-0000-0000-000000000099" },
-      },
-    );
+    chooseReviewCategory("Synthetic Orphan Cafe", "Synthetic Food");
     fireEvent.click(screen.getByRole("button", { name: "Assign Category" }));
 
     await waitFor(() => {
@@ -308,9 +303,7 @@ describe("App", () => {
     expect(
       screen.queryByRole("heading", { name: "Category needed" }),
     ).not.toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Category for Synthetic Coffee"), {
-      target: { value: "00000000-0000-0000-0000-000000000099" },
-    });
+    chooseReviewCategory("Synthetic Coffee", "Synthetic Food");
     fireEvent.click(screen.getByRole("button", { name: "Assign Category" }));
 
     await waitFor(() => {
@@ -557,9 +550,7 @@ describe("App", () => {
       await screen.findByRole("heading", { name: "Synthetic Coffee" }),
     ).toBeInTheDocument();
     expect(screen.getByText("Synthetic Grocer")).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Category for Synthetic Coffee"), {
-      target: { value: "00000000-0000-0000-0000-000000000099" },
-    });
+    chooseReviewCategory("Synthetic Coffee", "Synthetic Food");
     fireEvent.click(screen.getByRole("button", { name: "Assign Category" }));
 
     expect(
@@ -568,9 +559,9 @@ describe("App", () => {
     expect(
       screen.queryByRole("heading", { name: "Synthetic Coffee" }),
     ).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Category for Synthetic Grocer")).toBe(
-      screen.getByRole("combobox"),
-    );
+    expect(
+      screen.getByLabelText("Category for Synthetic Grocer"),
+    ).toHaveTextContent("Choose Category");
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
         "/api/v1/transactions/00000000-0000-0000-0000-000000000010/category",
@@ -1304,6 +1295,11 @@ describe("setup gates", () => {
     expect(state.step).toBe(2);
   });
 });
+
+function chooseReviewCategory(counterparty: string, categoryName: string) {
+  fireEvent.click(screen.getByLabelText(`Category for ${counterparty}`));
+  fireEvent.click(screen.getByRole("option", { name: categoryName }));
+}
 
 function seedOnboarded(): void {
   window.localStorage.setItem(
