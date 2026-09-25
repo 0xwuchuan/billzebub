@@ -16,7 +16,7 @@ body {
   background: var(--bz-bg);
   color: var(--bz-text);
   font-family: var(--bz-font);
-  font-size: var(--bz-text-md);
+  font-size: var(--bz-text-body);
   line-height: 1.45;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -132,7 +132,7 @@ p {
 .field,
 .select {
   min-height: var(--bz-control-h);
-  border-radius: var(--bz-radius-md);
+  border-radius: var(--bz-radius-control);
   border: 1px solid var(--bz-border-strong);
   background: var(--bz-surface);
 }
@@ -230,7 +230,7 @@ p {
 
 .chip {
   min-height: 1.75rem;
-  border-radius: 999px;
+  border-radius: var(--bz-radius-pill);
   border: 1px solid var(--bz-border);
   background: transparent;
   color: var(--bz-muted);
@@ -249,8 +249,8 @@ p {
   gap: 0.3rem;
   min-height: 1.25rem;
   padding: 0 0.45rem;
-  border-radius: 999px;
-  font-size: var(--bz-text-xs);
+  border-radius: var(--bz-radius-pill);
+  font-size: var(--bz-text-meta);
   font-weight: 600;
   letter-spacing: 0.02em;
 }
@@ -261,8 +261,8 @@ p {
 }
 
 .badge-attention {
-  background: color-mix(in srgb, var(--bz-provisional) 16%, var(--bz-surface));
-  color: var(--bz-provisional);
+  background: color-mix(in srgb, var(--bz-attention) 16%, var(--bz-surface));
+  color: var(--bz-attention);
 }
 
 .badge-blocking {
@@ -282,8 +282,8 @@ p {
 
 .card {
   border: 1px solid var(--bz-border);
-  border-radius: var(--bz-radius-lg);
-  background: var(--bz-surface);
+  border-radius: var(--bz-radius-card);
+  background: var(--bz-bg-card);
   box-shadow: var(--bz-card-shadow);
 }
 
@@ -294,7 +294,7 @@ p {
   min-height: 1.25rem;
   overflow: hidden;
   padding: 0 0.55rem;
-  border-radius: 999px;
+  border-radius: var(--bz-radius-pill);
   background: color-mix(in srgb, var(--cat-color) 16%, var(--bz-surface));
   color: var(--cat-color, var(--bz-muted));
   font-size: var(--bz-text-xs);
@@ -308,22 +308,22 @@ p {
   flex: 0 0 auto;
   width: 0.42rem;
   height: 0.42rem;
-  border-radius: 99px;
-  background: var(--bz-review-dot);
+  border-radius: var(--bz-radius-pill);
+  background: var(--bz-attention);
   box-shadow: 0 0 0 3px
     color-mix(in srgb, var(--bz-review-dot) 22%, transparent);
 }
 
 .eyebrow {
   color: var(--bz-muted);
-  font-size: var(--bz-text-xs);
+  font-size: var(--bz-text-meta);
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .amount {
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: var(--bz-nums);
   font-feature-settings: "tnum" 1;
   letter-spacing: -0.02em;
 }

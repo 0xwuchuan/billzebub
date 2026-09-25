@@ -456,8 +456,8 @@ describe("App", () => {
     expect(document.querySelector(".rail")).not.toBeNull();
     expect(document.querySelector("main.stage")).not.toBeNull();
     expect(
-      screen.getByRole("button", { name: "Switch to light theme" }),
-    ).toBeInTheDocument();
+      screen.getAllByRole("button", { name: "Switch to light theme" }).length,
+    ).toBeGreaterThan(0);
     fireEvent.click(
       screen.getByRole("button", { name: "Open navigation", hidden: true }),
     );
@@ -501,14 +501,22 @@ describe("App", () => {
 
     expect(await screen.findByText("Billzebub")).toBeInTheDocument();
     expect(document.documentElement.dataset.theme).toBe("dark");
-    fireEvent.click(
-      screen.getByRole("button", { name: "Switch to light theme" }),
-    );
+    const toLight = screen.getAllByRole("button", {
+      name: "Switch to light theme",
+    })[0];
+    if (toLight === undefined) {
+      throw new Error("theme toggle missing");
+    }
+    fireEvent.click(toLight);
     expect(document.documentElement.dataset.theme).toBe("light");
     expect(window.localStorage.getItem("bz.theme")).toBe("light");
-    fireEvent.click(
-      screen.getByRole("button", { name: "Switch to dark theme" }),
-    );
+    const toDark = screen.getAllByRole("button", {
+      name: "Switch to dark theme",
+    })[0];
+    if (toDark === undefined) {
+      throw new Error("theme toggle missing");
+    }
+    fireEvent.click(toDark);
     expect(document.documentElement.dataset.theme).toBe("dark");
     expect(window.localStorage.getItem("bz.theme")).toBe("dark");
   });

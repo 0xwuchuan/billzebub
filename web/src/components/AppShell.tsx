@@ -126,11 +126,13 @@ export function AppShell({
           accounts={accounts}
           current={route.page}
           selectedAccountId={selectedAccountId}
+          theme={theme}
           onNavigate={go}
           onSelectAccount={(accountId) => {
             setNavOpen(false);
             onSelectAccount(accountId);
           }}
+          onToggleTheme={onToggleTheme}
         />
       </aside>
       <div className="main">
@@ -201,11 +203,13 @@ export function AppShell({
               accounts={accounts}
               current={route.page}
               selectedAccountId={selectedAccountId}
+              theme={theme}
               onNavigate={go}
               onSelectAccount={(accountId) => {
                 setNavOpen(false);
                 onSelectAccount(accountId);
               }}
+              onToggleTheme={onToggleTheme}
             />
           </nav>
         </>
@@ -220,16 +224,20 @@ function RailContent({
   accounts,
   current,
   selectedAccountId,
+  theme,
   onNavigate,
   onSelectAccount,
+  onToggleTheme,
 }: {
   dailyItems: NavItem[];
   settingsItem: NavItem;
   accounts: FinancialAccount[];
   current: RoutePage;
   selectedAccountId: string;
+  theme: Theme;
   onNavigate: (page: RoutePage) => void;
   onSelectAccount: (accountId: string) => void;
+  onToggleTheme: () => void;
 }) {
   const groups = groupedAccounts(accounts);
   return (
@@ -286,6 +294,7 @@ function RailContent({
           current={current}
           onNavigate={onNavigate}
         />
+        <ThemeToggle theme={theme} onToggle={onToggleTheme} />
       </div>
     </>
   );
