@@ -381,6 +381,78 @@ button.statement-cell:hover {
   min-width: 11rem;
 }
 
+.cat-picker {
+  flex: 1 1 12rem;
+  min-width: min(100%, 11rem);
+}
+
+.cat-picker-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  color: var(--bz-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.cat-picker-list {
+  display: grid;
+  gap: var(--bz-space-1);
+  max-height: 14rem;
+  margin: var(--bz-space-2) 0 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.cat-picker-option {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: var(--bz-control-h);
+  padding: 0 var(--bz-space-2);
+  border: 0;
+  border-radius: var(--bz-radius-control);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cat-picker-option.is-active,
+.cat-picker-option:hover {
+  background: color-mix(in srgb, var(--bz-text) 12%, var(--bz-bg-card));
+}
+
+.cat-picker-empty {
+  margin: var(--bz-space-2) 0 0;
+  color: var(--bz-muted);
+  font-size: var(--bz-text-sm);
+}
+
+.review-shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bz-space-1) var(--bz-space-3);
+  margin: 0;
+  padding: 0;
+  color: var(--bz-muted);
+  font-size: var(--bz-text-xs);
+  list-style: none;
+}
+
+.review-shortcuts li {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.25rem;
+}
+
+.review-shortcuts kbd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: inherit;
+}
+
 .review-page {
   display: grid;
   align-content: start;
@@ -1548,7 +1620,8 @@ button.coverage-chip:hover {
   .select,
   .icon-btn,
   .queue-item,
-  .account-toggle {
+  .account-toggle,
+  .cat-picker-option {
     min-height: 2.75rem;
   }
 

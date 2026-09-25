@@ -261,6 +261,147 @@ describe("ReviewPage", () => {
     );
   });
 
+  it("moves the queue with j, k, and arrow keys", () => {
+    const onSelect = vi.fn();
+    const { rerender } = renderPage({
+      reviews: [coffeeReview, grocerReview],
+      transactions: [coffee, grocer],
+      onSelect,
+    });
+
+    fireEvent.keyDown(document.body, { key: "j" });
+    fireEvent.keyDown(document.body, { key: "ArrowDown" });
+    expect(onSelect).toHaveBeenCalledWith(grocerReview.id);
+
+    rerender(
+      pageElement({
+        reviews: [coffeeReview, grocerReview],
+        transactions: [coffee, grocer],
+        selectedId: grocerReview.id,
+        onSelect,
+      }),
+    );
+    fireEvent.keyDown(document.body, { key: "k" });
+    fireEvent.keyDown(document.body, { key: "ArrowUp" });
+    expect(onSelect).toHaveBeenCalledWith(coffeeReview.id);
+  });
+
+  it("assigns with Enter and advances to the next review", () => {
+    const onAssign = vi.fn();
+    const onSelect = vi.fn();
+    renderPage({
+      reviews: [coffeeReview, grocerReview],
+      transactions: [coffee, grocer],
+      drafts: { [coffee.id]: categories[0]?.id ?? "" },
+      onAssign,
+      onSelect,
+    });
+
+    fireEvent.keyDown(document.body, { key: "Enter" });
+
+    expect(onAssign).toHaveBeenCalledWith(coffee);
+    expect(onSelect).toHaveBeenCalledWith(grocerReview.id);
+  });
+
+  it("confirms the primary decision with Enter and advances", () => {
+    const onDecide = vi.fn();
+    const onSelect = vi.fn();
+    const match = {
+      ...coffeeReview,
+      condition_code: "reconciliation_ambiguous",
+      allowed_decisions: ["confirm_match", "keep_separate"],
+    };
+    renderPage({
+      reviews: [match, grocerReview],
+      transactions: [coffee, grocer],
+      onDecide,
+      onSelect,
+    });
+
+    fireEvent.keyDown(document.body, { key: "Enter" });
+
+    expect(onDecide).toHaveBeenCalledWith(match, "confirm_match");
+    expect(onSelect).toHaveBeenCalledWith(grocerReview.id);
+  });
+
+  it("opens category search from slash or type-ahead and closes it with Esc", () => {
+    const onDraft = vi.fn();
+    renderPage({
+      reviews: [coffeeReview],
+      transactions: [coffee],
+      categories: [
+        categories[0]!,
+        {
+          id: "00000000-0000-0000-0000-000000000098",
+          name: "Transit",
+          parent_id: null,
+          active: true,
+        },
+      ],
+      onDraft,
+    });
+
+    fireEvent.keyDown(document.body, { key: "/" });
+    const search = screen.getByRole("combobox", {
+      name: "Category for Synthetic Coffee",
+    });
+    expect(search).toHaveFocus();
+    expect(search).toHaveValue("");
+
+    fireEvent.keyDown(search, { key: "Escape" });
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    expect(screen.getByText("Choose Category")).toBeInTheDocument();
+
+    fireEvent.keyDown(document.body, { key: "f" });
+    const typed = screen.getByRole("combobox");
+    expect(typed).toHaveFocus();
+    expect(typed).toHaveValue("f");
+    expect(
+      screen.getByRole("option", { name: "Synthetic Food" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: "Transit" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.keyDown(typed, { key: "Enter" });
+    expect(onDraft).toHaveBeenCalledWith(coffee.id, categories[0]?.id);
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+  });
+
+  it("keeps j and k for the queue until category search is focused", () => {
+    const onSelect = vi.fn();
+    renderPage({
+      reviews: [coffeeReview, grocerReview],
+      transactions: [coffee, grocer],
+      onSelect,
+    });
+
+    const queue = screen.getByRole("region", { name: "Pending Review queue" });
+    const row = within(queue).getByRole("button", { name: /Synthetic Coffee/ });
+    row.focus();
+    fireEvent.keyDown(row, { key: "f" });
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+
+    fireEvent.keyDown(document.body, { key: "/" });
+    const search = screen.getByRole("combobox");
+    fireEvent.keyDown(search, { key: "j" });
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("lists the review keyboard shortcuts on the decision card", () => {
+    renderPage({
+      reviews: [coffeeReview],
+      transactions: [coffee],
+    });
+
+    const shortcuts = screen.getByRole("list", { name: "Keyboard shortcuts" });
+    expect(shortcuts).toHaveTextContent("Enter");
+    expect(shortcuts).toHaveTextContent("open category search");
+    expect(shortcuts).toHaveTextContent("move queue");
+    expect(shortcuts).toHaveTextContent("type-ahead opens category search");
+    expect(shortcuts).toHaveTextContent("closes search");
+  });
+
   it("does not stretch the empty decision card, and keeps a filled card compact-capable", () => {
     const { unmount } = renderPage({ reviews: [], transactions: [] });
     expect(screen.getByRole("region", { name: "Review decision" })).toHaveClass(
@@ -285,38 +426,52 @@ describe("ReviewPage", () => {
   });
 });
 
-function renderPage({
+function renderPage(props: PageProps) {
+  return render(pageElement(props));
+}
+
+function pageElement({
   reviews,
   transactions,
   drafts = {},
+  categories: categoryList = categories,
+  selectedId = "",
   onAssign = () => undefined,
   onSelect = () => undefined,
-}: {
-  reviews: Review[];
-  transactions: Transaction[];
-  drafts?: Record<string, string>;
-  onAssign?: (transaction: Transaction) => void;
-  onSelect?: (id: string) => void;
-}) {
-  return render(
+  onDraft = () => undefined,
+  onDecide = () => undefined,
+}: PageProps) {
+  return (
     <ReviewPage
       reviews={reviews}
       transactions={transactions}
       imports={[]}
-      categories={categories}
+      categories={categoryList}
       filter=""
-      selectedId=""
+      selectedId={selectedId}
       drafts={drafts}
       saving={null}
       today={new Date("2026-01-19T00:00:00+00:00")}
       onFilter={() => undefined}
       onSelect={onSelect}
-      onDraft={() => undefined}
+      onDraft={onDraft}
       onAssign={onAssign}
-      onDecide={() => undefined}
+      onDecide={onDecide}
       onOpenTransaction={() => undefined}
       onOpenImport={() => undefined}
       onOpenSettings={() => undefined}
-    />,
+    />
   );
 }
+
+type PageProps = {
+  reviews: Review[];
+  transactions: Transaction[];
+  drafts?: Record<string, string>;
+  categories?: Category[];
+  selectedId?: string;
+  onAssign?: (transaction: Transaction) => void;
+  onSelect?: (id: string) => void;
+  onDraft?: (transactionId: string, categoryId: string) => void;
+  onDecide?: (review: Review, choice: string) => void;
+};
