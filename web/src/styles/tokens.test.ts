@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 const tokens = readFileSync("src/styles/tokens.css", "utf8");
 const shell = readFileSync("src/styles/shell.css", "utf8");
+const base = readFileSync("src/styles/base.css", "utf8");
 
 const light = tokens.slice(tokens.indexOf(':root[data-theme="light"]'));
 
@@ -56,5 +57,19 @@ describe("desktop shell tokens", () => {
 
   it("does not hardcode colors in the shell stylesheet", () => {
     expect(shell).not.toMatch(/#[0-9a-fA-F]{3,8}/);
+  });
+});
+
+describe("category chip tokens", () => {
+  it("paints chips and the provisional badge from Phase 0 tokens", () => {
+    const chip = base.slice(
+      base.indexOf(".cat-chip {"),
+      base.indexOf(".review-dot"),
+    );
+    expect(chip).toMatch(/--bz-bg-card/);
+    expect(chip).toMatch(/--bz-text-meta/);
+    expect(chip).toMatch(/--bz-provisional/);
+    expect(chip).toMatch(/16%/);
+    expect(chip).not.toMatch(/#[0-9a-fA-F]{3,8}/);
   });
 });
