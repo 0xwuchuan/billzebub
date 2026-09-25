@@ -169,6 +169,7 @@ describe("ReviewPage", () => {
       expect(
         screen.getByRole("button", { name: "Assign Category" }),
       ).toBeInTheDocument();
+      expect(screen.queryByText("Review details")).not.toBeInTheDocument();
     } finally {
       window.matchMedia = original;
     }

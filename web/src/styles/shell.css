@@ -127,6 +127,7 @@
   display: grid;
   gap: 2px;
   min-height: 0;
+  min-width: 0;
   margin-top: var(--bz-space-5);
 }
 
@@ -134,6 +135,8 @@
   display: flex;
   align-items: center;
   gap: var(--bz-space-2);
+  min-width: 0;
+  max-width: 100%;
   min-height: 1.85rem;
   padding: 0 var(--bz-space-3);
   border: 0;
@@ -358,8 +361,18 @@
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
+  flex: 0 0 auto;
   gap: var(--bz-space-3);
   border-bottom: 1px solid var(--bz-border);
+}
+
+.drawer-head > div {
+  min-width: 0;
+}
+
+.drawer-head h2,
+.drawer-head .eyebrow {
+  overflow-wrap: anywhere;
 }
 
 .drawer-head .hero-value {
@@ -368,8 +381,11 @@
 }
 
 .drawer-body {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: auto;
   display: grid;
+  align-content: start;
   gap: var(--bz-space-5);
 }
 
@@ -447,8 +463,10 @@
     display: none;
   }
 
-  .menu-btn {
+  .menu-btn,
+  .icon-btn {
     display: inline-grid;
+    width: 2.75rem;
     min-width: 2.75rem;
     min-height: 2.75rem;
   }
@@ -491,20 +509,23 @@
   }
 
   .nav-drawer .rail-account {
-    min-height: 2.5rem;
+    width: 100%;
+    min-height: 2.75rem;
   }
 
   .drawer {
     top: auto;
+    bottom: 0;
     left: 0;
     right: 0;
     width: 100%;
     height: min(88dvh, 100%);
     max-height: 100dvh;
+    overflow: hidden;
     border-left: 0;
     border-top: 1px solid var(--bz-border);
     border-radius: 1rem 1rem 0 0;
-    transform: translateY(16px);
+    transform: translateY(100%);
   }
 
   .drawer.open {
