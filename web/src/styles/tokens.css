@@ -1,33 +1,75 @@
+/* Dark leads. Light overrides the same names one-for-one.
+   Surfaces step bg → bg-elevated → bg-card.
+   Older names (--bz-accent, --bz-positive, --bz-danger, --bz-surface,
+   --bz-text-hero / lg / md) stay as aliases. */
+
 :root {
+  color-scheme: dark;
+
   --bz-bg: #100f0f;
-  --bz-rail-bg: #100f0f;
-  --bz-surface: #1c1b1a;
-  --bz-surface-hover: color-mix(in srgb, #282726 60%, #1c1b1a);
-  --bz-border: #282726;
-  --bz-border-strong: #343331;
+  --bz-bg-elevated: #1c1b1a;
+  --bz-bg-card: #282726;
+  --bz-rail-bg: var(--bz-bg);
+  --bz-surface: var(--bz-bg-card);
+  --bz-surface-hover: #343331;
+  --bz-border: #343331;
+  --bz-border-strong: #403e3c;
+
   --bz-text: #cecdc3;
   --bz-muted: #878580;
-  --bz-accent: #3aa99f;
-  --bz-accent-dim: color-mix(in srgb, #3aa99f 16%, #1c1b1a);
+
+  --bz-action: #3aa99f;
+  --bz-accent: var(--bz-action);
+  --bz-accent-dim: color-mix(
+    in srgb,
+    var(--bz-action) 16%,
+    var(--bz-bg-elevated)
+  );
   --bz-on-accent: #100f0f;
-  --bz-positive: #879a39;
+  --bz-confirmed: #879a39;
+  --bz-positive: var(--bz-confirmed);
   --bz-provisional: #d0a215;
-  --bz-danger: #d14d41;
-  --bz-cat-groceries: #3aa99f;
-  --bz-cat-dining: color-mix(in srgb, #d0a215 70%, #3aa99f);
-  --bz-cat-transport: #d0a215;
-  --bz-cat-utilities: #878580;
-  --bz-cat-health: #879a39;
-  --bz-cat-shopping: color-mix(in srgb, #3aa99f 55%, #cecdc3);
-  --bz-cat-gifts: color-mix(in srgb, #d14d41 45%, #cecdc3);
-  --bz-cat-uncat: #878580;
-  --bz-review-dot: #7eb8d4;
+  --bz-attention: #4385be;
+  --bz-review-dot: var(--bz-attention);
+  --bz-blocking: #d14d41;
+  --bz-danger: var(--bz-blocking);
+
+  /* Reserved category hues. Chips consume these next; named categories alias them. */
+  --bz-hue-red: #d14d41;
+  --bz-hue-orange: #da702c;
+  --bz-hue-yellow: #d0a215;
+  --bz-hue-green: #879a39;
+  --bz-hue-cyan: #3aa99f;
+  --bz-hue-blue: #4385be;
+  --bz-hue-purple: #8b7ec8;
+  --bz-hue-magenta: #ce5d97;
+  --bz-hue-coral: #e8705f;
+  --bz-hue-amber: #ec8b49;
+  --bz-hue-violet: #a699d0;
+  --bz-hue-pink: #e47da8;
+  --bz-cat-groceries: var(--bz-hue-cyan);
+  --bz-cat-dining: var(--bz-hue-orange);
+  --bz-cat-transport: var(--bz-hue-yellow);
+  --bz-cat-utilities: var(--bz-hue-blue);
+  --bz-cat-health: var(--bz-hue-green);
+  --bz-cat-shopping: var(--bz-hue-purple);
+  --bz-cat-gifts: var(--bz-hue-magenta);
+  --bz-cat-uncat: var(--bz-muted);
+
+  --bz-nav-hover: color-mix(in srgb, var(--bz-text) 6%, var(--bz-bg));
+  --bz-nav-active: color-mix(in srgb, var(--bz-text) 12%, var(--bz-bg));
+
   --bz-overlay: color-mix(in srgb, #100f0f 62%, transparent);
   --bz-shadow: 0 18px 48px color-mix(in srgb, #100f0f 45%, transparent);
   --bz-card-shadow: none;
-  --bz-radius-sm: 6px;
-  --bz-radius-md: 10px;
+
+  --bz-radius-control: 6px;
+  --bz-radius-card: 8px;
+  --bz-radius-pill: 999px;
+  --bz-radius-sm: var(--bz-radius-control);
+  --bz-radius-md: var(--bz-radius-card);
   --bz-radius-lg: 16px;
+
   --bz-space-1: 4px;
   --bz-space-2: 8px;
   --bz-space-3: 12px;
@@ -35,12 +77,19 @@
   --bz-space-5: 20px;
   --bz-space-6: 24px;
   --bz-space-8: 32px;
+
   --bz-font: Inter, ui-sans-serif, system-ui, sans-serif;
+  --bz-nums: tabular-nums;
+  --bz-text-display: 2.25rem;
+  --bz-text-title: 1.25rem;
+  --bz-text-body: 0.875rem;
+  --bz-text-meta: 0.75rem;
   --bz-text-xs: 0.6875rem;
   --bz-text-sm: 0.8125rem;
-  --bz-text-md: 0.875rem;
-  --bz-text-lg: 1.25rem;
-  --bz-text-hero: 2.25rem;
+  --bz-text-md: var(--bz-text-body);
+  --bz-text-lg: var(--bz-text-title);
+  --bz-text-hero: var(--bz-text-display);
+
   --bz-rail: 16.5rem;
   --bz-detail: 24rem;
   --bz-control-h: 2.25rem;
@@ -54,30 +103,38 @@
 }
 
 :root[data-theme="light"] {
-  --bz-bg: #f5f6f8;
-  --bz-rail-bg: #f3f4f6;
-  --bz-surface: #ffffff;
-  --bz-surface-hover: #f2f4f7;
-  --bz-border: #e6e8ed;
-  --bz-border-strong: #d5d8de;
-  --bz-text: #1c1d21;
-  --bz-muted: #6f7580;
-  --bz-accent: #3b82f6;
-  --bz-accent-dim: #e8f1fe;
-  --bz-on-accent: #ffffff;
-  --bz-positive: #16a34a;
-  --bz-provisional: #ca8a04;
-  --bz-danger: #e11d48;
-  --bz-cat-groceries: #0f9f8a;
-  --bz-cat-dining: #d97706;
-  --bz-cat-transport: #ca8a04;
-  --bz-cat-utilities: #64748b;
-  --bz-cat-health: #dc2626;
-  --bz-cat-shopping: #2563eb;
-  --bz-cat-gifts: #db2777;
-  --bz-cat-uncat: #94a3b8;
-  --bz-review-dot: #60a5fa;
-  --bz-overlay: color-mix(in srgb, #1c1d21 38%, transparent);
-  --bz-shadow: 0 18px 48px color-mix(in srgb, #1c1d21 12%, transparent);
-  --bz-card-shadow: 0 1px 2px color-mix(in srgb, #1c1d21 5%, transparent);
+  color-scheme: light;
+
+  --bz-bg: #e6e4d9;
+  --bz-bg-elevated: #f2f0e5;
+  --bz-bg-card: #fffcf0;
+  --bz-surface-hover: #e6e4d9;
+  --bz-border: #dad8ce;
+  --bz-border-strong: #cecdc3;
+
+  --bz-text: #100f0f;
+  --bz-muted: #6f6e69;
+
+  --bz-action: #24837b;
+  --bz-on-accent: #fffcf0;
+  --bz-confirmed: #66800b;
+  --bz-provisional: #ad8301;
+  --bz-attention: #205ea6;
+  --bz-blocking: #af3029;
+
+  --bz-hue-red: #af3029;
+  --bz-hue-orange: #bc5215;
+  --bz-hue-yellow: #ad8301;
+  --bz-hue-green: #66800b;
+  --bz-hue-cyan: #24837b;
+  --bz-hue-blue: #205ea6;
+  --bz-hue-purple: #5e409d;
+  --bz-hue-magenta: #a02f6f;
+  --bz-hue-coral: #c03e35;
+  --bz-hue-amber: #cb6120;
+  --bz-hue-violet: #735eb5;
+  --bz-hue-pink: #b74583;
+
+  --bz-overlay: color-mix(in srgb, #100f0f 38%, transparent);
+  --bz-shadow: 0 18px 48px color-mix(in srgb, #100f0f 12%, transparent);
 }

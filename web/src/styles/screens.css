@@ -82,7 +82,7 @@ button.statement-cell:hover {
 }
 
 .hero-value {
-  font-size: var(--bz-text-hero);
+  font-size: var(--bz-text-display);
   font-weight: 600;
   letter-spacing: -0.045em;
   line-height: 1.2;
@@ -236,7 +236,7 @@ button.statement-cell:hover {
 .row .meta {
   color: var(--bz-muted);
   font-size: var(--bz-text-sm);
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: var(--bz-nums);
 }
 
 .row strong {
@@ -1296,7 +1296,7 @@ button.coverage-chip:hover {
 .cat-share {
   color: var(--bz-muted);
   font-size: var(--bz-text-xs);
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: var(--bz-nums);
 }
 
 @media (max-width: 64rem) {

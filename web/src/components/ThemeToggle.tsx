@@ -11,7 +11,7 @@ export function ThemeToggle({
   const next = theme === "dark" ? "light" : "dark";
   return (
     <button
-      className="icon-btn"
+      className="icon-btn theme-toggle"
       type="button"
       aria-label={`Switch to ${next} theme`}
       onClick={onToggle}
