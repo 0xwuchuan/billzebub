@@ -33,6 +33,8 @@
   --bz-review-dot: var(--bz-attention);
   --bz-blocking: #d14d41;
   --bz-danger: var(--bz-blocking);
+  --bz-status-confirmed: var(--bz-confirmed);
+  --bz-status-provisional: var(--bz-provisional);
 
   /* Reserved category hues. Chips consume these next; named categories alias them. */
   --bz-hue-red: #d14d41;

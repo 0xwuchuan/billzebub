@@ -58,6 +58,31 @@ describe("TxRow", () => {
     ).toBeInTheDocument();
   });
 
+  it("marks a provisional row with an amount-side dot instead of a badge", () => {
+    const provisional = transaction({
+      counterparty: "Synthetic Wallet Merchant",
+      posted_amount: { amount: "0", currency: "SGD" },
+      authorized_amount: { amount: "-12.34", currency: "SGD" },
+    });
+    render(
+      <TxRow
+        transaction={provisional}
+        provisionalMark="dot"
+        onOpen={() => undefined}
+      />,
+    );
+
+    const row = screen.getByRole("button", {
+      name: /Synthetic Wallet Merchant/,
+    });
+    expect(row.querySelector(".provisional-badge")).toBeNull();
+    expect(row.querySelector(".cat-chip")).not.toBeNull();
+    const dot = row.querySelector(".tx-amount-side .provisional-dot");
+    expect(dot).not.toBeNull();
+    expect(dot).toHaveAttribute("title", "Provisional");
+    expect(row.querySelector(".tx-row-status .provisional-dot")).toBeNull();
+  });
+
   it("shows only the category chip when the transaction is confirmed", () => {
     render(<TxRow transaction={transaction()} onOpen={() => undefined} />);
 

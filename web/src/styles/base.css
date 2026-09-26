@@ -342,6 +342,16 @@ p {
   white-space: nowrap;
 }
 
+.provisional-dot {
+  flex: 0 0 auto;
+  width: 0.42rem;
+  height: 0.42rem;
+  border-radius: var(--bz-radius-pill);
+  background: var(--bz-status-provisional);
+  box-shadow: 0 0 0 3px
+    color-mix(in srgb, var(--bz-status-provisional) 22%, transparent);
+}
+
 .review-dot {
   flex: 0 0 auto;
   width: 0.42rem;
