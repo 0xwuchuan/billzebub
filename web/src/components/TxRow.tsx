@@ -16,6 +16,7 @@ export function TxRow({
   selected = false,
   checked = false,
   selectable = false,
+  provisionalMark = "badge",
   onOpen,
   onToggle,
 }: {
@@ -23,6 +24,7 @@ export function TxRow({
   selected?: boolean;
   checked?: boolean;
   selectable?: boolean;
+  provisionalMark?: "badge" | "dot";
   onOpen: (id: string) => void;
   onToggle?: (id: string) => void;
 }) {
@@ -46,13 +48,24 @@ export function TxRow({
       <span className="tx-row-trailing">
         <span className="tx-row-status">
           <CategoryChip name={categoryLabel(transaction)} />
-          {provisional ? <ProvisionalBadge /> : null}
+          {provisional && provisionalMark === "badge" ? (
+            <ProvisionalBadge />
+          ) : null}
           {transfer ? <Badge tone="count">Transfer</Badge> : null}
           {review ? <i className="review-dot" title="Needs review" /> : null}
         </span>
-        <strong className={`amount tx-amount${transfer ? " muted" : ""}`}>
-          {amount}
-        </strong>
+        <span className="tx-amount-side">
+          {provisional && provisionalMark === "dot" ? (
+            <i
+              className="provisional-dot"
+              title="Provisional"
+              aria-label="Provisional"
+            />
+          ) : null}
+          <strong className={`amount tx-amount${transfer ? " muted" : ""}`}>
+            {amount}
+          </strong>
+        </span>
       </span>
     </>
   );

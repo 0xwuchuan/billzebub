@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  categoryColor,
   dateGroupLabel,
   formatOwnerCardLabel,
   shortMonthLabel,
@@ -27,6 +28,22 @@ describe("formatOwnerCardLabel", () => {
   it("abbreviates calendar months for coverage chips", () => {
     expect(shortMonthLabel("2026-04")).toBe("Apr");
     expect(shortMonthLabel("2026-09")).toBe("Sep");
+  });
+});
+
+describe("categoryColor", () => {
+  it("maps named categories and leaves Uncategorized muted", () => {
+    expect(categoryColor("Groceries")).toBe("var(--bz-cat-groceries)");
+    expect(categoryColor("Dining")).toBe("var(--bz-cat-dining)");
+    expect(categoryColor("Uncategorized")).toBe("var(--bz-cat-uncat)");
+    expect(categoryColor("")).toBe("var(--bz-cat-uncat)");
+  });
+
+  it("assigns other categories a stable hue token", () => {
+    const color = categoryColor("School");
+    expect(color).toMatch(/^var\(--bz-hue-/);
+    expect(categoryColor("School")).toBe(color);
+    expect(color).not.toMatch(/#[0-9a-fA-F]{3,8}/);
   });
 });
 

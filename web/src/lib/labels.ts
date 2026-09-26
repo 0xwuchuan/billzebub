@@ -186,18 +186,50 @@ export function isoDate(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+const NAMED_CATEGORY_COLORS: Record<string, string> = {
+  Groceries: "var(--bz-cat-groceries)",
+  Dining: "var(--bz-cat-dining)",
+  Transport: "var(--bz-cat-transport)",
+  Utilities: "var(--bz-cat-utilities)",
+  Health: "var(--bz-cat-health)",
+  Shopping: "var(--bz-cat-shopping)",
+  Gifts: "var(--bz-cat-gifts)",
+  Uncategorized: "var(--bz-cat-uncat)",
+};
+
+const CATEGORY_HUES = [
+  "var(--bz-hue-cyan)",
+  "var(--bz-hue-orange)",
+  "var(--bz-hue-blue)",
+  "var(--bz-hue-purple)",
+  "var(--bz-hue-green)",
+  "var(--bz-hue-magenta)",
+  "var(--bz-hue-coral)",
+  "var(--bz-hue-amber)",
+  "var(--bz-hue-violet)",
+  "var(--bz-hue-pink)",
+  "var(--bz-hue-red)",
+  "var(--bz-hue-yellow)",
+] as const;
+
 export function categoryColor(name: string): string {
-  const colors: Record<string, string> = {
-    Groceries: "var(--bz-cat-groceries)",
-    Dining: "var(--bz-cat-dining)",
-    Transport: "var(--bz-cat-transport)",
-    Utilities: "var(--bz-cat-utilities)",
-    Health: "var(--bz-cat-health)",
-    Shopping: "var(--bz-cat-shopping)",
-    Gifts: "var(--bz-cat-gifts)",
-    Uncategorized: "var(--bz-cat-uncat)",
-  };
-  return colors[name] ?? "var(--bz-cat-uncat)";
+  const known = NAMED_CATEGORY_COLORS[name];
+  if (known !== undefined) {
+    return known;
+  }
+  const trimmed = name.trim();
+  if (trimmed === "" || trimmed === "Uncategorized") {
+    return "var(--bz-cat-uncat)";
+  }
+  let hash = 0;
+  for (let index = 0; index < trimmed.length; index += 1) {
+    hash = (hash * 33 + trimmed.charCodeAt(index)) >>> 0;
+  }
+  return CATEGORY_HUES[hash % CATEGORY_HUES.length] ?? "var(--bz-cat-uncat)";
+}
+
+export function categoryPrimary(name: string): string {
+  return name.split(",")[0]?.trim() || name;
 }
 
 export function messageFor(error: unknown): string {

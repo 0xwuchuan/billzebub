@@ -11,7 +11,7 @@ const BAYER = [
 
 const CELL_SIZE = 2;
 
-type Variant = "gradient" | "dotted" | "hatched" | "solid";
+type Variant = "gradient" | "dotted" | "hatched" | "solid" | "soft";
 
 type BarDatum = {
   label: string;
@@ -42,6 +42,7 @@ export function DitherBarChart({
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const themeEpoch = useThemeEpoch();
   const [width, setWidth] = useState(0);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const max = useMemo(
@@ -96,6 +97,10 @@ export function DitherBarChart({
       return;
     }
     context.clearRect(0, 0, columns, rows);
+    const paints = series.map((item) => ({
+      ...item,
+      color: resolveCssColor(item.color),
+    }));
     const groupWidth = columns / data.length;
     const seriesWidth = Math.max(
       2,
@@ -107,7 +112,7 @@ export function DitherBarChart({
       const groupDim =
         hoverIndex !== null && hoverIndex !== datumIndex ? 0.35 : 1;
       let cumulative = 0;
-      series.forEach((item, seriesIndex) => {
+      paints.forEach((item, seriesIndex) => {
         const value = numericValue(datum[item.key]);
         const baseValue = stacked ? cumulative : 0;
         cumulative += value;
@@ -135,7 +140,7 @@ export function DitherBarChart({
         }
       });
     });
-  }, [data, height, hoverIndex, max, series, stacked, width]);
+  }, [data, height, hoverIndex, max, series, stacked, themeEpoch, width]);
 
   const hovered = hoverIndex === null ? null : (data[hoverIndex] ?? null);
   const accessibleSummary = data
@@ -227,6 +232,7 @@ export function DitherDonutChart({
   ariaLabel: string;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const themeEpoch = useThemeEpoch();
   const total = data.reduce((sum, item) => sum + item.value, 0);
 
   useEffect(() => {
@@ -248,9 +254,13 @@ export function DitherDonutChart({
     const center = pixels / 2;
     const outerRadius = pixels * 0.46;
     const innerRadius = pixels * 0.28;
+    const slices = data.map((item) => ({
+      ...item,
+      color: resolveCssColor(item.color),
+    }));
     const boundaries: number[] = [];
     let cursor = 0;
-    for (const item of data) {
+    for (const item of slices) {
       cursor += item.value / total;
       boundaries.push(cursor);
     }
@@ -266,20 +276,15 @@ export function DitherDonutChart({
         const angle = (Math.atan2(dy, dx) + Math.PI * 2.5) % (Math.PI * 2);
         const position = angle / (Math.PI * 2);
         const index = boundaries.findIndex((boundary) => position <= boundary);
-        const item = data[index === -1 ? data.length - 1 : index];
+        const item = slices[index === -1 ? slices.length - 1 : index];
         if (item === undefined) {
           continue;
         }
-        const radial = (radius - innerRadius) / (outerRadius - innerRadius);
-        const threshold = BAYER[y & 3]?.[x & 3] ?? 0;
-        context.fillStyle = withAlpha(
-          item.color,
-          radial > threshold ? 0.95 : 0.28,
-        );
+        context.fillStyle = withAlpha(item.color, 0.9);
         context.fillRect(x, y, 1, 1);
       }
     }
-  }, [data, size, total]);
+  }, [data, size, themeEpoch, total]);
 
   return (
     <div className="dither-donut" role="img" aria-label={ariaLabel}>
@@ -306,6 +311,15 @@ function paintColumn(
 ) {
   const start = Math.max(0, Math.round(top));
   const end = Math.max(start + 1, Math.round(floor));
+  if (variant === "soft") {
+    context.fillStyle = withAlpha(color, 0.78 * dim);
+    for (let y = start; y < end; y += 1) {
+      context.fillRect(x, y, 1, 1);
+    }
+    context.fillStyle = withAlpha(color, Math.min(1, 0.95 * dim));
+    context.fillRect(x, start, 1, 1);
+    return;
+  }
   const depth = end - start;
   for (let y = start; y < end; y += 1) {
     const density = (y - start) / Math.max(depth, 1);
@@ -333,12 +347,67 @@ function numericValue(value: string | number | undefined): number {
     : 0;
 }
 
-function withAlpha(color: string, alpha: number): string {
-  if (/^#[0-9a-f]{6}$/i.test(color)) {
-    const red = Number.parseInt(color.slice(1, 3), 16);
-    const green = Number.parseInt(color.slice(3, 5), 16);
-    const blue = Number.parseInt(color.slice(5, 7), 16);
-    return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+function useThemeEpoch(): number {
+  const [epoch, setEpoch] = useState(0);
+  useEffect(() => {
+    if (typeof MutationObserver === "undefined") {
+      return;
+    }
+    const root = document.documentElement;
+    const observer = new MutationObserver(() => {
+      setEpoch((value) => value + 1);
+    });
+    observer.observe(root, {
+      attributes: true,
+      attributeFilter: ["data-theme"],
+    });
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+  return epoch;
+}
+
+function resolveCssColor(color: string): string {
+  if (typeof document === "undefined" || !color.startsWith("var(")) {
+    return color;
   }
-  return color;
+  const probe = document.createElement("span");
+  probe.style.color = color;
+  document.documentElement.append(probe);
+  const resolved = getComputedStyle(probe).color;
+  probe.remove();
+  return resolved === "" ? color : resolved;
+}
+
+function channelsOf(color: string): [number, number, number] | null {
+  const match = /^rgba?\(\s*([0-9.]+)[,\s]+([0-9.]+)[,\s]+([0-9.]+)/.exec(
+    color.trim(),
+  );
+  if (
+    match?.[1] !== undefined &&
+    match[2] !== undefined &&
+    match[3] !== undefined
+  ) {
+    return [Number(match[1]), Number(match[2]), Number(match[3])];
+  }
+  if (color.startsWith("#")) {
+    const hex = color.slice(1);
+    if (hex.length === 6 && /^[0-9a-f]+$/i.test(hex)) {
+      return [
+        Number.parseInt(hex.slice(0, 2), 16),
+        Number.parseInt(hex.slice(2, 4), 16),
+        Number.parseInt(hex.slice(4, 6), 16),
+      ];
+    }
+  }
+  return null;
+}
+
+function withAlpha(color: string, alpha: number): string {
+  const channels = channelsOf(color);
+  if (channels === null) {
+    return color;
+  }
+  return `rgba(${channels[0]}, ${channels[1]}, ${channels[2]}, ${alpha})`;
 }

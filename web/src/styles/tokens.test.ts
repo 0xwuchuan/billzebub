@@ -32,6 +32,10 @@ describe("design tokens", () => {
     expect(tokens).toMatch(/--bz-action:/);
     expect(tokens).toMatch(/--bz-confirmed:/);
     expect(tokens).toMatch(/--bz-provisional:/);
+    expect(tokens).toMatch(
+      /--bz-status-provisional:\s*var\(--bz-provisional\)/,
+    );
+    expect(tokens).toMatch(/--bz-status-confirmed:\s*var\(--bz-confirmed\)/);
     expect(tokens).toMatch(/--bz-attention:/);
     expect(tokens).toMatch(/--bz-blocking:/);
     expect(tokens).toMatch(/--bz-hue-pink:/);

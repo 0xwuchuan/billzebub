@@ -1,14 +1,13 @@
-import type { CSSProperties } from "react";
-
 import type { Transaction } from "../api";
+import { CategoryRankList } from "../components/CategoryRankList";
 import {
   DitherBarChart,
   DitherDonutChart,
-  type DitherSeries,
 } from "../components/dither-kit/DitherCharts";
 import { Button } from "../components/ui/Button";
 import { useEntrance } from "../hooks/useEntrance";
-import { categoryColor } from "../lib/labels";
+import { CONFIRMATION_SERIES } from "../lib/chartSeries";
+import { categoryColor, categoryPrimary } from "../lib/labels";
 import { centsToMoney, formatUnsigned } from "../lib/money";
 import {
   categoryTotals,
@@ -16,30 +15,6 @@ import {
   monthlySpending,
   reportingPeriod,
 } from "../lib/workspace";
-
-const MONTH_SERIES: DitherSeries[] = [
-  {
-    key: "confirmed",
-    label: "Confirmed",
-    color: "#879a39",
-    variant: "gradient",
-  },
-  {
-    key: "provisional",
-    label: "Provisional",
-    color: "#d0a215",
-    variant: "dotted",
-  },
-];
-
-const CATEGORY_COLORS = [
-  "#3aa99f",
-  "#d0a215",
-  "#879a39",
-  "#8b7ec8",
-  "#d14d41",
-  "#878580",
-];
 
 export function SpendingPage({
   transactions,
@@ -68,11 +43,10 @@ export function SpendingPage({
     1,
     months.filter((item) => item.estimatedCents > 0).length,
   );
-  const categoryTotal = categories.reduce((sum, item) => sum + item.cents, 0);
-  const categoryData = categories.slice(0, 8).map((item, index) => ({
+  const categoryData = categories.slice(0, 8).map((item) => ({
     label: item.name,
     value: item.cents,
-    color: CATEGORY_COLORS[index % CATEGORY_COLORS.length] ?? "#878580",
+    color: categoryColor(categoryPrimary(item.name)),
   }));
 
   return (
@@ -99,44 +73,8 @@ export function SpendingPage({
             />
           )}
         </div>
-        <div className="cat-list spend-cats">
-          {categories.length === 0 ? (
-            <p className="empty">No confirmed Expenses in this month yet.</p>
-          ) : (
-            categories.map((item) => {
-              const share =
-                categoryTotal === 0
-                  ? 0
-                  : Math.round((item.cents / categoryTotal) * 100);
-              return (
-                <div className="cat-row analytics-category" key={item.name}>
-                  <span className="cat-row-stack">
-                    <span>
-                      <i
-                        className="swatch"
-                        style={{ background: categoryColor(item.name) }}
-                      />
-                      {item.name}
-                      <span className="cat-share"> {share}%</span>
-                    </span>
-                    <span
-                      className="cat-meter"
-                      style={
-                        {
-                          "--cat-color": categoryColor(item.name),
-                        } as CSSProperties
-                      }
-                    >
-                      <i style={{ width: `${share}%` }} />
-                    </span>
-                  </span>
-                  <span className="amount">
-                    {formatUnsigned(centsToMoney(item.cents, month.currency))}
-                  </span>
-                </div>
-              );
-            })
-          )}
+        <div className="spend-cats">
+          <CategoryRankList categories={categories} currency={month.currency} />
         </div>
       </section>
 
@@ -186,7 +124,7 @@ export function SpendingPage({
               confirmed: item.confirmedCents,
               provisional: item.provisionalCents,
             }))}
-            series={MONTH_SERIES}
+            series={CONFIRMATION_SERIES}
             height={220}
             ariaLabel="Confirmed and provisional spending across the last six months"
             valueFormatter={(cents) =>
