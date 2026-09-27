@@ -206,14 +206,20 @@ export function TransactionsPage({
       </div>
       <div className="tx-summary" aria-label="Filtered totals">
         <span>
-          <strong>{summary.count}</strong>{" "}
+          <strong className="amount">{summary.count}</strong>{" "}
           {summary.count === 1 ? "transaction" : "transactions"}
+        </span>
+        <span className="tx-summary-sep" aria-hidden="true">
+          ·
         </span>
         <span>
           Total spent{" "}
           <strong className="amount">
             {formatUnsigned(centsToMoney(summary.spentCents, summary.currency))}
           </strong>
+        </span>
+        <span className="tx-summary-sep" aria-hidden="true">
+          ·
         </span>
         <span>
           Total income{" "}
@@ -222,6 +228,9 @@ export function TransactionsPage({
               centsToMoney(summary.incomeCents, summary.currency),
             )}
           </strong>
+        </span>
+        <span className="tx-summary-sep" aria-hidden="true">
+          ·
         </span>
         <span>
           Net{" "}
@@ -251,6 +260,7 @@ export function TransactionsPage({
                   selectable
                   selected={selectedId === transaction.id}
                   checked={selectedSet.has(transaction.id)}
+                  provisionalMark="dot"
                   onOpen={onOpen}
                   onToggle={toggle}
                 />
@@ -268,14 +278,17 @@ export function TransactionsPage({
       </section>
       {selected.length > 0 ? (
         <div className="bulk-bar" role="toolbar" aria-label="Bulk actions">
-          <span className="muted">{selected.length} selected</span>
+          <span className="bulk-count">
+            <strong className="amount">{selected.length}</strong> selected
+          </span>
           <Button
             variant="ghost"
+            aria-label="Clear selection"
             onClick={() => {
               setSelected([]);
             }}
           >
-            Clear selection
+            Clear
           </Button>
           <select
             className="select"
@@ -285,7 +298,7 @@ export function TransactionsPage({
               setBulkCategory(event.target.value);
             }}
           >
-            <option value="">Choose Category</option>
+            <option value="">Category</option>
             {categories.map((item) => (
               <option key={item.id} value={item.id}>
                 {item.name}

@@ -151,7 +151,11 @@ describe("App", () => {
       }),
     );
     const drawer = await screen.findByRole("dialog");
-    expect(await within(drawer).findByText("Categorized")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(drawer.querySelector(".cat-chip")).toHaveTextContent(
+        "Synthetic Food",
+      );
+    });
   });
 
   it("keeps Quiet Rail chrome when the API is down", async () => {
