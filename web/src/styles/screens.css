@@ -2274,9 +2274,28 @@ button.coverage-chip.is-missing:hover {
   }
 
   .tx-row.is-compact .tx-row-main {
-    min-height: 2.45rem;
+    display: flex;
+    align-items: center;
+    min-height: 2.5rem;
     padding-top: 0.28rem;
     padding-bottom: 0.28rem;
+  }
+
+  .tx-row.is-compact .tx-row-trailing {
+    display: flex;
+  }
+
+  .tx-row.is-compact .tx-row-copy strong {
+    display: block;
+    white-space: nowrap;
+    -webkit-line-clamp: unset;
+  }
+
+  .tx-row.is-compact .tx-amount-side {
+    grid-column: auto;
+    grid-row: auto;
+    align-self: center;
+    margin-top: 0;
   }
 
   button.bento-link {
