@@ -2,18 +2,19 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import and_, exists, or_, select
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.elements import ColumnElement
 from uuid6 import uuid7
 
-from billzebub.persistence.models import PendingReview, ReviewEvent
+from billzebub.persistence.models import Extraction, PendingReview, ReviewEvent
 
 if TYPE_CHECKING:
     from billzebub.persistence.database import Database
@@ -32,6 +33,9 @@ class PendingReviewStatus(StrEnum):
 
 class ReviewError(ValueError):
     """Review policy or optimistic concurrency rejected a command."""
+
+
+STATEMENT_REPROCESS_CONDITION_PREFIX = "statement_reprocess:"
 
 
 def categorization_needed_context(
@@ -296,3 +300,74 @@ class ReviewInbox:
             created_at=review.created_at,
             updated_at=review.updated_at,
         )
+
+
+def cancel_pending_reviews_for_dismissed_extractions(
+    session: Session,
+    extraction_ids: Iterable[UUID],
+) -> None:
+    """Cancel pending reviews tied to dismissed failed Extractions.
+
+    Extraction-keyed reviews are cancelled for those Extractions. Source Artifact
+    reviews are cancelled as well, which is how rejected Shortcut payloads are keyed.
+    Statement reprocess reviews stay pending; they decide an accepted Extraction.
+    """
+    ids = tuple(dict.fromkeys(extraction_ids))
+    if not ids:
+        return
+    artifact_ids = tuple(
+        dict.fromkeys(
+            session.scalars(select(Extraction.artifact_id).where(Extraction.id.in_(ids))).all()
+        )
+    )
+    conditions = [
+        (PendingReview.subject_type == "extraction") & (PendingReview.subject_id.in_(ids))
+    ]
+    if artifact_ids:
+        conditions.append(
+            (PendingReview.subject_type == "source_artifact")
+            & (PendingReview.subject_id.in_(artifact_ids))
+            & ~PendingReview.condition_code.startswith(STATEMENT_REPROCESS_CONDITION_PREFIX)
+        )
+    reviews = session.scalars(
+        select(PendingReview)
+        .where(PendingReview.status == PendingReviewStatus.PENDING.value, or_(*conditions))
+        .with_for_update()
+    ).all()
+    now = datetime.now(UTC)
+    for review in reviews:
+        review.status = PendingReviewStatus.CANCELLED.value
+        review.version += 1
+        review.updated_at = now
+        ReviewInbox._event(session, review, "cancelled")
+    if reviews:
+        session.flush()
+
+
+def dismissed_failure_review_clause() -> ColumnElement[bool]:
+    """Pending reviews whose linked failed Extraction is already dismissed."""
+    dismissed_extraction = exists(
+        select(Extraction.id)
+        .where(
+            Extraction.id == PendingReview.subject_id,
+            Extraction.dismissed_at.is_not(None),
+        )
+        .correlate(PendingReview)
+    )
+    dismissed_artifact = exists(
+        select(Extraction.id)
+        .where(
+            Extraction.artifact_id == PendingReview.subject_id,
+            Extraction.status == "failed",
+            Extraction.dismissed_at.is_not(None),
+        )
+        .correlate(PendingReview)
+    )
+    return or_(
+        and_(PendingReview.subject_type == "extraction", dismissed_extraction),
+        and_(
+            PendingReview.subject_type == "source_artifact",
+            ~PendingReview.condition_code.startswith(STATEMENT_REPROCESS_CONDITION_PREFIX),
+            dismissed_artifact,
+        ),
+    )

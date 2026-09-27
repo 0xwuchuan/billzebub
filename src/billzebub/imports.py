@@ -23,6 +23,7 @@ from billzebub.persistence.models import (
     ReviewEvent,
     SourceArtifact,
 )
+from billzebub.reviews import cancel_pending_reviews_for_dismissed_extractions
 from billzebub.statement_coverage import (
     DEFAULT_WINDOW_MONTHS,
     StatementCoverageReport,
@@ -131,6 +132,7 @@ class ImportCatalog:
             if extraction.dismissed_at is None:
                 extraction.dismissed_at = datetime.now(UTC)
                 session.flush()
+            cancel_pending_reviews_for_dismissed_extractions(session, (extraction.id,))
             return self._record(session, extraction)
 
     def dismiss_failed(self) -> int:
@@ -147,6 +149,8 @@ class ImportCatalog:
                 .where(Extraction.id.in_(ids))
                 .values(dismissed_at=datetime.now(UTC))
             )
+            session.flush()
+            cancel_pending_reviews_for_dismissed_extractions(session, ids)
             return len(ids)
 
     def purge_failed(
