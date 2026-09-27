@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Billzebub · design arena</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #100f0f;
+        color: #cecdc3;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      #stage {
+        width: 100%;
+        height: 100%;
+        border: 0;
+        background: #100f0f;
+      }
+      .proto-picker {
+        position: fixed;
+        bottom: 24px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 2147483647;
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        padding: 4px;
+        border-radius: 999px;
+        background: rgba(10, 10, 10, 0.82);
+        -webkit-backdrop-filter: blur(12px) saturate(1.4);
+        backdrop-filter: blur(12px) saturate(1.4);
+        box-shadow:
+          0 0 0 1px rgba(255, 255, 255, 0.08) inset,
+          0 8px 24px rgba(0, 0, 0, 0.24),
+          0 2px 6px rgba(0, 0, 0, 0.12);
+        font-size: 13px;
+        line-height: 1;
+        user-select: none;
+      }
+      .proto-picker-highlight {
+        position: absolute;
+        top: 4px;
+        left: 0;
+        height: 28px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.12);
+        will-change: transform;
+      }
+      .proto-picker[data-ready] .proto-picker-highlight {
+        transition:
+          transform 250ms cubic-bezier(0.23, 1, 0.32, 1),
+          width 250ms cubic-bezier(0.23, 1, 0.32, 1);
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .proto-picker[data-ready] .proto-picker-highlight {
+          transition: none;
+        }
+      }
+      .proto-picker-item {
+        position: relative;
+        display: flex;
+        align-items: center;
+        height: 28px;
+        padding: 0 12px;
+        border: 0;
+        border-radius: 999px;
+        background: transparent;
+        color: rgba(255, 255, 255, 0.55);
+        font: inherit;
+        cursor: pointer;
+        transition: color 150ms ease-out;
+      }
+      .proto-picker-item:hover {
+        color: rgba(255, 255, 255, 0.85);
+      }
+      .proto-picker-item:active {
+        transform: scale(0.97);
+      }
+      .proto-picker-item[data-active] {
+        color: #fff;
+      }
+      .proto-picker-item:focus-visible {
+        outline: 2px solid rgba(255, 255, 255, 0.4);
+        outline-offset: 2px;
+      }
+      .banner {
+        position: fixed;
+        top: 12px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 2147483646;
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: rgba(28, 27, 26, 0.92);
+        border: 1px solid #343331;
+        color: #878580;
+        font-size: 12px;
+        white-space: nowrap;
+      }
+    </style>
+  </head>
+  <body>
+    <p class="banner">Throwaway arena · 1 Recommended · 2 Quiet Rail · 3 Ledgerline · 4 Ledger Desk</p>
+    <iframe id="stage" title="Prototype variant"></iframe>
+    <nav class="proto-picker" aria-label="Prototype variants">
+      <span class="proto-picker-highlight" aria-hidden="true"></span>
+      <button class="proto-picker-item" data-active aria-current="true">Recommended</button>
+      <button class="proto-picker-item">Quiet Rail</button>
+      <button class="proto-picker-item">Ledgerline</button>
+      <button class="proto-picker-item">Ledger Desk</button>
+    </nav>
+    <script>
+      const variants = [
+        { name: "Recommended", src: "./variants/recommended/index.html" },
+        { name: "Quiet Rail", src: "./variants/quiet-rail/index.html" },
+        { name: "Ledgerline", src: "./variants/ledgerline/index.html" },
+        { name: "Ledger Desk", src: "./variants/ledger-desk/index.html" },
+      ];
+      const stage = document.getElementById("stage");
+      const picker = document.querySelector(".proto-picker");
+      const highlight = picker.querySelector(".proto-picker-highlight");
+      const items = [...picker.querySelectorAll(".proto-picker-item")];
+      let current = 0;
+
+      function moveHighlight() {
+        const el = items[current];
+        highlight.style.width = el.offsetWidth + "px";
+        highlight.style.transform = `translateX(${el.offsetLeft}px)`;
+      }
+
+      function mount(i) {
+        stage.src = variants[i].src;
+      }
+
+      function setActive(i) {
+        if (i < 0 || i >= variants.length) return;
+        current = i;
+        items.forEach((el, j) => {
+          el.toggleAttribute("data-active", j === i);
+          if (j === i) el.setAttribute("aria-current", "true");
+          else el.removeAttribute("aria-current");
+          el.textContent = variants[j].name;
+        });
+        moveHighlight();
+        const url = new URL(location);
+        url.searchParams.set("v", String(i + 1));
+        history.replaceState(null, "", url);
+        mount(i);
+      }
+
+      items.forEach((el, i) => el.addEventListener("click", () => setActive(i)));
+      window.addEventListener("resize", moveHighlight);
+      function onKey(e) {
+        if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable)
+          return;
+        if (e.metaKey || e.ctrlKey || e.altKey) return;
+        const num = parseInt(e.key, 10);
+        if (num >= 1 && num <= variants.length) setActive(num - 1);
+        else if (e.key === "ArrowRight") setActive((current + 1) % variants.length);
+        else if (e.key === "ArrowLeft")
+          setActive((current - 1 + variants.length) % variants.length);
+      }
+      // Capture on the parent so keys still work after the iframe steals focus.
+      window.addEventListener("keydown", onKey, true);
+      stage.addEventListener("load", () => {
+        try {
+          window.focus();
+        } catch (_) {
+          /* ignore */
+        }
+      });
+
+      setActive((parseInt(new URLSearchParams(location.search).get("v"), 10) || 1) - 1);
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => picker.setAttribute("data-ready", "")),
+      );
+    </script>
+  </body>
+</html>
