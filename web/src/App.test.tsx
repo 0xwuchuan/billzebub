@@ -1014,17 +1014,28 @@ describe("App", () => {
     render(<App />);
 
     expect(
-      await screen.findByRole("heading", { name: "Statement coverage" }),
+      await screen.findByRole("heading", { name: /Statement coverage/ }),
     ).toBeInTheDocument();
-    expect(screen.getByText("present")).toBeInTheDocument();
-    expect(screen.getByText("partial")).toBeInTheDocument();
-    expect(screen.getAllByText("missing").length).toBeGreaterThan(0);
+    expect(screen.getByText(/4 missing/)).toBeInTheDocument();
+    expect(screen.getByText(/1 partial/)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Jun · missing/ }),
+    ).not.toBeInTheDocument();
     expect(screen.getAllByText("citi-credit-card").length).toBeGreaterThan(0);
     expect(screen.getByText("dbs-credit-card")).toBeInTheDocument();
 
+    fireEvent.click(screen.getByRole("button", { name: /Statement coverage/ }));
+    expect(screen.getByText("present")).toBeInTheDocument();
+    expect(screen.getByText("partial")).toBeInTheDocument();
+    expect(screen.getAllByText("missing").length).toBeGreaterThan(0);
+    expect(screen.getByText("Apr")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Citi PremierMiles · Jun · missing" }),
+    ).toHaveTextContent("Jun");
+
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Citi PremierMiles Jun missing",
+        name: "Citi PremierMiles · Jun · missing",
       }),
     );
     expect(window.location.hash).toBe(`#/imports?account=${account.id}`);

@@ -85,6 +85,23 @@ describe("imports and settings chrome", () => {
   it("focuses import and coverage controls with the existing outline", () => {
     expect(base).toMatch(/\.queue-item:focus-visible/);
     expect(base).toMatch(/\.coverage-account:focus-visible/);
+    expect(base).toMatch(/\.coverage-toggle:focus-visible/);
     expect(base).toMatch(/outline:\s*2px solid var\(--bz-accent\)/);
+  });
+
+  it("keeps coverage collapsed by default and gives Extractions the stage", () => {
+    expect(coverage).toMatch(/bz\.imports\.coverageExpanded/);
+    expect(coverage).not.toMatch(/coverage-status/);
+    expect(coverage).toMatch(/aria-expanded/);
+    expect(imports).toMatch(/Failed/);
+    expect(imports).toMatch(/Accepted/);
+    expect(imports).not.toMatch(/CategoryChip/);
+
+    const desk = screens.slice(
+      screens.indexOf(".imports-stage:has(.coverage-panel.is-collapsed)"),
+    );
+    expect(desk).toMatch(/minmax\(0,\s*1fr\)/);
+    expect(desk).toMatch(/minmax\(40vh,\s*1fr\)/);
+    expect(desk).toMatch(/overflow:\s*auto/);
   });
 });
