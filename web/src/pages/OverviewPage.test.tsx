@@ -92,9 +92,9 @@ describe("Overview bento", () => {
       screen.getByRole("heading", { name: "This month" }),
     ).toBeInTheDocument();
     expect(screen.getByText("SGD 1,558.00")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^Confirmed/ })).toHaveTextContent(
-      "SGD 1,550.00",
-    );
+    expect(
+      screen.getByRole("button", { name: /^Confirmed/ }),
+    ).toHaveTextContent("SGD 1,550.00");
     expect(
       screen.getByRole("button", { name: /^Provisional/ }),
     ).toHaveTextContent("SGD 8.00");
