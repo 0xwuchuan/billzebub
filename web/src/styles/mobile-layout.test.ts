@@ -52,9 +52,11 @@ describe("phone layout contracts", () => {
     );
     expect(groups).toMatch(/\.nav-drawer \.rail-accounts/);
     expect(groups).toMatch(/flex-shrink:\s*0/);
-    expect(groups).toMatch(/min-height:\s*min-content/);
+    expect(groups).toMatch(/min-height:\s*auto/);
+    expect(groups).not.toMatch(/min-height:\s*0/);
     expect(groups).not.toMatch(/position:\s*absolute/);
     expect(groups).not.toMatch(/position:\s*sticky/);
+    expect(groups).not.toMatch(/margin-top:\s*-/);
   });
 
   it("keeps the phone theme toggle in the top bar", () => {

@@ -297,7 +297,7 @@
 .nav-drawer .rail-group,
 .nav-drawer .rail-accounts {
   flex-shrink: 0;
-  min-height: min-content;
+  min-height: auto;
 }
 
 .nav-drawer .rail-item {
