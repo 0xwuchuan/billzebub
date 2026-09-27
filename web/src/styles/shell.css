@@ -294,6 +294,12 @@
   min-height: 0;
 }
 
+.nav-drawer .rail-group,
+.nav-drawer .rail-accounts {
+  flex-shrink: 0;
+  min-height: min-content;
+}
+
 .nav-drawer .rail-item {
   min-height: 2.75rem;
 }

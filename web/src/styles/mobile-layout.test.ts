@@ -45,6 +45,18 @@ describe("phone layout contracts", () => {
     expect(screens).toMatch(/\.settings-dialog-body\s*\{[^}]*min-height:\s*0/);
   });
 
+  it("keeps phone drawer section labels in flow above their groups", () => {
+    const groups = shell.slice(
+      shell.indexOf(".nav-drawer .rail-group,"),
+      shell.indexOf(".nav-drawer .rail-item"),
+    );
+    expect(groups).toMatch(/\.nav-drawer \.rail-accounts/);
+    expect(groups).toMatch(/flex-shrink:\s*0/);
+    expect(groups).toMatch(/min-height:\s*min-content/);
+    expect(groups).not.toMatch(/position:\s*absolute/);
+    expect(groups).not.toMatch(/position:\s*sticky/);
+  });
+
   it("keeps the phone theme toggle in the top bar", () => {
     const phone = blockAfter(shell, "@media (max-width: 52rem)");
     expect(phone).toMatch(
