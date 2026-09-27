@@ -5,9 +5,11 @@ from __future__ import annotations
 import calendar
 import hashlib
 import re
-from datetime import date, timedelta
+from dataclasses import replace
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
-from typing import Any
+from pathlib import Path
+from typing import Any, ClassVar
 
 from monopoly.banks.citibank.citibank import Citibank  # type: ignore[import-untyped]
 
@@ -36,13 +38,65 @@ _PAYMENT_PATTERN = re.compile(
 )
 _CASH_PATTERN = re.compile(r"\b(?:CASH\s+ADVANCE|CASH\s+WITHDRAWAL|ATM\s+CASH)\b", re.IGNORECASE)
 _DETAIL_ACCOUNT_PATTERN = re.compile(r"(?<!\d)(?P<account>(?:\d{4}[\s-]*){4})(?!\d)")
+_STATEMENT_DATE_MISSING = "Statement date not found"
+_DATE_TEXT = r"(?:[A-Za-z]{3,9}\s+\d{1,2},\s+\d{4}|\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})"
+_PAYMENT_DUE_DATE_PATTERN = re.compile(
+    rf"Payment\s+Due\s+Date\s*:?\s*(?P<due>{_DATE_TEXT})",
+    re.IGNORECASE,
+)
+_PAYMENT_DUE_LABEL_PATTERN = re.compile(r"Payment\s+Due\s+Date\s*:?\s*$", re.IGNORECASE)
+_DATE_ONLY_PATTERN = re.compile(rf"^\s*(?P<due>{_DATE_TEXT})\s*$", re.IGNORECASE)
+_MONTH_WORDS: tuple[tuple[str, int], ...] = (
+    ("january", 1),
+    ("february", 2),
+    ("march", 3),
+    ("april", 4),
+    ("may", 5),
+    ("june", 6),
+    ("july", 7),
+    ("august", 8),
+    ("september", 9),
+    ("sept", 9),
+    ("october", 10),
+    ("november", 11),
+    ("december", 12),
+    ("jan", 1),
+    ("feb", 2),
+    ("mar", 3),
+    ("apr", 4),
+    ("jun", 6),
+    ("jul", 7),
+    ("aug", 8),
+    ("sep", 9),
+    ("oct", 10),
+    ("nov", 11),
+    ("dec", 12),
+)
+_MONTH_NUMBERS = dict(_MONTH_WORDS)
+_FILENAME_STATEMENT_MONTH = re.compile(
+    r"(?:^|_)(?P<month>"
+    + "|".join(sorted((word for word, _month in _MONTH_WORDS), key=len, reverse=True))
+    + r")(?:[_\-\s]?(?P<year>\d{4}))?(?=[._\-]|$)",
+    re.IGNORECASE,
+)
+# Monopoly names a missing Statement Date from ``_<Mon><YYYY>`` and sets the day to 1.
+# PremierMiles files are ``eStatement_July.pdf`` / ``eStatement_July2026.pdf``, so this
+# adapter owns that fallback and keeps Monopoly's Citibank statement-date pattern.
+_CITI_CREDIT = replace(Citibank.credit, filename_fallback_pattern=None)
 
 
-def citi_credit_card_adapter(*, bank: type[Any] = Citibank) -> MonopolyStatementAdapter:
+class _CitiCreditBank(Citibank):  # type: ignore[misc]
+    """Citibank credit config with statement-date fallback resolved here."""
+
+    credit = _CITI_CREDIT
+    statement_configs: ClassVar[list[Any]] = [_CITI_CREDIT, Citibank.credit_us]
+
+
+def citi_credit_card_adapter(*, bank: type[Any] = _CitiCreditBank) -> MonopolyStatementAdapter:
     """Build the versioned Citi adapter used by the worker registry."""
     return MonopolyStatementAdapter(
         key="citi-credit-card",
-        adapter_version="citi-credit-1",
+        adapter_version="citi-credit-2",
         institution="citi",
         definition=MonopolyAdapterDefinition(
             bank=bank,
@@ -71,7 +125,7 @@ def _selection(
 
 def _metadata(statement: Any) -> MonopolyStatementMetadata:
     lines = [line for page in statement.pages for line in page.lines]
-    statement_date = statement.statement_date.date()
+    statement_date = _statement_date(statement, lines)
     account_number = _detail_account_number(statement)
     closing_balance = _account_balance(lines, account_number)
     opening_balance = _single_balance(
@@ -91,6 +145,97 @@ def _metadata(statement: Any) -> MonopolyStatementMetadata:
         opening_balance_text=opening_balance,
         closing_balance_text=closing_balance,
     )
+
+
+def _statement_date(statement: Any, lines: list[str]) -> date:
+    try:
+        raw_statement_date = statement.statement_date
+    except ValueError as error:
+        if str(error) != _STATEMENT_DATE_MISSING:
+            raise
+        resolved = _fallback_statement_date(statement, lines)
+        if resolved is None:
+            raise StatementAdapterError(
+                "statement_metadata_missing",
+                {"field": "statement_date"},
+            ) from error
+        # Prime Monopoly's cached date so later reads use the same cycle end.
+        statement.__dict__["statement_date"] = datetime(
+            resolved.year,
+            resolved.month,
+            resolved.day,
+            tzinfo=UTC,
+        )
+        return resolved
+    if not isinstance(raw_statement_date, datetime):
+        raise StatementAdapterError("statement_metadata_missing", {"field": "statement_date"})
+    return raw_statement_date.date()
+
+
+def _fallback_statement_date(statement: Any, lines: list[str]) -> date | None:
+    """Cycle end when PremierMiles omits the Statement Date line.
+
+    Payment Due Date is the preferred anchor: it is after the billing cycle, so
+    transaction dates on the statement are not after it. ``_cycle_start`` then
+    derives the period. A filename month and year is the next source, using the
+    last day of that month. ``eStatement_July.pdf`` has no year, so it cannot
+    stand alone.
+    """
+    due_dates = _payment_due_dates(lines)
+    if len(due_dates) > 1:
+        raise StatementAdapterError(
+            "statement_metadata_ambiguous",
+            {"field": "statement_date", "match_count": len(due_dates)},
+        )
+    if len(due_dates) == 1:
+        return due_dates[0]
+    return _filename_statement_date(getattr(statement, "file_path", None))
+
+
+def _payment_due_dates(lines: list[str]) -> tuple[date, ...]:
+    found: list[date] = []
+    for index, line in enumerate(lines):
+        match = _PAYMENT_DUE_DATE_PATTERN.search(line)
+        parsed = _parse_date_text(match.group("due")) if match is not None else None
+        if parsed is None and _PAYMENT_DUE_LABEL_PATTERN.search(line) and index + 1 < len(lines):
+            next_line = _DATE_ONLY_PATTERN.search(lines[index + 1])
+            parsed = _parse_date_text(next_line.group("due")) if next_line is not None else None
+        if parsed is not None and parsed not in found:
+            found.append(parsed)
+    return tuple(found)
+
+
+def _parse_date_text(text: str) -> date | None:
+    parts = text.replace(",", " ").split()
+    if len(parts) != 3:
+        return None
+    if parts[0].isdigit() and parts[2].isdigit():
+        day_text, month_text, year_text = parts
+    elif parts[1].isdigit() and parts[2].isdigit():
+        month_text, day_text, year_text = parts
+    else:
+        return None
+    month = _MONTH_NUMBERS.get(month_text.casefold())
+    if month is None:
+        return None
+    try:
+        return date(int(year_text), month, int(day_text))
+    except ValueError:
+        return None
+
+
+def _filename_statement_date(file_path: object) -> date | None:
+    if not isinstance(file_path, Path):
+        return None
+    dated = {
+        (int(match.group("year")), _MONTH_NUMBERS[match.group("month").casefold()])
+        for match in _FILENAME_STATEMENT_MONTH.finditer(file_path.name)
+        if match.group("year") is not None
+    }
+    if len(dated) != 1:
+        return None
+    year, month = dated.pop()
+    return date(year, month, calendar.monthrange(year, month)[1])
 
 
 def _detail_account_number(statement: Any) -> str:
