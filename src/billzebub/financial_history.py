@@ -22,6 +22,7 @@ from billzebub.persistence.models import (
     Category,
     CategorySplit,
     Claim,
+    ClaimCategory,
     ClaimDispositionEvent,
     CorrectionEvent,
     FinancialAccount,
@@ -254,12 +255,15 @@ class FinancialHistory:
             )
         session.flush()
 
+        allocations = command.category_splits
+        if real_time is not None and not allocations:
+            allocations = self._claim_category_allocation(session, real_time, posted, command.kind)
         splits = self._category_splits(
             session,
             version,
             command.kind,
             posted,
-            command.category_splits,
+            allocations,
         )
         self._write_journal(
             session,
@@ -623,6 +627,33 @@ class FinancialHistory:
             raise FinancialHistoryError(f"{kind.value} requires a negative Posted Amount")
         if kind in positive_kinds and amount.amount <= 0:
             raise FinancialHistoryError(f"{kind.value} requires a positive Posted Amount")
+
+    @staticmethod
+    def _claim_category_allocation(
+        session: Session,
+        real_time: Claim,
+        posted: Money,
+        kind: TransactionKind,
+    ) -> tuple[CategoryAllocation, ...]:
+        """Copy a claim-only Jev Category onto the confirmed Expense, sized to Posted Amount."""
+        if kind not in {TransactionKind.EXPENSE, TransactionKind.CASH_WITHDRAWAL}:
+            return ()
+        stored = session.scalar(select(ClaimCategory).where(ClaimCategory.claim_id == real_time.id))
+        if stored is None:
+            return ()
+        category = session.get(Category, stored.category_id)
+        if (
+            category is None
+            or not category.active
+            or (category.parent_id is None and category.name == "Uncategorized")
+        ):
+            return ()
+        return (
+            CategoryAllocation(
+                category_id=category.id,
+                amount=Money(abs(posted.amount), posted.currency),
+            ),
+        )
 
     @staticmethod
     def _uncategorized(session: Session) -> Category:

@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from uuid import UUID
@@ -11,7 +12,7 @@ from billzebub.categories import CategoryCatalog
 from billzebub.claims import ClaimBook, ClaimDraft, ClaimType
 from billzebub.financial_history import Confirmation, FinancialHistory, TransactionKind
 from billzebub.identity import OwnerIdentity
-from billzebub.jev import JevError, JevSubject, Proposal
+from billzebub.jev import JevCategory, JevError, JevSubject, Proposal
 from billzebub.jev_categorizer import JevCategorizer
 from billzebub.money import Money
 from billzebub.owner_actors import OwnerActors
@@ -19,12 +20,15 @@ from billzebub.owner_transaction_actions import OwnerCategorizationCommand, Owne
 from billzebub.owner_workspace import OwnerWorkspace
 from billzebub.persistence.database import Database
 from billzebub.persistence.models import (
+    Category,
+    ClaimCategory,
     Extraction,
     FinancialAccount,
     JevCategorizationAttempt,
     PendingReview,
     SourceArtifact,
 )
+from billzebub.reconciliation import Reconciliation
 from billzebub.reviews import PendingReviewStatus
 
 
@@ -290,6 +294,83 @@ def test_provisional_claim_projection_does_not_guess_categories(
     assert items["Synthetic Taxi Transfer"].kind is TransactionKind.TRANSFER
 
 
+def _wallet_extraction(
+    database: Database,
+    evidence: tuple[UUID, UUID, UUID],
+    *,
+    adapter_key: str = "apple_wallet_shortcut",
+    parser_version: str = "wallet-v1",
+) -> UUID:
+    account_id, artifact_id, _extraction_id = evidence
+    extraction_id = uuid7()
+    with database.transaction() as session:
+        session.add(
+            Extraction(
+                id=extraction_id,
+                artifact_id=artifact_id,
+                financial_account_id=account_id,
+                adapter_key=adapter_key,
+                parser_version=parser_version,
+                status="accepted",
+                accepted_at=datetime(2026, 3, 1, tzinfo=UTC),
+            )
+        )
+    return extraction_id
+
+
+def _wallet_claim(
+    database: Database,
+    evidence: tuple[UUID, UUID, UUID],
+    extraction_id: UUID,
+    *,
+    description: str,
+    amount: str = "-12.34",
+    kind: str = TransactionKind.EXPENSE.value,
+    occurred_at: datetime = datetime(2026, 3, 7, 13, 5, tzinfo=UTC),
+) -> UUID:
+    account_id, artifact_id, _extraction_id = evidence
+    return (
+        ClaimBook(database)
+        .record(
+            ClaimDraft(
+                claim_type=ClaimType.REAL_TIME,
+                financial_account_id=account_id,
+                source_artifact_id=artifact_id,
+                extraction_id=extraction_id,
+                raw_description=description,
+                authorized_amount=Money.parse(amount, "SGD"),
+                occurrence_at=occurred_at,
+                transaction_kind_hint=kind,
+            )
+        )
+        .id
+    )
+
+
+def _latest_claim_attempt(database: Database, claim_id: UUID) -> JevCategorizationAttempt | None:
+    with database.transaction() as session:
+        return session.scalar(
+            select(JevCategorizationAttempt)
+            .where(JevCategorizationAttempt.claim_id == claim_id)
+            .order_by(
+                JevCategorizationAttempt.attempted_at.desc(),
+                JevCategorizationAttempt.id.desc(),
+            )
+        )
+
+
+class _RecordingProposer:
+    def __init__(self, proposal: Proposal) -> None:
+        self.proposal = proposal
+        self.subjects: list[JevSubject] = []
+        self.categories: list[Sequence[JevCategory]] = []
+
+    def propose(self, subject: JevSubject, categories: Sequence[JevCategory]) -> Proposal:
+        self.subjects.append(subject)
+        self.categories.append(categories)
+        return self.proposal
+
+
 class _FixedProposer:
     def __init__(self, proposal: Proposal) -> None:
         self.proposal = proposal
@@ -429,6 +510,248 @@ def test_worker_jev_persists_typesafe_errors_then_retries(
     context = OwnerWorkspace(database).get_review(review.id).context["jev_attempt"]
     assert context["error_class"] == "TypeSafeError"
     assert context["error_message"] == "nope"
+
+
+@pytest.mark.integration
+def test_worker_jev_categorizes_claim_only_wallet_rows_and_reconcile_carries_it(
+    database: Database,
+    evidence: tuple[UUID, UUID, UUID],
+) -> None:
+    gifts = CategoryCatalog(database).create("Gifts")
+    with database.transaction() as session:
+        session.add(Category(id=uuid7(), name="Uncategorized", active=True, sort_order=0))
+    extraction_id = _wallet_extraction(database, evidence)
+    claim_id = _wallet_claim(
+        database,
+        evidence,
+        extraction_id,
+        description="SYNTHETIC COFFEE",
+    )
+    proposer = _RecordingProposer(
+        Proposal(
+            action="apply",
+            category_id=gifts.id,
+            category_name="Gifts",
+            confidence=Decimal("0.5"),
+            model="jev-1.13.0",
+            choice="Gifts",
+        )
+    )
+
+    applied = JevCategorizer(database, proposer).categorize_claim(claim_id)
+    again = JevCategorizer(database, proposer).categorize_claim(claim_id)
+    provisional = {
+        item.counterparty: item
+        for item in OwnerWorkspace(database).list_transactions().items
+        if item.authorized_amount is not None and item.posted_amount == Money.parse("0", "SGD")
+    }
+    attempt = _latest_claim_attempt(database, claim_id)
+
+    assert applied == gifts.id
+    assert again is None
+    assert len(proposer.subjects) == 1
+    assert proposer.subjects[0] == JevSubject(
+        counterparty="SYNTHETIC COFFEE",
+        amount="-12.34",
+        currency="SGD",
+        effective_date="2026-03-07",
+        kind="expense",
+    )
+    assert str(claim_id) not in proposer.subjects[0].counterparty
+    offered = {category.name for category in proposer.categories[0]}
+    assert offered == {"Gifts"}
+    assert provisional["SYNTHETIC COFFEE"].category_splits[0].category_id == gifts.id
+    assert provisional["SYNTHETIC COFFEE"].category_splits[0].category_name == "Gifts"
+    assert attempt is not None
+    assert attempt.transaction_id is None
+    assert attempt.claim_id == claim_id
+    assert attempt.action == "apply"
+    assert attempt.choice_confidence == Decimal("0.5")
+    assert attempt.noul is None
+    assert attempt.category_id == gifts.id
+    assert JevCategorizer(database, proposer).pending_claim_ids() == ()
+
+    account_id, artifact_id, statement_extraction_id = evidence
+    ClaimBook(database).record(
+        ClaimDraft(
+            claim_type=ClaimType.STATEMENT,
+            financial_account_id=account_id,
+            source_artifact_id=artifact_id,
+            extraction_id=statement_extraction_id,
+            raw_description="SYNTHETIC COFFEE POSTED",
+            posted_amount=Money.parse("-12.34", "SGD"),
+            provider_transaction_date=date(2026, 3, 7),
+            posting_date=date(2026, 3, 7),
+            transaction_kind_hint=TransactionKind.EXPENSE.value,
+        )
+    )
+    run = Reconciliation(database).reconcile_account(account_id)
+
+    assert len(run.confirmations) == 1
+    assert run.confirmations[0].real_time_claim_id == claim_id
+    current = FinancialHistory(database).get(run.confirmations[0].transaction_id)
+    assert current.category_splits[0].category_id == gifts.id
+    assert current.category_splits[0].amount == Money.parse("12.34", "SGD")
+    assert _pending_categorization(database, current.id) is None
+    remaining = [
+        item for item in OwnerWorkspace(database).list_transactions().items if item.id == claim_id
+    ]
+    assert remaining == []
+
+
+@pytest.mark.integration
+def test_claim_jev_below_threshold_stays_uncategorized_for_catch_up(
+    database: Database,
+    evidence: tuple[UUID, UUID, UUID],
+) -> None:
+    CategoryCatalog(database).create("Gifts")
+    extraction_id = _wallet_extraction(database, evidence)
+    claim_id = _wallet_claim(database, evidence, extraction_id, description="Synthetic Skip Shop")
+    proposer = _FixedProposer(
+        Proposal(
+            action="skip",
+            category_id=None,
+            category_name=None,
+            confidence=Decimal("0.49"),
+            model="jev-1.13.0",
+            choice="Gifts",
+        )
+    )
+
+    assert JevCategorizer(database, proposer).categorize_claim(claim_id) is None
+    projected = OwnerWorkspace(database).get_transaction(claim_id)
+    attempt = _latest_claim_attempt(database, claim_id)
+
+    assert projected.category_splits == ()
+    assert projected.posted_amount == Money.parse("0", "SGD")
+    assert attempt is not None
+    assert attempt.action == "skip"
+    assert attempt.choice_confidence == Decimal("0.49")
+    assert attempt.noul is None
+    assert attempt.category_id is None
+    assert JevCategorizer(database, proposer).pending_claim_ids() == (claim_id,)
+
+    class _Queue:
+        def __init__(self) -> None:
+            self.kinds: list[str] = []
+
+        def enqueue(
+            self,
+            kind: str,
+            payload: dict[str, object],
+            *,
+            dedupe_key: str | None = None,
+            max_attempts: int = 5,
+            available_at: object = None,
+        ) -> object:
+            del payload, dedupe_key, max_attempts, available_at
+            self.kinds.append(kind)
+            return object()
+
+    queue = _Queue()
+    assert JevCategorizer(database, proposer).enqueue_pending(queue) == 1
+    assert queue.kinds == ["categorize_claim"]
+
+
+@pytest.mark.integration
+def test_claim_jev_ignores_linked_transfers_and_non_wallet_claims(
+    database: Database,
+    evidence: tuple[UUID, UUID, UUID],
+) -> None:
+    CategoryCatalog(database).create("Gifts")
+    wallet_extraction = _wallet_extraction(database, evidence)
+    paylah_extraction = _wallet_extraction(
+        database,
+        evidence,
+        adapter_key="paylah_shortcut",
+        parser_version="paylah-v1",
+    )
+    transfer_id = _wallet_claim(
+        database,
+        evidence,
+        wallet_extraction,
+        description="Synthetic Taxi Transfer",
+        amount="-9.00",
+        kind=TransactionKind.TRANSFER.value,
+        occurred_at=datetime(2026, 3, 7, 15, tzinfo=UTC),
+    )
+    paylah_id = _wallet_claim(
+        database,
+        evidence,
+        paylah_extraction,
+        description="Synthetic PayLah",
+        amount="-8.50",
+        occurred_at=datetime(2026, 3, 7, 16, tzinfo=UTC),
+    )
+    linked_id = _wallet_claim(
+        database,
+        evidence,
+        wallet_extraction,
+        description="SYNTHETIC LINKED",
+        amount="-4.00",
+        occurred_at=datetime(2026, 3, 7, 17, tzinfo=UTC),
+    )
+    account_id, artifact_id, statement_extraction_id = evidence
+    ClaimBook(database).record(
+        ClaimDraft(
+            claim_type=ClaimType.STATEMENT,
+            financial_account_id=account_id,
+            source_artifact_id=artifact_id,
+            extraction_id=statement_extraction_id,
+            raw_description="SYNTHETIC LINKED POSTED",
+            posted_amount=Money.parse("-4.00", "SGD"),
+            provider_transaction_date=date(2026, 3, 7),
+            posting_date=date(2026, 3, 7),
+            transaction_kind_hint=TransactionKind.EXPENSE.value,
+        )
+    )
+    Reconciliation(database).reconcile_account(account_id)
+    proposer = _FixedProposer(
+        Proposal(
+            action="apply",
+            category_id=uuid7(),
+            category_name="Gifts",
+            confidence=Decimal("0.9"),
+            model="jev-1.13.0",
+            choice="Gifts",
+        )
+    )
+
+    assert JevCategorizer(database, proposer).categorize_claim(transfer_id) is None
+    assert JevCategorizer(database, proposer).categorize_claim(paylah_id) is None
+    assert JevCategorizer(database, proposer).categorize_claim(linked_id) is None
+    assert proposer.subjects == []
+    assert JevCategorizer(database, proposer).pending_claim_ids() == ()
+    assert _latest_claim_attempt(database, transfer_id) is None
+    assert _latest_claim_attempt(database, paylah_id) is None
+    assert _latest_claim_attempt(database, linked_id) is None
+
+
+@pytest.mark.integration
+def test_claim_jev_persists_typesafe_errors_without_a_category(
+    database: Database,
+    evidence: tuple[UUID, UUID, UUID],
+) -> None:
+    CategoryCatalog(database).create("Gifts")
+    extraction_id = _wallet_extraction(database, evidence)
+    claim_id = _wallet_claim(
+        database, evidence, extraction_id, description="Synthetic Timeout Shop"
+    )
+
+    with pytest.raises(JevError, match="systemone failed"):
+        JevCategorizer(database, _BoomProposer()).categorize_claim(claim_id)
+
+    attempt = _latest_claim_attempt(database, claim_id)
+    assert attempt is not None
+    assert attempt.transaction_id is None
+    assert attempt.action == "skip"
+    assert attempt.error_class == "TypeSafeError"
+    assert attempt.error_message == "nope"
+    with database.transaction() as session:
+        stored = session.scalar(select(ClaimCategory).where(ClaimCategory.claim_id == claim_id))
+    assert stored is None
+    assert JevCategorizer(database, None).categorize_claim(claim_id) is None
+    assert JevCategorizer(database, None).pending_claim_ids() == (claim_id,)
 
 
 def _latest_attempt(database: Database, transaction_id: UUID) -> JevCategorizationAttempt | None:

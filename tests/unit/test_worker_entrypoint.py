@@ -8,10 +8,12 @@ import pytest
 from billzebub.entrypoints.worker import JobEnqueuer, worker_handlers
 from billzebub.jev import JevError
 from billzebub.jev_categorizer import (
+    CATEGORIZE_CLAIM_JOB,
     CATEGORIZE_TRANSACTION_JOB,
     JEV_CATCH_UP_JOB,
     CategorizerError,
     JevCatchupScheduler,
+    enqueue_claim_categorization,
     enqueue_jev_catch_up,
     enqueue_transaction_categorization,
 )
@@ -83,7 +85,9 @@ class FakeReconciliation:
 class FakeCategorizer:
     def __init__(self) -> None:
         self.received: list[UUID] = []
+        self.received_claims: list[UUID] = []
         self.pending: tuple[UUID, ...] = ()
+        self.pending_claims: tuple[UUID, ...] = ()
         self.error: Exception | None = None
 
     def categorize_transaction(self, transaction_id: UUID) -> None:
@@ -91,10 +95,17 @@ class FakeCategorizer:
             raise self.error
         self.received.append(transaction_id)
 
+    def categorize_claim(self, claim_id: UUID) -> None:
+        if self.error is not None:
+            raise self.error
+        self.received_claims.append(claim_id)
+
     def enqueue_pending(self, queue: JobEnqueuer) -> int:
         for transaction_id in self.pending:
             enqueue_transaction_categorization(queue, transaction_id)
-        return len(self.pending)
+        for claim_id in self.pending_claims:
+            enqueue_claim_categorization(queue, claim_id)
+        return len(self.pending) + len(self.pending_claims)
 
 
 def _handlers(
@@ -262,7 +273,29 @@ def test_categorize_handler_terminates_policy_failures() -> None:
         handlers[CATEGORIZE_TRANSACTION_JOB]({"transaction_id": str(uuid4())})
 
 
-def test_catch_up_enqueues_pending_reviews_and_is_quiet_when_empty() -> None:
+def test_categorize_claim_handler_runs_the_same_jev_path() -> None:
+    queue = FakeQueue()
+    categorizer = FakeCategorizer()
+    claim_id = uuid4()
+    handlers = _handlers(queue, categorizer=categorizer)
+
+    handlers[CATEGORIZE_CLAIM_JOB]({"claim_id": str(claim_id)})
+
+    assert categorizer.received_claims == [claim_id]
+    with pytest.raises(TerminalJobError, match="invalid_categorize_job"):
+        handlers[CATEGORIZE_CLAIM_JOB]({})
+
+
+def test_categorize_claim_handler_retries_typesafe_failures() -> None:
+    categorizer = FakeCategorizer()
+    categorizer.error = JevError("typesafe systemone failed")
+    handlers = _handlers(FakeQueue(), categorizer=categorizer)
+
+    with pytest.raises(RetryableJobError, match="jev_unavailable"):
+        handlers[CATEGORIZE_CLAIM_JOB]({"claim_id": str(uuid4())})
+
+
+def test_catch_up_enqueues_pending_reviews_and_claim_only_provisionals() -> None:
     queue = FakeQueue()
     categorizer = FakeCategorizer()
     handlers = _handlers(queue, categorizer=categorizer)
@@ -270,10 +303,13 @@ def test_catch_up_enqueues_pending_reviews_and_is_quiet_when_empty() -> None:
     assert queue.enqueued == []
 
     pending_id = uuid4()
+    claim_id = uuid4()
     categorizer.pending = (pending_id,)
+    categorizer.pending_claims = (claim_id,)
     handlers[JEV_CATCH_UP_JOB]({"run_date": "2026-09-18"})
     assert queue.enqueued == [
-        (CATEGORIZE_TRANSACTION_JOB, {"transaction_id": str(pending_id)}, str(pending_id))
+        (CATEGORIZE_TRANSACTION_JOB, {"transaction_id": str(pending_id)}, str(pending_id)),
+        (CATEGORIZE_CLAIM_JOB, {"claim_id": str(claim_id)}, str(claim_id)),
     ]
 
 

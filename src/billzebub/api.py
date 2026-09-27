@@ -51,6 +51,8 @@ from billzebub.imports import (
     ImportNotFoundError,
     ImportRecord,
 )
+from billzebub.jev_categorizer import enqueue_accepted_claim
+from billzebub.jobs import JobQueue
 from billzebub.owner_actors import OwnerActors
 from billzebub.owner_transaction_actions import (
     OwnerCategorizationCommand,
@@ -608,6 +610,7 @@ def create_app(
                 ),
                 FinancialAccountAliases(resolved_database),
                 timezone=ZoneInfo(resolved_settings.apple_wallet_timezone),
+                on_accepted_claim=enqueue_accepted_claim(JobQueue(resolved_database)),
             )
     runtime = Runtime(
         settings=resolved_settings,

@@ -1,6 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
+from decimal import Decimal
 from threading import Barrier
 from uuid import UUID
 
@@ -9,11 +10,14 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from uuid6 import uuid7
 
+from billzebub.categories import CategoryCatalog
 from billzebub.claims import ClaimBook, ClaimDisposition, ClaimDraft, ClaimType
 from billzebub.financial_history import FinancialHistory
 from billzebub.money import Money
 from billzebub.persistence.database import Database
 from billzebub.persistence.models import (
+    Category,
+    ClaimCategory,
     Extraction,
     FinancialAccount,
     PendingReview,
@@ -225,6 +229,71 @@ def test_plausible_fx_uses_a_reference_rate_but_missing_reference_is_statement_o
     ]
     assert missing_rate_run.confirmations[0].source == "statement_only"
     assert unmatched_real_time in missing_rate_run.no_match_real_time_claim_ids
+
+
+@pytest.mark.integration
+def test_reconcile_carries_claim_category_onto_posted_amount(
+    database: Database,
+    evidence: ReconciliationEvidence,
+) -> None:
+    gifts = CategoryCatalog(database).create("Gifts")
+    real_time_id = evidence.real_time(amount="-10.00", currency="USD")
+    evidence.statement(amount="-13.50", currency="SGD")
+    with database.transaction() as session:
+        session.add(
+            ReferenceExchangeRate(
+                id=uuid7(),
+                rate_date=date(2026, 1, 10),
+                base_currency="USD",
+                quote_currency="SGD",
+                rate=Decimal("1.35"),
+                source_name="synthetic-official-rate",
+            )
+        )
+        session.add(
+            ClaimCategory(
+                id=uuid7(),
+                claim_id=real_time_id,
+                category_id=gifts.id,
+                amount=Decimal("10.00"),
+                currency="USD",
+            )
+        )
+
+    run = Reconciliation(database).reconcile_account(evidence.account_id)
+    current = FinancialHistory(database).get(run.confirmations[0].transaction_id)
+
+    assert run.confirmations[0].real_time_claim_id == real_time_id
+    assert current.category_splits[0].category_id == gifts.id
+    assert current.category_splits[0].amount == Money.parse("13.50", "SGD")
+
+
+@pytest.mark.integration
+def test_reconcile_leaves_uncategorized_when_claim_category_is_inactive(
+    database: Database,
+    evidence: ReconciliationEvidence,
+) -> None:
+    gifts = CategoryCatalog(database).create("Gifts")
+    real_time_id = evidence.real_time(amount="-12.34")
+    evidence.statement(amount="-12.34")
+    with database.transaction() as session:
+        category = session.get(Category, gifts.id)
+        assert category is not None
+        category.active = False
+        session.add(
+            ClaimCategory(
+                id=uuid7(),
+                claim_id=real_time_id,
+                category_id=gifts.id,
+                amount=Decimal("12.34"),
+                currency="SGD",
+            )
+        )
+
+    run = Reconciliation(database).reconcile_account(evidence.account_id)
+    current = FinancialHistory(database).get(run.confirmations[0].transaction_id)
+
+    assert current.category_splits[0].category_name == "Uncategorized"
 
 
 @pytest.mark.integration

@@ -11,6 +11,7 @@ from billzebub.jev import JevCategory, JevSubject, Proposal
 from billzebub.jev_categorizer import (
     JevCatchupScheduler,
     _log_attempt,
+    enqueue_claim_categorization,
     enqueue_transaction_categorization,
     subject_from_snapshot,
 )
@@ -79,6 +80,12 @@ def test_enqueue_transaction_categorization_dedupes_on_id() -> None:
     assert queue.enqueued == [
         ("categorize_transaction", {"transaction_id": str(TXN_ID)}, str(TXN_ID))
     ]
+
+
+def test_enqueue_claim_categorization_uses_the_claim_job() -> None:
+    queue = FakeQueue()
+    enqueue_claim_categorization(queue, TXN_ID)
+    assert queue.enqueued == [("categorize_claim", {"claim_id": str(TXN_ID)}, str(TXN_ID))]
 
 
 def test_catchup_cron_defaults_match_singapore_evening() -> None:

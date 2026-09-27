@@ -172,18 +172,32 @@ export function categoryTotals(
     if (!isExpense(transaction) || !inPeriod(transaction, yearMonth)) {
       continue;
     }
-    if (isProvisional(transaction)) {
+    if (isProvisional(transaction) && !hasCatalogCategory(transaction)) {
       continue;
     }
-    const name =
-      transaction.category_splits.map((split) => split.name).join(", ") ||
-      "Uncategorized";
-    const cents = Math.abs(amountToCents(transaction.posted_amount.amount));
+    const name = categoryName(transaction);
+    const cents = isProvisional(transaction)
+      ? provisionalSpendCents(transaction)
+      : Math.abs(amountToCents(transaction.posted_amount.amount));
     map.set(name, (map.get(name) ?? 0) + cents);
   }
   return [...map.entries()]
     .map(([name, cents]) => ({ name, cents }))
     .sort((left, right) => right.cents - left.cents);
+}
+
+function hasCatalogCategory(transaction: Transaction): boolean {
+  return transaction.category_splits.some(
+    (split) => split.name !== "Uncategorized",
+  );
+}
+
+function provisionalSpendCents(transaction: Transaction): number {
+  const authorized = transaction.authorized_amount;
+  if (authorized === null) {
+    return Math.abs(amountToCents(transaction.posted_amount.amount));
+  }
+  return Math.abs(amountToCents(authorized.amount));
 }
 
 export function weekComparison(
