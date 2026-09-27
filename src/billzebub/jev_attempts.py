@@ -21,15 +21,19 @@ _CONTEXT_KEY = "jev_attempt"
 def record_jev_attempt(
     session: Session,
     *,
-    transaction_id: UUID,
     subject: JevSubject,
     proposal: Proposal,
+    transaction_id: UUID | None = None,
+    claim_id: UUID | None = None,
 ) -> JevCategorizationAttempt:
     """Persist one agent-safe Jev proposal (apply or skip). Never store secrets."""
+    if (transaction_id is None) == (claim_id is None):
+        raise ValueError("Jev attempt requires a Transaction or a Claim")
     apply = proposal.action == "apply"
     row = JevCategorizationAttempt(
         id=uuid7(),
         transaction_id=transaction_id,
+        claim_id=claim_id,
         model=_required_text(proposal.model, fallback="jev", maximum=120),
         counterparty=_required_text(subject.counterparty, maximum=300),
         amount=_decimal_amount(subject.amount),
@@ -67,7 +71,27 @@ def latest_jev_attempts(
             JevCategorizationAttempt.id.desc(),
         )
     ).all()
-    return {row.transaction_id: row for row in rows}
+    return {row.transaction_id: row for row in rows if row.transaction_id is not None}
+
+
+def latest_claim_jev_attempts(
+    session: Session,
+    claim_ids: Iterable[UUID],
+) -> dict[UUID, JevCategorizationAttempt]:
+    ids = tuple(dict.fromkeys(claim_ids))
+    if not ids:
+        return {}
+    rows = session.scalars(
+        select(JevCategorizationAttempt)
+        .where(JevCategorizationAttempt.claim_id.in_(ids))
+        .distinct(JevCategorizationAttempt.claim_id)
+        .order_by(
+            JevCategorizationAttempt.claim_id,
+            JevCategorizationAttempt.attempted_at.desc(),
+            JevCategorizationAttempt.id.desc(),
+        )
+    ).all()
+    return {row.claim_id: row for row in rows if row.claim_id is not None}
 
 
 def attempt_owner_context(row: JevCategorizationAttempt) -> dict[str, Any]:

@@ -23,6 +23,7 @@ from billzebub.jev import (
     resolve_typesafe_api_key,
 )
 from billzebub.jev_categorizer import (
+    CATEGORIZE_CLAIM_JOB,
     CATEGORIZE_TRANSACTION_JOB,
     JEV_CATCH_UP_JOB,
     CategorizerError,
@@ -75,6 +76,8 @@ class ReconciliationRuntime(Protocol):
 class TransactionCategorizerRuntime(Protocol):
     def categorize_transaction(self, transaction_id: UUID) -> object: ...
 
+    def categorize_claim(self, claim_id: UUID) -> object: ...
+
     def enqueue_pending(self, queue: JobEnqueuer) -> int: ...
 
 
@@ -124,16 +127,29 @@ def worker_handlers(
         except CategorizerError as error:
             raise TerminalJobError("invalid_categorize_job") from error
 
+    def categorize_claim(payload: dict[str, Any]) -> None:
+        try:
+            claim_id = UUID(str(payload["claim_id"]))
+        except (KeyError, ValueError) as error:
+            raise TerminalJobError("invalid_categorize_job") from error
+        try:
+            categorizer.categorize_claim(claim_id)
+        except JevError as error:
+            raise RetryableJobError("jev_unavailable", timedelta(seconds=30)) from error
+        except CategorizerError as error:
+            raise TerminalJobError("invalid_categorize_job") from error
+
     def jev_catch_up(payload: dict[str, Any]) -> None:
         del payload
         queued = categorizer.enqueue_pending(queue)
         if queued:
-            logger.info("jev catch-up queued %s Transactions", queued)
+            logger.info("jev catch-up queued %s categorizations", queued)
 
     return {
         "extract_statement": extract_statement,
         "reconcile_financial_account": reconcile_financial_account,
         CATEGORIZE_TRANSACTION_JOB: categorize_transaction,
+        CATEGORIZE_CLAIM_JOB: categorize_claim,
         JEV_CATCH_UP_JOB: jev_catch_up,
     }
 

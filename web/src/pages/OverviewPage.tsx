@@ -169,9 +169,9 @@ export function OverviewPage({
                 value: item.cents,
                 color: categoryColor(categoryPrimary(item.name)),
               }))}
-              ariaLabel="Confirmed spending by category"
+              ariaLabel="Spending by category this month"
             />
-            <p className="muted">Confirmed by Category</p>
+            <p className="muted">Confirmed and categorized provisional</p>
           </div>
           <CategoryRankList
             categories={categories}
