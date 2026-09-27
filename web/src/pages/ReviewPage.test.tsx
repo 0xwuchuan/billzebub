@@ -402,6 +402,55 @@ describe("ReviewPage", () => {
     expect(shortcuts).toHaveTextContent("closes search");
   });
 
+  it("drops the under-filter queue caption and keeps a single card count", () => {
+    renderPage({
+      reviews: [coffeeReview, grocerReview],
+      transactions: [coffee, grocer],
+    });
+
+    expect(screen.queryByText(/blocking first/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/open ·/)).not.toBeInTheDocument();
+    expect(screen.getByText("2 left")).toBeInTheDocument();
+    expect(screen.getAllByText("2 left")).toHaveLength(1);
+  });
+
+  it("keeps category search out of the action dock", () => {
+    renderPage({
+      reviews: [coffeeReview],
+      transactions: [coffee],
+    });
+
+    const assign = screen.getByRole("button", { name: "Assign Category" });
+    expect(assign.closest(".review-action-dock")).not.toBeNull();
+
+    fireEvent.click(screen.getByText("Choose Category"));
+    const search = screen.getByRole("combobox", {
+      name: "Category for Synthetic Coffee",
+    });
+    expect(search.closest(".review-action-dock")).toBeNull();
+    expect(search.closest(".cat-picker")).not.toBeNull();
+    expect(assign.closest(".review-action-dock")).not.toBeNull();
+  });
+
+  it("puts an existing secondary decision in the same dock as the primary", () => {
+    const match = {
+      ...coffeeReview,
+      condition_code: "reconciliation_ambiguous",
+      allowed_decisions: ["confirm_match", "keep_separate"],
+    };
+    renderPage({
+      reviews: [match],
+      transactions: [coffee],
+    });
+
+    const primary = screen.getByRole("button", { name: "Confirm match" });
+    const secondary = screen.getByRole("button", { name: "Keep separate" });
+    expect(primary.closest(".review-action-dock")).toBe(
+      secondary.closest(".review-action-dock"),
+    );
+    expect(screen.queryByText(/blocking first/)).not.toBeInTheDocument();
+  });
+
   it("does not stretch the empty decision card, and keeps a filled card compact-capable", () => {
     const { unmount } = renderPage({ reviews: [], transactions: [] });
     expect(screen.getByRole("region", { name: "Review decision" })).toHaveClass(

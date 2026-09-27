@@ -1,4 +1,4 @@
-import type { RefObject } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 
 import type { Category } from "../api";
 import { CategoryChip } from "./ui/CategoryChip";
@@ -34,6 +34,25 @@ export function CategoryPicker({
 }) {
   const draft = categories.find((category) => category.id === draftId) ?? null;
   const active = matches[activeIndex] ?? null;
+  const activeId = active?.id ?? "";
+  const listRef = useRef<HTMLUListElement>(null);
+  useEffect(() => {
+    if (!open || activeId === "") {
+      return;
+    }
+    const list = listRef.current;
+    const option = document.getElementById(optionId(activeId));
+    if (list === null || !(option instanceof HTMLElement)) {
+      return;
+    }
+    const listBox = list.getBoundingClientRect();
+    const optionBox = option.getBoundingClientRect();
+    if (optionBox.top < listBox.top) {
+      list.scrollTop -= listBox.top - optionBox.top;
+    } else if (optionBox.bottom > listBox.bottom) {
+      list.scrollTop += optionBox.bottom - listBox.bottom;
+    }
+  }, [open, activeId]);
   return (
     <div className="cat-picker">
       {open ? (
@@ -76,7 +95,12 @@ export function CategoryPicker({
         matches.length === 0 ? (
           <p className="cat-picker-empty">No matching Category</p>
         ) : (
-          <ul className="cat-picker-list" id={listId} role="listbox">
+          <ul
+            ref={listRef}
+            className="cat-picker-list"
+            id={listId}
+            role="listbox"
+          >
             {matches.map((category, index) => (
               <li key={category.id}>
                 <button

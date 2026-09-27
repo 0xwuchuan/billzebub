@@ -308,9 +308,6 @@ export function ReviewPage({
             {label}
           </button>
         ))}
-        <span className="muted review-queue-count">
-          {items.length} open · blocking first
-        </span>
       </div>
       <div className={`desk review-desk${desk ? "" : " is-card-flow"}`}>
         {desk ? (
@@ -514,15 +511,13 @@ function Evidence({
       : categorizationAmount(review.context);
   const amount = amountMoney === null ? null : formatUnsigned(amountMoney);
   const subject = decisionSubject(review, assignable, importRecord);
-  const meta = [
-    account,
+  const when =
     transaction !== undefined
       ? dayMonthLabel(transaction.effective_date)
       : contextString(review.context, "effective_date") !== null
         ? dayMonthLabel(contextString(review.context, "effective_date") ?? "")
-        : null,
-    openedLabel(review.created_at, today),
-  ]
+        : null;
+  const facts = [account, when, openedLabel(review.created_at, today)]
     .filter((part): part is string => part !== null && part !== "")
     .join(" · ");
   return (
@@ -563,44 +558,50 @@ function Evidence({
           {amount !== null ? (
             <p className="decision-amount amount">{amount}</p>
           ) : null}
-          <p className="decision-meta">{meta}</p>
-          {jevLine !== null ? <p className="decision-meta">{jevLine}</p> : null}
+          <p className="decision-meta">
+            {facts}
+            {jevLine !== null ? (
+              <span className="decision-meta-jev">{jevLine}</span>
+            ) : null}
+          </p>
         </div>
         <section className="review-decision">
-          <div className="review-actions">
+          {categorization && assignable !== undefined ? (
+            <div className="cat-picker-slot">
+              <label
+                className="sr-only"
+                htmlFor={`review-cat-${assignable.id}`}
+              >
+                Category for {assignable.counterparty}
+              </label>
+              <CategoryPicker
+                categories={categories}
+                matches={filterCategories(categories, picker.query)}
+                draftId={draft}
+                open={picker.open}
+                query={picker.query}
+                activeIndex={picker.index}
+                inputId={`review-cat-${assignable.id}`}
+                listId={`review-cat-list-${assignable.id}`}
+                searchRef={searchRef}
+                onOpen={onPickerOpen}
+                onQuery={onPickerQuery}
+                onHighlight={onPickerHighlight}
+                onChoose={onPickerChoose}
+              />
+            </div>
+          ) : null}
+          <div className="review-actions review-action-dock">
             {categorization && assignable !== undefined ? (
-              <>
-                <label
-                  className="sr-only"
-                  htmlFor={`review-cat-${assignable.id}`}
-                >
-                  Category for {assignable.counterparty}
-                </label>
-                <CategoryPicker
-                  categories={categories}
-                  matches={filterCategories(categories, picker.query)}
-                  draftId={draft}
-                  open={picker.open}
-                  query={picker.query}
-                  activeIndex={picker.index}
-                  inputId={`review-cat-${assignable.id}`}
-                  listId={`review-cat-list-${assignable.id}`}
-                  searchRef={searchRef}
-                  onOpen={onPickerOpen}
-                  onQuery={onPickerQuery}
-                  onHighlight={onPickerHighlight}
-                  onChoose={onPickerChoose}
-                />
-                <Button
-                  variant="primary"
-                  disabled={draft === "" || saving === assignable.id}
-                  onClick={() => {
-                    onAssign(assignable);
-                  }}
-                >
-                  {saving === assignable.id ? "Saving…" : "Assign Category"}
-                </Button>
-              </>
+              <Button
+                variant="primary"
+                disabled={draft === "" || saving === assignable.id}
+                onClick={() => {
+                  onAssign(assignable);
+                }}
+              >
+                {saving === assignable.id ? "Saving…" : "Assign Category"}
+              </Button>
             ) : null}
             {needsSetup
               ? review.allowed_decisions.map((choice) => (
@@ -641,77 +642,77 @@ function Evidence({
               needsSetup,
             )}
           />
-        </section>
-        {categorization ? null : (
-          <details className="import-details review-details">
-            <summary>Review details</summary>
-            <p className={`prompt${blocking ? " is-blocking" : ""}`}>
-              {evidenceBody(review, transaction)}
-            </p>
-            {jevAttempt !== null ? (
+          {categorization ? null : (
+            <details className="import-details review-details">
+              <summary>Review details</summary>
+              <p className={`prompt${blocking ? " is-blocking" : ""}`}>
+                {evidenceBody(review, transaction)}
+              </p>
+              {jevAttempt !== null ? (
+                <section>
+                  <h3 className="eyebrow">Last Jev attempt</h3>
+                  <dl className="kv">
+                    <dt>Action</dt>
+                    <dd>{jevAttempt.action}</dd>
+                    <dt>Choice</dt>
+                    <dd>{jevAttempt.choice ?? "none"}</dd>
+                    <dt>Confidence</dt>
+                    <dd>{jevAttempt.choice_confidence ?? "—"}</dd>
+                    <dt>Evidence noul</dt>
+                    <dd>{jevAttempt.noul ?? "—"}</dd>
+                    <dt>Category</dt>
+                    <dd>
+                      {jevAttempt.action === "apply"
+                        ? (jevAttempt.category_name ?? "—")
+                        : "skip"}
+                    </dd>
+                    <dt>Model</dt>
+                    <dd>{jevAttempt.model}</dd>
+                    {jevAttempt.error_class !== null ? (
+                      <>
+                        <dt>TypeSafe error</dt>
+                        <dd>
+                          {jevAttempt.error_class}
+                          {jevAttempt.error_message !== null
+                            ? `: ${jevAttempt.error_message}`
+                            : ""}
+                        </dd>
+                      </>
+                    ) : null}
+                  </dl>
+                </section>
+              ) : null}
+              <dl className="kv">
+                <dt>Condition</dt>
+                <dd>{review.condition_code}</dd>
+                <dt>Review</dt>
+                <dd>{review.id}</dd>
+                <dt>Subject</dt>
+                <dd>
+                  {review.subject_type} {review.subject_id}
+                </dd>
+                <dt>Financial Account</dt>
+                <dd>{account}</dd>
+                <dt>Amount in question</dt>
+                <dd>{amount ?? "No Claims created"}</dd>
+                <dt>Raw source</dt>
+                <dd>{raw}</dd>
+              </dl>
               <section>
-                <h3 className="eyebrow">Last Jev attempt</h3>
-                <dl className="kv">
-                  <dt>Action</dt>
-                  <dd>{jevAttempt.action}</dd>
-                  <dt>Choice</dt>
-                  <dd>{jevAttempt.choice ?? "none"}</dd>
-                  <dt>Confidence</dt>
-                  <dd>{jevAttempt.choice_confidence ?? "—"}</dd>
-                  <dt>Evidence noul</dt>
-                  <dd>{jevAttempt.noul ?? "—"}</dd>
-                  <dt>Category</dt>
-                  <dd>
-                    {jevAttempt.action === "apply"
-                      ? (jevAttempt.category_name ?? "—")
-                      : "skip"}
-                  </dd>
-                  <dt>Model</dt>
-                  <dd>{jevAttempt.model}</dd>
-                  {jevAttempt.error_class !== null ? (
-                    <>
-                      <dt>TypeSafe error</dt>
-                      <dd>
-                        {jevAttempt.error_class}
-                        {jevAttempt.error_message !== null
-                          ? `: ${jevAttempt.error_message}`
-                          : ""}
-                      </dd>
-                    </>
-                  ) : null}
-                </dl>
+                <h3 className="eyebrow">Claim evidence</h3>
+                {claims.length === 0 ? (
+                  <p className="claim">No linked Claims in this Review.</p>
+                ) : (
+                  claims.map((claim) => (
+                    <p className="claim" key={claim}>
+                      {claim}
+                    </p>
+                  ))
+                )}
               </section>
-            ) : null}
-            <dl className="kv">
-              <dt>Condition</dt>
-              <dd>{review.condition_code}</dd>
-              <dt>Review</dt>
-              <dd>{review.id}</dd>
-              <dt>Subject</dt>
-              <dd>
-                {review.subject_type} {review.subject_id}
-              </dd>
-              <dt>Financial Account</dt>
-              <dd>{account}</dd>
-              <dt>Amount in question</dt>
-              <dd>{amount ?? "No Claims created"}</dd>
-              <dt>Raw source</dt>
-              <dd>{raw}</dd>
-            </dl>
-            <section>
-              <h3 className="eyebrow">Claim evidence</h3>
-              {claims.length === 0 ? (
-                <p className="claim">No linked Claims in this Review.</p>
-              ) : (
-                claims.map((claim) => (
-                  <p className="claim" key={claim}>
-                    {claim}
-                  </p>
-                ))
-              )}
-            </section>
-          </details>
-        )}
+            </details>
+          )}
+        </section>
       </div>
     </>
   );
