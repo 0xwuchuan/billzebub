@@ -104,10 +104,14 @@ export function SettingsPage({
         <div className="theme-row">
           <div>
             <h2>Appearance</h2>
-            <span className="muted">
+            <p className="muted">
               {theme === "dark" ? "Dark" : "Light"} theme. Saved on this
               machine.
-            </span>
+              <span className="settings-theme-phone">
+                {" "}
+                Switch it from the top bar.
+              </span>
+            </p>
           </div>
           <ThemeToggle theme={theme} onToggle={onToggleTheme} />
         </div>

@@ -21,20 +21,24 @@ export function StatementCoveragePanel({
       <div className="panel-head coverage-head">
         <div>
           <h2>Statement coverage</h2>
-          <p className="muted" style={{ fontSize: "var(--bz-text-sm)" }}>
+          <p className="coverage-lede">
             Last {coverage?.window_months ?? 6} months ·{" "}
             {coverage?.timezone ?? "Asia/Singapore"}. Missing months have no
             accepted Extraction covering that calendar month.
           </p>
         </div>
         {selectedAccountId !== null && onClearAccount !== undefined ? (
-          <button className="chip" type="button" onClick={onClearAccount}>
+          <button
+            className="chip chip-quiet"
+            type="button"
+            onClick={onClearAccount}
+          >
             All accounts
           </button>
         ) : null}
       </div>
       {accounts.length === 0 ? (
-        <p className="muted" style={{ fontSize: "var(--bz-text-sm)" }}>
+        <p className="coverage-empty">
           No statement-backed Financial Accounts yet.
         </p>
       ) : (
