@@ -93,6 +93,87 @@ describe("TransactionsPage", () => {
     expect(screen.getByLabelText("Category")).toBeInTheDocument();
   });
 
+  it("moves the open detail among visible rows with j and k, except in fields", () => {
+    const onOpen = vi.fn();
+    const tea: Transaction = {
+      ...coffee,
+      id: "00000000-0000-0000-0000-000000000030",
+      counterparty: "Synthetic Tea",
+      effective_date: "2026-01-09",
+    };
+    const { rerender } = render(
+      <TransactionsPage
+        transactions={[coffee, tea]}
+        categories={categories}
+        accounts={[{ id: coffee.financial_account.id, name: "Synthetic Card" }]}
+        confirmation=""
+        category=""
+        accountId=""
+        selectedId={coffee.id}
+        today={new Date("2026-01-10T00:00:00")}
+        loadingMore={false}
+        hasMore={false}
+        saving={null}
+        onConfirmation={() => undefined}
+        onCategory={() => undefined}
+        onAccount={() => undefined}
+        onOpen={onOpen}
+        onLoadMore={() => undefined}
+        onCategorizeMany={() => Promise.resolve()}
+        detail={<p>Detail</p>}
+      />,
+    );
+
+    expect(document.querySelector(".tx-page.has-detail")).not.toBeNull();
+    fireEvent.keyDown(window, { key: "j" });
+    expect(onOpen).toHaveBeenCalledWith(tea.id);
+
+    rerender(
+      <TransactionsPage
+        transactions={[coffee, tea]}
+        categories={categories}
+        accounts={[{ id: coffee.financial_account.id, name: "Synthetic Card" }]}
+        confirmation=""
+        category=""
+        accountId=""
+        selectedId={tea.id}
+        today={new Date("2026-01-10T00:00:00")}
+        loadingMore={false}
+        hasMore={false}
+        saving={null}
+        onConfirmation={() => undefined}
+        onCategory={() => undefined}
+        onAccount={() => undefined}
+        onOpen={onOpen}
+        onLoadMore={() => undefined}
+        onCategorizeMany={() => Promise.resolve()}
+        detail={<p>Detail</p>}
+      />,
+    );
+    onOpen.mockClear();
+    fireEvent.keyDown(window, { key: "k" });
+    expect(onOpen).toHaveBeenCalledWith(coffee.id);
+
+    onOpen.mockClear();
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "Select Synthetic Tea" }),
+    );
+    const bulkCategory = screen.getByLabelText("Bulk Category");
+    bulkCategory.focus();
+    fireEvent.keyDown(bulkCategory, { key: "k" });
+    expect(onOpen).not.toHaveBeenCalled();
+
+    const search = screen.getByPlaceholderText("Search");
+    search.focus();
+    fireEvent.keyDown(search, { key: "j" });
+    expect(onOpen).not.toHaveBeenCalled();
+
+    fireEvent.change(search, { target: { value: "Coffee" } });
+    search.blur();
+    fireEvent.keyDown(window, { key: "j" });
+    expect(onOpen).toHaveBeenCalledWith(coffee.id);
+  });
+
   it("marks provisional rows with an amount-side dot and no badge", () => {
     const provisional: Transaction = {
       ...coffee,
