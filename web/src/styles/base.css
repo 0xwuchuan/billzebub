@@ -209,6 +209,7 @@ p {
 .chip:focus-visible,
 .coverage-chip:focus-visible,
 .coverage-account:focus-visible,
+.coverage-toggle:focus-visible,
 .queue-item:focus-visible,
 .import-details summary:focus-visible,
 .row:focus-visible,
