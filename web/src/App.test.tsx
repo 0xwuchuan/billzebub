@@ -450,6 +450,10 @@ describe("App", () => {
     render(<App />);
 
     expect(await screen.findByText("Billzebub")).toBeInTheDocument();
+    expect(document.querySelector(".mark img")).toHaveAttribute(
+      "src",
+      "/icon-192.png",
+    );
     expect(document.querySelector(".rail")).not.toBeNull();
     expect(document.querySelector("main.stage")).not.toBeNull();
     expect(
@@ -460,6 +464,10 @@ describe("App", () => {
     );
     const drawer = screen.getByRole("navigation", { name: "Navigation" });
     expect(drawer).toBeVisible();
+    expect(drawer.querySelector(".mark img")).toHaveAttribute(
+      "src",
+      "/icon-192.png",
+    );
     expect(
       within(drawer).getByRole("button", { name: "Imports" }),
     ).toBeVisible();

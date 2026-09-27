@@ -245,7 +245,7 @@ function RailContent({
       <div className="rail-body">
         <div className="brand">
           <span className="mark">
-            <img src="/baby-beel.svg" alt="" />
+            <img src="/icon-192.png" alt="" />
           </span>
           <strong>Billzebub</strong>
         </div>
