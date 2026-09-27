@@ -1,4 +1,5 @@
 import type { Category, Transaction } from "../api";
+import { useOverlayMedia } from "../hooks/useOverlayMedia";
 import { CloseIcon } from "./icons";
 import { Button } from "./ui/Button";
 import { CategoryChip } from "./ui/CategoryChip";
@@ -28,36 +29,45 @@ export function TransactionDrawer({
   onSave: (transaction: Transaction) => void;
   onClose: () => void;
 }) {
-  const open = transaction !== null;
+  const overlay = useOverlayMedia();
+  if (transaction === null) {
+    return null;
+  }
+  const body = (
+    <DrawerBody
+      transaction={transaction}
+      categories={categories}
+      draft={draft}
+      saving={saving}
+      onDraft={onDraft}
+      onSave={onSave}
+      onClose={onClose}
+    />
+  );
+  if (overlay) {
+    return (
+      <>
+        <button
+          className="drawer-backdrop open"
+          type="button"
+          aria-label="Close detail"
+          onClick={onClose}
+        />
+        <aside
+          className="drawer open"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="drawer-title"
+        >
+          {body}
+        </aside>
+      </>
+    );
+  }
   return (
-    <>
-      <button
-        className={`drawer-backdrop${open ? " open" : ""}`}
-        type="button"
-        tabIndex={open ? 0 : -1}
-        aria-hidden={!open}
-        aria-label={open ? "Close detail" : undefined}
-        onClick={onClose}
-      />
-      <aside
-        className={`drawer${open ? " open" : ""}`}
-        role={open ? "dialog" : undefined}
-        aria-labelledby={open ? "drawer-title" : undefined}
-        aria-hidden={!open}
-      >
-        {transaction !== null ? (
-          <DrawerBody
-            transaction={transaction}
-            categories={categories}
-            draft={draft}
-            saving={saving}
-            onDraft={onDraft}
-            onSave={onSave}
-            onClose={onClose}
-          />
-        ) : null}
-      </aside>
-    </>
+    <aside className="tx-detail" aria-labelledby="drawer-title">
+      {body}
+    </aside>
   );
 }
 
@@ -128,7 +138,10 @@ function DrawerBody({
           <dt>Confirmation</dt>
           <dd>
             {confirmed ? (
-              "Confirmed by Statement Claim"
+              <span className="confirm-status is-confirmed">
+                <i className="confirm-dot" aria-hidden="true" />
+                Confirmed by Statement Claim
+              </span>
             ) : (
               <span className="confirm-status is-provisional">
                 <i className="provisional-dot" aria-hidden="true" />

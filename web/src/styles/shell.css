@@ -366,24 +366,11 @@
   pointer-events: auto;
 }
 
-@media (min-width: 64.01rem) {
-  .app.has-detail {
-    grid-template-columns: var(--bz-rail) minmax(0, 1fr) var(--bz-detail);
-  }
-
-  .app.has-detail .drawer {
-    position: relative;
-    z-index: 1;
-    width: auto;
-    min-width: 0;
-    height: 100%;
-    transform: none;
-    opacity: 1;
-    pointer-events: auto;
-  }
-
-  .app.has-detail .drawer-backdrop {
-    display: none;
+@media (min-width: 52.01rem) {
+  .stage:has(.tx-page.has-detail) {
+    display: flex;
+    flex-direction: column;
+    padding-bottom: var(--bz-space-6);
   }
 }
 
@@ -429,6 +416,10 @@
   display: inline-flex;
   align-items: center;
   gap: var(--bz-space-2);
+}
+
+.confirm-status.is-confirmed {
+  color: var(--bz-text);
 }
 
 .confirm-status.is-provisional {

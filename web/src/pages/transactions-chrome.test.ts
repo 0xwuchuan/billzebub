@@ -45,4 +45,25 @@ describe("transactions chrome", () => {
     expect(shell).toMatch(/--bz-status-provisional/);
     expect(shell).not.toMatch(/#[0-9a-fA-F]{3,8}/);
   });
+
+  it("splits the desk list and detail in flow and keeps the phone overlay", () => {
+    const desk = screens.slice(screens.indexOf("@media (min-width: 52.01rem)"));
+    expect(desk).toMatch(
+      /grid-template-columns:\s*minmax\(0,\s*45fr\)\s*minmax\(0,\s*55fr\)/,
+    );
+    expect(desk).toMatch(/\.tx-page\.has-detail \.tx-detail/);
+    expect(desk).toMatch(/\.tx-page\.has-detail \.bulk-bar/);
+    expect(desk).not.toMatch(/\.drawer-backdrop/);
+    expect(desk).not.toMatch(/position:\s*fixed/);
+    expect(screens).not.toMatch(/\.app\.has-detail \.bulk-bar/);
+    expect(shell).not.toMatch(/var\(--bz-detail\)/);
+
+    const phone = shell.slice(shell.indexOf("@media (max-width: 52rem)"));
+    expect(phone).toMatch(/\.drawer\s*\{[^}]*bottom:\s*0/);
+    expect(shell).toMatch(/\.drawer-backdrop/);
+    expect(drawer).toMatch(/confirm-status is-confirmed/);
+    expect(drawer).toMatch(/confirm-dot/);
+    expect(drawer).toMatch(/role="dialog"/);
+    expect(drawer).toMatch(/className="tx-detail"/);
+  });
 });

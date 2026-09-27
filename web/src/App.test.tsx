@@ -150,12 +150,16 @@ describe("App", () => {
         }),
       }),
     );
-    const drawer = await screen.findByRole("dialog");
+    const detail = await screen.findByRole("complementary", {
+      name: "Synthetic Coffee",
+    });
     await waitFor(() => {
-      expect(drawer.querySelector(".cat-chip")).toHaveTextContent(
+      expect(detail.querySelector(".cat-chip")).toHaveTextContent(
         "Synthetic Food",
       );
     });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(document.querySelector(".drawer-backdrop")).toBeNull();
   });
 
   it("keeps Quiet Rail chrome when the API is down", async () => {
@@ -707,9 +711,55 @@ describe("App", () => {
       within(bulk).getByRole("button", { name: "Apply Category" }),
     ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Synthetic Coffee/ }));
-    expect(await screen.findByRole("dialog")).toHaveTextContent(
-      "Synthetic Coffee",
+    const detail = await screen.findByRole("complementary", {
+      name: "Synthetic Coffee",
+    });
+    expect(detail).toHaveTextContent("Synthetic Coffee");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(document.querySelector(".drawer-backdrop")).toBeNull();
+    expect(screen.getByRole("toolbar", { name: "Bulk actions" })).toBeVisible();
+    expect(
+      document.querySelector(".tx-page.has-detail.has-bulk"),
+    ).not.toBeNull();
+  });
+
+  it("moves a deep-linked desk detail with k and closes it with Escape", async () => {
+    seedOnboarded();
+    const tea = {
+      ...transaction,
+      id: "00000000-0000-0000-0000-000000000030",
+      counterparty: "Synthetic Tea",
+      effective_date: "2026-01-11",
+    };
+    window.location.hash = `#/transactions/open/${transaction.id}`;
+    vi.stubGlobal(
+      "fetch",
+      mockWorkspace({
+        transactions: [transaction, tea],
+        reviews: [],
+        categories: [],
+      }),
     );
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole("complementary", { name: "Synthetic Coffee" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "k" });
+    expect(
+      await screen.findByRole("complementary", { name: "Synthetic Tea" }),
+    ).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("complementary", { name: "Synthetic Tea" }),
+      ).not.toBeInTheDocument();
+    });
+    expect(
+      screen.getByRole("heading", { name: "Transactions" }),
+    ).toBeInTheDocument();
   });
 
   it("lists Extractions on Imports and opens them from a Blocking review", async () => {
