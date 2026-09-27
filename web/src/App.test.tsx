@@ -640,7 +640,7 @@ describe("App", () => {
     expect(screen.getAllByText("−SGD 12.34").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Provisional").length).toBeGreaterThan(0);
     const provisionalCell = screen.getByRole("button", {
-      name: /1 awaiting a Statement Claim/,
+      name: /^Provisional/,
     });
     fireEvent.click(provisionalCell);
     expect(
