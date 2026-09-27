@@ -1,6 +1,5 @@
 import type { Category, Transaction } from "../api";
 import { CloseIcon } from "./icons";
-import { Badge } from "./ui/Badge";
 import { Button } from "./ui/Button";
 import { CategoryChip } from "./ui/CategoryChip";
 import { categoryLabel, dayMonthLabel, kindLabel } from "../lib/labels";
@@ -10,7 +9,6 @@ import {
   confirmationState,
   isExpense,
   isProvisional,
-  needsCategorization,
 } from "../lib/workspace";
 
 export function TransactionDrawer({
@@ -87,13 +85,24 @@ function DrawerBody({
   return (
     <>
       <div className="drawer-head">
-        <div>
-          <p className="eyebrow">
+        <div className="decision-hero drawer-hero">
+          <h2 id="drawer-title" className="decision-subject">
+            {transaction.counterparty}
+          </h2>
+          <p className="hero-value amount drawer-amount">
+            {provisional ? (
+              <i
+                className="provisional-dot"
+                title="Provisional"
+                aria-label="Provisional"
+              />
+            ) : null}
+            {formatUnsigned(amount)}
+          </p>
+          <p className="decision-meta">
             {dayMonthLabel(transaction.effective_date)} ·{" "}
             {transaction.financial_account.name}
           </p>
-          <h2 id="drawer-title">{transaction.counterparty}</h2>
-          <p className="hero-value amount">{formatUnsigned(amount)}</p>
         </div>
         <button
           className="icon-btn"
@@ -115,19 +124,17 @@ function DrawerBody({
           <dt>Category</dt>
           <dd>
             <CategoryChip name={categoryLabel(transaction)} />
-            {!needsCategorization(transaction) &&
-            categoryLabel(transaction) !== "Uncategorized" ? (
-              <>
-                {" "}
-                <Badge tone="confirmed">Categorized</Badge>
-              </>
-            ) : null}
           </dd>
           <dt>Confirmation</dt>
           <dd>
-            {confirmed
-              ? "Confirmed by Statement Claim"
-              : "Provisional Real-time Claim"}
+            {confirmed ? (
+              "Confirmed by Statement Claim"
+            ) : (
+              <span className="confirm-status is-provisional">
+                <i className="provisional-dot" aria-hidden="true" />
+                Provisional Real-time Claim
+              </span>
+            )}
           </dd>
         </dl>
         {categorize ? (

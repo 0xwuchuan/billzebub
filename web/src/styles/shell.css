@@ -410,9 +410,29 @@
   overflow-wrap: anywhere;
 }
 
+.drawer-hero {
+  min-width: 0;
+}
+
 .drawer-head .hero-value {
-  margin-top: var(--bz-space-3);
+  margin-top: 0;
   font-size: 1.7rem;
+}
+
+.drawer-amount {
+  display: flex;
+  align-items: center;
+  gap: var(--bz-space-2);
+}
+
+.confirm-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--bz-space-2);
+}
+
+.confirm-status.is-provisional {
+  color: var(--bz-status-provisional);
 }
 
 .drawer-body {

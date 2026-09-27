@@ -92,4 +92,48 @@ describe("TransactionsPage", () => {
     expect(screen.getByLabelText("Financial Account")).toBeInTheDocument();
     expect(screen.getByLabelText("Category")).toBeInTheDocument();
   });
+
+  it("marks provisional rows with an amount-side dot and no badge", () => {
+    const provisional: Transaction = {
+      ...coffee,
+      id: "00000000-0000-0000-0000-000000000020",
+      counterparty: "Synthetic Wallet Merchant",
+      posted_amount: { amount: "0", currency: "SGD" },
+      authorized_amount: { amount: "-12.34", currency: "SGD" },
+      reviews: [],
+    };
+    render(
+      <TransactionsPage
+        transactions={[provisional]}
+        categories={categories}
+        accounts={[{ id: coffee.financial_account.id, name: "Synthetic Card" }]}
+        confirmation=""
+        category=""
+        accountId=""
+        selectedId={null}
+        today={new Date("2026-01-10T00:00:00")}
+        loadingMore={false}
+        hasMore={false}
+        saving={null}
+        onConfirmation={() => undefined}
+        onCategory={() => undefined}
+        onAccount={() => undefined}
+        onOpen={() => undefined}
+        onLoadMore={() => undefined}
+        onCategorizeMany={() => Promise.resolve()}
+      />,
+    );
+
+    const row = screen.getByRole("button", {
+      name: /Synthetic Wallet Merchant/,
+    });
+    expect(row.querySelector(".cat-chip")).not.toBeNull();
+    expect(row.querySelector(".provisional-badge")).toBeNull();
+    expect(
+      row.querySelector(".tx-amount-side .provisional-dot"),
+    ).not.toBeNull();
+    expect(
+      screen.queryByText("Provisional", { selector: ".provisional-badge" }),
+    ).toBeNull();
+  });
 });
