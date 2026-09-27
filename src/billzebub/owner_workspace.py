@@ -36,6 +36,7 @@ from billzebub.reviews import (
     PendingReviewStatus,
     ReviewSeverity,
     categorization_needed_context,
+    dismissed_failure_review_clause,
     merge_categorization_context,
 )
 
@@ -192,6 +193,8 @@ class OwnerWorkspace:
                 .order_by(PendingReview.created_at, PendingReview.id)
                 .limit(limit + 1)
             )
+            if review_status == PendingReviewStatus.PENDING:
+                statement = statement.where(~dismissed_failure_review_clause())
             if position is not None:
                 created_at, review_id = position
                 statement = statement.where(
