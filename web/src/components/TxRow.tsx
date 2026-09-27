@@ -17,6 +17,7 @@ export function TxRow({
   checked = false,
   selectable = false,
   provisionalMark = "badge",
+  density = "regular",
   onOpen,
   onToggle,
 }: {
@@ -25,6 +26,7 @@ export function TxRow({
   checked?: boolean;
   selectable?: boolean;
   provisionalMark?: "badge" | "dot";
+  density?: "regular" | "compact";
   onOpen: (id: string) => void;
   onToggle?: (id: string) => void;
 }) {
@@ -34,6 +36,7 @@ export function TxRow({
     ? formatUnsigned(activityAmount(transaction))
     : formatMoney(activityAmount(transaction), true);
   const review = needsCategorization(transaction);
+  const rowClass = `tx-row${selected ? " is-selected" : ""}${density === "compact" ? " is-compact" : ""}`;
 
   const body = (
     <>
@@ -72,7 +75,7 @@ export function TxRow({
 
   if (!selectable) {
     return (
-      <div className={`tx-row${selected ? " is-selected" : ""}`}>
+      <div className={rowClass}>
         <button
           className="tx-row-main"
           type="button"
@@ -87,7 +90,7 @@ export function TxRow({
   }
 
   return (
-    <div className={`tx-row${selected ? " is-selected" : ""}`}>
+    <div className={rowClass}>
       <label className="tx-check">
         <span className="sr-only">Select {transaction.counterparty}</span>
         <input

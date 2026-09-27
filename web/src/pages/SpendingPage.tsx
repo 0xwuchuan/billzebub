@@ -55,7 +55,7 @@ export function SpendingPage({
         <div className="dash-card-body spend-hero">
           <div className="spend-hero-copy">
             <p className="eyebrow">Spent this month</p>
-            <p className="hero-value amount">
+            <p className="hero-value bento-figure amount">
               {formatUnsigned(
                 centsToMoney(month.estimatedCents, month.currency),
               )}
@@ -109,10 +109,7 @@ export function SpendingPage({
 
       <section className="card analytics-card">
         <div className="panel-head">
-          <div>
-            <p className="eyebrow">Trend</p>
-            <h2>Spending by month</h2>
-          </div>
+          <h2 className="eyebrow">Spending by month</h2>
           <Button variant="ghost" onClick={onOpenTransactions}>
             View Transactions
           </Button>
