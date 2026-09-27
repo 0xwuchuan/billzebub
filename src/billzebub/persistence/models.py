@@ -443,6 +443,35 @@ class ClaimDispositionEvent(Base):
     )
 
 
+class ClaimCategory(Base):
+    """One catalog Category applied to a claim-only provisional Real-time Claim."""
+
+    __tablename__ = "claim_category"
+
+    id: Mapped[UUID] = mapped_column(PostgresUUID(as_uuid=True), primary_key=True, default=uuid7)
+    claim_id: Mapped[UUID] = mapped_column(
+        PostgresUUID(as_uuid=True),
+        ForeignKey("claim.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    category_id: Mapped[UUID] = mapped_column(
+        PostgresUUID(as_uuid=True),
+        ForeignKey("category.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    amount: Mapped[Decimal] = mapped_column(Numeric(), nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("claim_id", name="uq_claim_category_claim_id"),
+        CheckConstraint("amount > 0", name="amount_positive"),
+        CheckConstraint("currency ~ '^[A-Z]{3}$'", name="currency_iso_style"),
+    )
+
+
 class ClaimSourceLocator(Base):
     __tablename__ = "claim_source_locator"
 
@@ -980,10 +1009,13 @@ class JevCategorizationAttempt(Base):
     __tablename__ = "jev_categorization_attempt"
 
     id: Mapped[UUID] = mapped_column(PostgresUUID(as_uuid=True), primary_key=True, default=uuid7)
-    transaction_id: Mapped[UUID] = mapped_column(
+    transaction_id: Mapped[UUID | None] = mapped_column(
         PostgresUUID(as_uuid=True),
         ForeignKey("financial_transaction.id", ondelete="RESTRICT"),
-        nullable=False,
+    )
+    claim_id: Mapped[UUID | None] = mapped_column(
+        PostgresUUID(as_uuid=True),
+        ForeignKey("claim.id", ondelete="RESTRICT"),
     )
     attempted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -1029,9 +1061,20 @@ class JevCategorizationAttempt(Base):
             "(action = 'skip' AND category_id IS NULL AND category_name IS NULL)",
             name="category_matches_action",
         ),
+        CheckConstraint(
+            "(transaction_id IS NOT NULL AND claim_id IS NULL) OR "
+            "(transaction_id IS NULL AND claim_id IS NOT NULL)",
+            name="subject_exclusive",
+        ),
         Index(
             "ix_jev_categorization_attempt_transaction_attempted",
             "transaction_id",
+            "attempted_at",
+            "id",
+        ),
+        Index(
+            "ix_jev_categorization_attempt_claim_attempted",
+            "claim_id",
             "attempted_at",
             "id",
         ),

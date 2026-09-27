@@ -29,6 +29,8 @@ from billzebub.imports import (
     ImportNotDismissableError,
     ImportNotFoundError,
 )
+from billzebub.jev_categorizer import enqueue_accepted_claim
+from billzebub.jobs import JobQueue
 from billzebub.persistence.database import Database
 from billzebub.persistence.models import AuditActorKind, FinancialAccountKind
 from billzebub.tokens import TokenManager, TokenScope
@@ -297,6 +299,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                         ),
                         FinancialAccountAliases(database),
                         timezone=ZoneInfo(settings.apple_wallet_timezone),
+                        on_accepted_claim=enqueue_accepted_claim(JobQueue(database)),
                     ),
                 )
             except (AppleWalletProbeError, ArtifactStoreError, OSError, ValueError):
@@ -320,6 +323,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                     ),
                     FinancialAccountAliases(database),
                     timezone=ZoneInfo(settings.apple_wallet_timezone),
+                    on_accepted_claim=enqueue_accepted_claim(JobQueue(database)),
                 ).reprocess(
                     extraction_ids=tuple(arguments.extraction_id),
                     artifact_ids=tuple(arguments.artifact_id),

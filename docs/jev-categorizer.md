@@ -1,13 +1,13 @@
 # NAS worker Jev categorizer
 
-The **NAS worker** is the production auto-categorizer. After statement confirmation (and after a Real-time Claim is confirmed into a Transaction) it calls TypeSafe **Jev** with agent-safe fields only and applies a Category when confidence is at least **0.5**. Below that floor it leaves the Transaction `Uncategorized` with `categorization_needed` (fail closed). This is not a Grok Bot and is not scheduled on forge.
+The **NAS worker** is the production auto-categorizer. After statement confirmation (and after a Real-time Claim is confirmed into a Transaction) it calls TypeSafe **Jev** with agent-safe fields only and applies a Category when confidence is at least **0.5**. The same Choice path also categorizes claim-only provisional Apple Wallet rows before a Statement arrives. Below that floor it leaves the row uncategorized (fail closed). This is not a Grok Bot and is not scheduled on forge.
 
 `scripts/agent/jev_categorize.py` is an **optional ops CLI** for dry-runs against the agent API. It is not required for production once `TYPESAFE_API_KEY` is on rafiki for the worker.
 
 ## Cascade
 
 1. **Owner** — explicit categorization in the owner workspace. Does not teach an in-app map.
-2. **Worker Jev** — inline after Reconciliation confirmations, then a daily NAS catch-up for leftovers (including Wallet-originated Transactions).
+2. **Worker Jev** — inline after Reconciliation confirmations and after a new claim-only provisional Apple Wallet Real-time Claim, then a daily NAS catch-up for leftovers (including those Claims and Wallet-originated Transactions).
 
 There is no in-app Counterparty map, keyword scorer, Codex runner, or forge webhook.
 
@@ -19,7 +19,9 @@ There is no in-app Counterparty map, keyword scorer, Codex runner, or forge webh
    - `state`: Counterparty, amount, currency, effective date, Transaction kind (agent-safe fields only)
    - `questions.category`: Choice over active catalog Category names only (Uncategorized is excluded; there is no skip / `uncategorized` option)
 4. Apply a proposal only when fail-closed checks all pass, through `OwnerTransactionActions` with reason `jev_categorization`. Anything else leaves the Review in place.
-5. After every Jev propose (apply or skip, including TypeSafe failures), append a `jev_categorization_attempt` row and emit an info log line. Catch-up uses this same `categorize_transaction` path.
+5. After every Jev propose (apply or skip, including TypeSafe failures), append a `jev_categorization_attempt` row and emit an info log line. Catch-up uses this same propose/apply path for leftover Transactions (`categorize_transaction`) and claim-only provisionals (`categorize_claim`).
+
+Claim-only Apple Wallet rows use the same Choice question, 0.5 floor, and catalog mapping. There is still no uncategorized/skip Choice and no Noul `enough_evidence` gate. An apply stores one `claim_category` row (claim id, catalog Category, positive Authorized Amount). On statement Reconciliation, confirmation copies that Category onto the new Transaction and sizes the Category Split to the Posted Amount. A linked Claim is no longer claim-only, so Jev does not categorize it again.
 
 Owner Pending Review for `categorization_needed` joins the latest attempt into `context.jev_attempt` (read-time; the stored Review context is unchanged).
 
@@ -29,7 +31,8 @@ Each row is append-only and uses the same agent-safe snapshot sent to TypeSafe (
 
 | Field | Meaning |
 |---|---|
-| `transaction_id` | Opaque Transaction id |
+| `transaction_id` | Opaque Transaction id, or null when the subject is a Claim |
+| `claim_id` | Opaque Claim id for a claim-only provisional, or null for a Transaction |
 | `attempted_at` | When the worker finished the propose |
 | `model` | Jev model, default `jev-1.13.0` |
 | `counterparty`, `amount`, `currency`, `effective_date`, `kind` | State snapshot sent to TypeSafe |
@@ -43,7 +46,7 @@ The worker info line is `jev attempt action=… confidence=… noul=… category
 
 ## Daily NAS catch-up (Wallet leftovers)
 
-The worker loop, not forge, enqueues `jev_catch_up` once per local calendar day at or after **21:00 Asia/Singapore**. That job lists pending `categorization_needed` Reviews and enqueues the same `categorize_transaction` path. An empty queue is a quiet success (the catch-up job completes and enqueues nothing).
+The worker loop, not forge, enqueues `jev_catch_up` once per local calendar day at or after **21:00 Asia/Singapore**. That job lists pending `categorization_needed` Reviews and uncategorized claim-only provisional Apple Wallet rows, then enqueues the same Jev propose/apply path. An empty queue is a quiet success (the catch-up job completes and enqueues nothing).
 
 Equivalent cron expression (for documentation only; do not put this on forge):
 
@@ -120,8 +123,8 @@ The host CLI (`scripts/agent/jev_categorize.py`) and the NAS worker both call `b
 
 The worker applies a Category only when all of these hold:
 
-- Transaction kind is `expense` or `cash_withdrawal`
+- Transaction or Claim kind is `expense` or `cash_withdrawal` (a Claim with no hint is treated as an Expense)
 - Choice `confidence` is at least `BILLZEBUB_JEV_MIN_CONFIDENCE`
 - Jev Choice maps uniquely to one active catalog Category (Uncategorized is never a Choice option)
 
-Anything else, including a missing TypeSafe key or a TypeSafe failure, leaves the Review in place. TypeSafe failures retry the `categorize_transaction` job; missing key completes the job without applying.
+Anything else, including a missing TypeSafe key or a TypeSafe failure, leaves the row uncategorized. TypeSafe failures retry the `categorize_transaction` or `categorize_claim` job; missing key completes the job without applying. Claim-only rows are provisional Apple Wallet Real-time Claims that are not yet linked to a Transaction.

@@ -230,7 +230,6 @@ export function App() {
         selectedAccountId={listAccount}
         theme={theme}
         error={workspace.error}
-        detailOpen={drawerTransaction !== null}
         onNavigate={navigate}
         onSelectAccount={(accountId) => {
           if (listAccount === accountId && route.page === "transactions") {
@@ -244,36 +243,6 @@ export function App() {
           );
         }}
         onToggleTheme={toggleTheme}
-        detail={
-          <TransactionDrawer
-            transaction={drawerTransaction}
-            categories={ownerCategories}
-            draft={
-              drawerTransaction === null
-                ? ""
-                : (categoryDraft[drawerTransaction.id] ?? "")
-            }
-            saving={
-              drawerTransaction !== null &&
-              workspace.saving === drawerTransaction.id
-            }
-            onDraft={(categoryId) => {
-              if (drawerTransaction === null) {
-                return;
-              }
-              setCategoryDraft((current) => ({
-                ...current,
-                [drawerTransaction.id]: categoryId,
-              }));
-            }}
-            onSave={(transaction) => {
-              void assignCategory(transaction);
-            }}
-            onClose={() => {
-              go({ ...route, drawerId: null });
-            }}
-          />
-        }
       >
         {route.page === "overview" ? (
           <OverviewPage
@@ -412,6 +381,28 @@ export function App() {
               void workspace.loadMoreTransactions();
             }}
             onCategorizeMany={assignMany}
+            detail={
+              drawerTransaction === null ? null : (
+                <TransactionDrawer
+                  transaction={drawerTransaction}
+                  categories={ownerCategories}
+                  draft={categoryDraft[drawerTransaction.id] ?? ""}
+                  saving={workspace.saving === drawerTransaction.id}
+                  onDraft={(categoryId) => {
+                    setCategoryDraft((current) => ({
+                      ...current,
+                      [drawerTransaction.id]: categoryId,
+                    }));
+                  }}
+                  onSave={(transaction) => {
+                    void assignCategory(transaction);
+                  }}
+                  onClose={() => {
+                    go({ ...route, drawerId: null });
+                  }}
+                />
+              )
+            }
           />
         ) : null}
         {route.page === "settings" ? (

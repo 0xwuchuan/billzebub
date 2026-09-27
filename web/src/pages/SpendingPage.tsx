@@ -61,15 +61,15 @@ export function SpendingPage({
               )}
             </p>
             <p className="muted">
-              Confirmed plus eligible provisional activity. Share bars are of
-              this month's confirmed spend, not a budget.
+              Confirmed plus eligible provisional activity. Share bars include
+              categorized provisional spend this month, not a budget.
             </p>
           </div>
           {categoryData.length === 0 ? null : (
             <DitherDonutChart
               data={categoryData}
               size={148}
-              ariaLabel="This month's confirmed spending by category"
+              ariaLabel="This month's spending by category"
             />
           )}
         </div>

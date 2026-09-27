@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
@@ -114,11 +115,13 @@ class AppleWalletIngestion:
         aliases: FinancialAccountAliases,
         *,
         timezone: ZoneInfo,
+        on_accepted_claim: Callable[[UUID], None] | None = None,
     ) -> None:
         self._database = database
         self._artifacts = artifacts
         self._aliases = aliases
         self._timezone = timezone
+        self._on_accepted_claim = on_accepted_claim
 
     def ingest(
         self,
@@ -436,6 +439,7 @@ class AppleWalletIngestion:
         raw_description = (
             payload.name if payload.merchant is None else f"{payload.merchant} — {payload.name}"
         )
+        accepted_claim_id: UUID | None = None
         with self._database.transaction() as session:
             existing = self._existing(session, artifact_id, account_id, adapter_key)
             if existing is not None:
@@ -485,7 +489,11 @@ class AppleWalletIngestion:
                 )
             )
             self._cancel_configuration_reviews(session, artifact_id)
-            return AppleWalletCaptureOutcome(AppleWalletCaptureStatus.ACCEPTED, duplicate=False)
+            if adapter_key == self._WALLET_ADAPTER_KEY:
+                accepted_claim_id = claim.id
+        if accepted_claim_id is not None and self._on_accepted_claim is not None:
+            self._on_accepted_claim(accepted_claim_id)
+        return AppleWalletCaptureOutcome(AppleWalletCaptureStatus.ACCEPTED, duplicate=False)
 
     def _persist_failure(
         self,

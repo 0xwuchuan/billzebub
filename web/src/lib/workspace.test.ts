@@ -6,6 +6,7 @@ import {
   activityAmount,
   categorizationAmount,
   categorizationCounterparty,
+  categoryTotals,
   categoryTotalsForMonths,
   filterSummary,
   groupTransactions,
@@ -212,6 +213,67 @@ describe("owner activity amounts", () => {
         ["2026-01", "2026-02", "2026-03"],
       ),
     ).toEqual([{ name: "Groceries", cents: 4567 }]);
+  });
+
+  it("counts categorized provisional spend in the open month", () => {
+    const confirmed = transaction({
+      id: "00000000-0000-0000-0000-000000000081",
+      kind: "expense",
+      posted: "-45.67",
+      date: "2026-03-02",
+    });
+    confirmed.category_splits = [
+      {
+        id: "00000000-0000-0000-0000-000000000091",
+        name: "Groceries",
+        amount: { amount: "45.67", currency: "SGD" },
+      },
+    ];
+    const categorized = transaction({
+      id: "00000000-0000-0000-0000-000000000082",
+      kind: "expense",
+      posted: "0",
+      authorized: "-12.34",
+      date: "2026-03-07",
+    });
+    categorized.category_splits = [
+      {
+        id: "00000000-0000-0000-0000-000000000092",
+        name: "Dining",
+        amount: { amount: "12.34", currency: "SGD" },
+      },
+    ];
+    const uncategorized = transaction({
+      id: "00000000-0000-0000-0000-000000000083",
+      kind: "expense",
+      posted: "0",
+      authorized: "-3.00",
+      date: "2026-03-08",
+    });
+    const priorMonth = transaction({
+      id: "00000000-0000-0000-0000-000000000084",
+      kind: "expense",
+      posted: "0",
+      authorized: "-9.00",
+      date: "2026-02-08",
+    });
+    priorMonth.category_splits = [
+      {
+        id: "00000000-0000-0000-0000-000000000093",
+        name: "Dining",
+        amount: { amount: "9.00", currency: "SGD" },
+      },
+    ];
+
+    const rows = [confirmed, categorized, uncategorized, priorMonth];
+    const totals = monthTotals(rows, "2026-03");
+    expect(totals.confirmedCents).toBe(4567);
+    expect(totals.provisionalCents).toBe(1534);
+    expect(totals.estimatedCents).toBe(6101);
+    expect(categoryTotals(rows, "2026-03")).toEqual([
+      { name: "Groceries", cents: 4567 },
+      { name: "Dining", cents: 1234 },
+    ]);
   });
 });
 

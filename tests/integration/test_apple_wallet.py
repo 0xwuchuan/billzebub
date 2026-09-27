@@ -768,3 +768,55 @@ def test_shortcut_payload_invalid_review_can_be_excluded(
         assert stored is not None
         assert stored.status == "resolved"
         assert session.scalar(select(func.count()).select_from(Claim)) == 0
+
+
+@pytest.mark.integration
+def test_accepted_apple_wallet_claim_queues_categorization_once(
+    database: Database,
+    tmp_path: Path,
+) -> None:
+    account = _account(database)
+    aliases = FinancialAccountAliases(database)
+    aliases.add_apple_wallet_card(account_slug=account.slug, card_label="Synthetic Wallet Card")
+    accepted: list[object] = []
+    ingestion = AppleWalletIngestion(
+        database,
+        ArtifactCapture(ContentAddressedStore(tmp_path), database),
+        aliases,
+        timezone=ZoneInfo("Asia/Singapore"),
+        on_accepted_claim=accepted.append,
+    )
+    body = _body()
+
+    first = ingestion.ingest(body, received_at=datetime.now(UTC), actor_id=None)
+    replay = ingestion.ingest(body, received_at=datetime.now(UTC), actor_id=None)
+
+    assert first.duplicate is False
+    assert replay.duplicate is True
+    with database.transaction() as session:
+        claim = session.scalar(select(Claim))
+        assert claim is not None
+        assert accepted == [claim.id]
+
+
+@pytest.mark.integration
+def test_paylah_claim_does_not_queue_wallet_categorization(
+    database: Database,
+    tmp_path: Path,
+) -> None:
+    _paylah_account(database)
+    accepted: list[object] = []
+    ingestion = AppleWalletIngestion(
+        database,
+        ArtifactCapture(ContentAddressedStore(tmp_path), database),
+        FinancialAccountAliases(database),
+        timezone=ZoneInfo("Asia/Singapore"),
+        on_accepted_claim=accepted.append,
+    )
+
+    outcome = ingestion.ingest(
+        _realtime_paylah_body(), received_at=datetime.now(UTC), actor_id=None
+    )
+
+    assert outcome.status is AppleWalletCaptureStatus.ACCEPTED
+    assert accepted == []

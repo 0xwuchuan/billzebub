@@ -1,9 +1,13 @@
+import { useState } from "react";
+
 import type { ImportRecord, StatementCoverageReport } from "../api";
 import { StatementCoveragePanel } from "../components/StatementCoveragePanel";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { useEntrance } from "../hooks/useEntrance";
 import { openedLabel } from "../lib/labels";
+
+type ExtractionStatusFilter = "failed" | "accepted" | "all";
 
 export function ImportsPage({
   imports,
@@ -37,12 +41,19 @@ export function ImportsPage({
   onDismissFailed: () => void;
 }) {
   const fresh = useEntrance("imports");
+  const [chosenFilter, setChosenFilter] =
+    useState<ExtractionStatusFilter | null>(null);
   const visible =
     accountId === null
       ? imports
       : imports.filter((item) => item.financial_account_id === accountId);
+  const statusFilter =
+    chosenFilter ?? implicitStatusFilter(visible, selectedId);
+  const listed = visible.filter((item) =>
+    matchesStatusFilter(item, statusFilter),
+  );
   const selected =
-    visible.find((item) => item.id === selectedId) ?? visible[0] ?? null;
+    listed.find((item) => item.id === selectedId) ?? listed[0] ?? null;
   const failedVisible = visible.filter(
     (item) => item.status === "failed" && item.dismissed_at === null,
   );
@@ -54,69 +65,99 @@ export function ImportsPage({
         onSelectAccount={onSelectAccount}
         onClearAccount={onClearAccount}
       />
-      <div className="desk">
-        <section className="card queue-pane" aria-label="Import history">
-          <div className="panel-head">
-            <h2>Extractions</h2>
-            <span className="panel-actions">
-              <span className="panel-meta">{visible.length} recorded</span>
-              <button
-                className="chip chip-quiet"
-                type="button"
-                aria-pressed={includeDismissed}
-                onClick={() => {
-                  onShowDismissed(!includeDismissed);
-                }}
-              >
-                Show dismissed
-              </button>
-              {failedVisible.length > 0 ? (
-                <Button
-                  variant="ghost"
-                  disabled={saving !== null}
-                  onClick={onDismissFailed}
+      <section className="card extractions-stage">
+        <div className="panel-head">
+          <h2>Extractions</h2>
+          <span className="panel-actions">
+            <span
+              className="import-filters"
+              role="group"
+              aria-label="Extraction status"
+            >
+              {(
+                [
+                  ["failed", "Failed"],
+                  ["accepted", "Accepted"],
+                  ["all", "All"],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  className="chip"
+                  type="button"
+                  aria-pressed={statusFilter === value}
+                  onClick={() => {
+                    setChosenFilter(value);
+                  }}
                 >
-                  Dismiss failed
-                </Button>
-              ) : null}
-            </span>
-          </div>
-          {visible.length === 0 ? (
-            <p className="empty">
-              {accountId === null
-                ? "No Extractions yet. Accepted statements and Shortcut ingest appear here."
-                : "No Extractions for this Financial Account yet."}
-            </p>
-          ) : (
-            <div className="queue-list">
-              {visible.map((item) => (
-                <ImportRow
-                  key={item.id}
-                  item={item}
-                  current={selected !== null && selected.id === item.id}
-                  onSelect={onSelect}
-                />
+                  {label}
+                </button>
               ))}
-            </div>
-          )}
-        </section>
-        <section className="card evidence-pane" aria-live="polite">
-          {selected === null ? (
-            <p className="empty">
-              Process a statement or Shortcut ingest to inspect Extraction
-              status.
-            </p>
-          ) : (
-            <ImportDetail
-              item={selected}
-              today={today}
-              saving={saving}
-              onOpenReview={onOpenReview}
-              onDismiss={onDismiss}
-            />
-          )}
-        </section>
-      </div>
+            </span>
+            <button
+              className="chip chip-quiet"
+              type="button"
+              aria-pressed={includeDismissed}
+              onClick={() => {
+                onShowDismissed(!includeDismissed);
+              }}
+            >
+              Show dismissed
+            </button>
+            {failedVisible.length > 0 ? (
+              <Button
+                variant="ghost"
+                disabled={saving !== null}
+                onClick={onDismissFailed}
+              >
+                Dismiss failed
+              </Button>
+            ) : null}
+            <span className="panel-meta">{visible.length} recorded</span>
+          </span>
+        </div>
+        <div className="desk">
+          <div className="queue-pane" role="region" aria-label="Import history">
+            {listed.length === 0 ? (
+              <p className="empty">
+                {visible.length === 0
+                  ? accountId === null
+                    ? "No Extractions yet. Accepted statements and Shortcut ingest appear here."
+                    : "No Extractions for this Financial Account yet."
+                  : "No Extractions match this filter."}
+              </p>
+            ) : (
+              <div className="queue-list">
+                {listed.map((item) => (
+                  <ImportRow
+                    key={item.id}
+                    item={item}
+                    current={selected !== null && selected.id === item.id}
+                    onSelect={onSelect}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="evidence-pane" aria-live="polite">
+            {selected === null ? (
+              <p className="empty">
+                {visible.length === 0
+                  ? "Process a statement or Shortcut ingest to inspect Extraction status."
+                  : "No Extractions match this filter."}
+              </p>
+            ) : (
+              <ImportDetail
+                item={selected}
+                today={today}
+                saving={saving}
+                onOpenReview={onOpenReview}
+                onDismiss={onDismiss}
+              />
+            )}
+          </div>
+        </div>
+      </section>
     </div>
   );
 }
@@ -261,6 +302,39 @@ function ImportDetail({
       </div>
     </>
   );
+}
+
+function implicitStatusFilter(
+  visible: ImportRecord[],
+  selectedId: string | null,
+): ExtractionStatusFilter {
+  const failedActive = visible.some(
+    (item) => item.status === "failed" && item.dismissed_at === null,
+  );
+  if (!failedActive) {
+    return "all";
+  }
+  const selected = visible.find((item) => item.id === selectedId);
+  if (
+    selected !== undefined &&
+    (selected.status !== "failed" || selected.dismissed_at !== null)
+  ) {
+    return "all";
+  }
+  return "failed";
+}
+
+function matchesStatusFilter(
+  item: ImportRecord,
+  filter: ExtractionStatusFilter,
+): boolean {
+  if (filter === "failed") {
+    return item.status === "failed" && item.dismissed_at === null;
+  }
+  if (filter === "accepted") {
+    return item.status === "accepted";
+  }
+  return true;
 }
 
 function adapterLabel(item: ImportRecord): string {

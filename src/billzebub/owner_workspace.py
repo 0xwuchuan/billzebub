@@ -24,6 +24,7 @@ from billzebub.persistence.models import (
     Category,
     CategorySplit,
     Claim,
+    ClaimCategory,
     ClaimDispositionEvent,
     FinancialAccount,
     FinancialTransaction,
@@ -36,6 +37,7 @@ from billzebub.reviews import (
     PendingReviewStatus,
     ReviewSeverity,
     categorization_needed_context,
+    dismissed_failure_review_clause,
     merge_categorization_context,
 )
 
@@ -192,6 +194,8 @@ class OwnerWorkspace:
                 .order_by(PendingReview.created_at, PendingReview.id)
                 .limit(limit + 1)
             )
+            if review_status == PendingReviewStatus.PENDING:
+                statement = statement.where(~dismissed_failure_review_clause())
             if position is not None:
                 created_at, review_id = position
                 statement = statement.where(
@@ -372,6 +376,18 @@ class OwnerWorkspace:
                     allowed_decisions=tuple(review.allowed_decisions),
                 )
             )
+        splits_by_claim: dict[UUID, CategorySplitRecord] = {}
+        stored_categories = session.execute(
+            select(ClaimCategory, Category)
+            .join(Category, Category.id == ClaimCategory.category_id)
+            .where(ClaimCategory.claim_id.in_(claim_ids))
+        ).all()
+        for stored, category in stored_categories:
+            splits_by_claim[stored.claim_id] = CategorySplitRecord(
+                category_id=category.id,
+                category_name=category.name,
+                amount=Money(stored.amount, stored.currency),
+            )
         items: list[OwnerTransaction] = []
         for claim, account in rows:
             if (
@@ -394,7 +410,9 @@ class OwnerWorkspace:
                     authorized_amount=authorized,
                     effective_date=self._claim_effective_date(claim).isoformat(),
                     kind=kind,
-                    category_splits=(),
+                    category_splits=(
+                        (splits_by_claim[claim.id],) if claim.id in splits_by_claim else ()
+                    ),
                     reviews=tuple(reviews_by_claim[claim.id]),
                 )
             )

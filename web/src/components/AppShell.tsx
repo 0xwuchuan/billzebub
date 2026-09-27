@@ -38,12 +38,10 @@ type AppShellProps = {
   selectedAccountId: string;
   theme: Theme;
   error: string | null;
-  detailOpen?: boolean;
   onNavigate: (page: RoutePage) => void;
   onSelectAccount: (accountId: string) => void;
   onToggleTheme: () => void;
   children: ReactNode;
-  detail?: ReactNode;
 };
 
 export function AppShell({
@@ -55,12 +53,10 @@ export function AppShell({
   selectedAccountId,
   theme,
   error,
-  detailOpen = false,
   onNavigate,
   onSelectAccount,
   onToggleTheme,
   children,
-  detail,
 }: AppShellProps) {
   const [navOpen, setNavOpen] = useState(false);
   const titleId = useId();
@@ -115,7 +111,7 @@ export function AppShell({
   }
 
   return (
-    <div className={`app${detailOpen ? " has-detail" : ""}`}>
+    <div className="app">
       <a className="sr-only" href="#stage">
         Skip to content
       </a>
@@ -166,7 +162,6 @@ export function AppShell({
           {children}
         </main>
       </div>
-      {detail}
       {navOpen ? (
         <>
           <button
