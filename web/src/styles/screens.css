@@ -693,6 +693,9 @@ button.cat-row:hover {
 
 .settings-workspace h2 {
   margin-top: var(--bz-space-1);
+  font-size: var(--bz-text-title);
+  font-weight: 600;
+  letter-spacing: -0.03em;
 }
 
 .settings-facts {
@@ -716,6 +719,7 @@ button.cat-row:hover {
 .settings-facts dd {
   margin: 0;
   font-size: var(--bz-text-sm);
+  font-weight: 500;
 }
 
 .account-summary,
@@ -762,10 +766,6 @@ button.cat-row:hover {
   text-align: right;
 }
 
-.settings-chips {
-  margin-bottom: 0;
-}
-
 .settings-dialog {
   display: flex;
   flex-direction: column;
@@ -774,11 +774,12 @@ button.cat-row:hover {
   margin: auto;
   padding: 0;
   overflow: hidden;
-  border: 1px solid var(--bz-border-strong);
+  border: 1px solid var(--bz-border);
   border-radius: var(--bz-radius-lg);
-  background: var(--bz-surface);
+  background: var(--bz-bg-card);
   color: var(--bz-text);
   box-shadow: var(--bz-shadow);
+  outline: none;
 }
 
 .settings-dialog::backdrop {
@@ -811,6 +812,58 @@ button.cat-row:hover {
   max-height: min(36rem, calc(100dvh - 8.5rem));
   overflow-y: auto;
   padding: var(--bz-space-5);
+}
+
+.settings-dialog .field,
+.settings-dialog .select {
+  border-color: var(--bz-border);
+  background-color: var(--bz-bg-elevated);
+  color: var(--bz-text);
+}
+
+.settings-dialog .field::placeholder {
+  color: var(--bz-muted);
+  opacity: 1;
+}
+
+.settings-dialog .settings-help {
+  color: var(--bz-muted);
+}
+
+.settings-dialog .btn-primary {
+  justify-self: end;
+  border-color: var(--bz-action);
+  background: var(--bz-action);
+  color: var(--bz-on-accent);
+}
+
+.settings-dialog .btn-primary:hover {
+  border-color: var(--bz-action);
+  background: color-mix(in srgb, var(--bz-action) 86%, var(--bz-text));
+  color: var(--bz-on-accent);
+}
+
+.settings-taxonomy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--bz-space-2);
+}
+
+.settings-taxonomy-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--bz-space-1);
+  max-width: 100%;
+  min-width: 0;
+}
+
+.settings-taxonomy-item .muted {
+  font-size: var(--bz-text-xs);
+}
+
+.settings-taxonomy .cat-chip {
+  max-width: 16rem;
 }
 
 .imports-stage {
@@ -846,9 +899,14 @@ button.cat-row:hover {
   border-radius: var(--bz-radius-md);
 }
 
-.coverage-row.is-selected {
-  border-color: var(--bz-border-strong);
-  background: var(--bz-surface-hover);
+.coverage-row:hover {
+  background: color-mix(in srgb, var(--bz-text) 6%, var(--bz-bg-card));
+}
+
+.coverage-row.is-selected,
+.coverage-row.is-selected:hover {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--bz-text) 12%, var(--bz-bg-card));
 }
 
 .coverage-account {
@@ -863,7 +921,7 @@ button.cat-row:hover {
 
 .coverage-account:hover,
 .coverage-account[aria-pressed="true"] {
-  color: var(--bz-accent);
+  color: var(--bz-text);
 }
 
 .coverage-months {
@@ -879,10 +937,10 @@ button.cat-row:hover {
   gap: 0.1rem;
   min-width: 4.25rem;
   padding: 0.4rem 0.65rem;
-  border: 1px solid var(--bz-border);
+  border: 1px solid transparent;
   border-radius: var(--bz-radius-md);
-  background: transparent;
-  color: inherit;
+  background: color-mix(in srgb, var(--bz-text) 6%, var(--bz-bg-card));
+  color: var(--bz-muted);
   font-size: var(--bz-text-sm);
   line-height: 1.2;
 }
@@ -891,38 +949,123 @@ button.coverage-chip {
   cursor: pointer;
 }
 
-button.coverage-chip:hover {
-  background: var(--bz-surface-hover);
-}
-
 .coverage-status {
-  color: var(--bz-muted);
   font-size: var(--bz-text-xs);
   text-transform: lowercase;
 }
 
 .coverage-chip.is-present {
-  border-color: color-mix(in srgb, var(--bz-positive) 40%, var(--bz-border));
-}
-
-.coverage-chip.is-present .coverage-status {
-  color: var(--bz-positive);
+  --coverage-tone: var(--bz-confirmed);
 }
 
 .coverage-chip.is-partial {
-  border-color: color-mix(in srgb, var(--bz-provisional) 40%, var(--bz-border));
-}
-
-.coverage-chip.is-partial .coverage-status {
-  color: var(--bz-provisional);
+  --coverage-tone: var(--bz-provisional);
 }
 
 .coverage-chip.is-missing {
-  border-color: color-mix(in srgb, var(--bz-danger) 45%, var(--bz-border));
+  --coverage-tone: var(--bz-blocking);
 }
 
+.coverage-chip.is-present,
+.coverage-chip.is-partial,
+.coverage-chip.is-missing {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--coverage-tone) 16%, var(--bz-bg-card));
+  color: var(--coverage-tone);
+}
+
+.coverage-chip.is-present .coverage-status,
+.coverage-chip.is-partial .coverage-status,
 .coverage-chip.is-missing .coverage-status {
-  color: var(--bz-danger);
+  color: var(--coverage-tone);
+}
+
+button.coverage-chip.is-present:hover,
+button.coverage-chip.is-partial:hover,
+button.coverage-chip.is-missing:hover {
+  background: color-mix(in srgb, var(--coverage-tone) 24%, var(--bz-bg-card));
+}
+
+.imports-stage .panel-head h2 {
+  font-size: var(--bz-text-md);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.imports-stage .import-hero h2 {
+  margin-top: var(--bz-space-2);
+  font-size: var(--bz-text-title);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+.imports-stage .queue-item[aria-current="true"] {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--bz-text) 12%, var(--bz-bg-card));
+  box-shadow: none;
+}
+
+.imports-stage .queue-item.is-blocking {
+  background: color-mix(in srgb, var(--bz-blocking) 8%, transparent);
+  box-shadow: inset 2px 0 0 var(--bz-blocking);
+}
+
+.imports-stage .queue-item.is-blocking[aria-current="true"] {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--bz-blocking) 12%, var(--bz-bg-card));
+  box-shadow: inset 2px 0 0 var(--bz-blocking);
+}
+
+.imports-stage .queue-right {
+  display: grid;
+  justify-items: end;
+  gap: 0.15rem;
+}
+
+.panel-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--bz-space-2);
+}
+
+.panel-meta,
+.coverage-lede,
+.coverage-empty {
+  color: var(--bz-muted);
+  font-size: var(--bz-text-sm);
+}
+
+.coverage-lede {
+  margin-top: var(--bz-space-1);
+  max-width: 40rem;
+}
+
+.coverage-empty {
+  margin: 0;
+  padding: 0 var(--bz-space-5) var(--bz-space-5);
+}
+
+.chip.chip-quiet {
+  border-color: transparent;
+  background: transparent;
+  color: var(--bz-muted);
+  font-weight: 500;
+}
+
+.chip.chip-quiet:hover {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--bz-text) 6%, var(--bz-bg-elevated));
+  color: var(--bz-text);
+}
+
+.chip.chip-quiet[aria-pressed="true"],
+.chip.chip-quiet[aria-pressed="true"]:hover {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--bz-text) 12%, var(--bz-bg-elevated));
+  color: var(--bz-text);
+  font-weight: 600;
 }
 
 .import-summary {
@@ -930,13 +1073,13 @@ button.coverage-chip:hover {
 }
 
 .import-summary-value {
-  font-size: 1.45rem;
+  font-size: var(--bz-text-title);
   font-weight: 600;
-  letter-spacing: -0.035em;
+  letter-spacing: -0.03em;
 }
 
 .import-summary .is-blocking .import-summary-value {
-  color: var(--bz-danger);
+  color: var(--bz-blocking);
 }
 
 .import-details {
@@ -948,6 +1091,10 @@ button.coverage-chip:hover {
   color: var(--bz-muted);
   cursor: pointer;
   font-size: var(--bz-text-sm);
+}
+
+.import-details summary:hover {
+  color: var(--bz-text);
 }
 
 .import-details[open] summary {
@@ -1484,6 +1631,28 @@ button.coverage-chip:hover {
   border-top: 0;
 }
 
+.settings-appearance .muted {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: var(--bz-text-sm);
+}
+
+.settings-appearance .theme-toggle {
+  border-color: transparent;
+  background: transparent;
+  color: var(--bz-muted);
+}
+
+.settings-appearance .theme-toggle:hover {
+  border-color: transparent;
+  background: var(--bz-nav-hover);
+  color: var(--bz-text);
+}
+
+.settings-theme-phone {
+  display: none;
+}
+
 .spend-hero {
   display: flex;
   flex-wrap: wrap;
@@ -1751,6 +1920,18 @@ button.coverage-chip:hover {
   .coverage-chip {
     min-height: 2.75rem;
     padding: 0.35rem 0.65rem;
+  }
+
+  .coverage-account {
+    min-height: 2.75rem;
+  }
+
+  .settings-appearance .theme-toggle {
+    display: none;
+  }
+
+  .settings-theme-phone {
+    display: inline;
   }
 
   .filters .field,

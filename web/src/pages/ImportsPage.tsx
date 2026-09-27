@@ -58,20 +58,10 @@ export function ImportsPage({
         <section className="card queue-pane" aria-label="Import history">
           <div className="panel-head">
             <h2>Extractions</h2>
-            <span
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "0.5rem",
-                flexWrap: "wrap",
-                justifyContent: "flex-end",
-              }}
-            >
-              <span className="muted" style={{ fontSize: "var(--bz-text-sm)" }}>
-                {visible.length} recorded
-              </span>
+            <span className="panel-actions">
+              <span className="panel-meta">{visible.length} recorded</span>
               <button
-                className="chip"
+                className="chip chip-quiet"
                 type="button"
                 aria-pressed={includeDismissed}
                 onClick={() => {
@@ -190,23 +180,13 @@ function ImportDetail({
   return (
     <>
       <div className="panel-head">
-        <div>
+        <div className="import-hero">
           <Badge tone={dismissed ? "count" : failed ? "blocking" : "confirmed"}>
             {dismissed ? "dismissed" : item.status}
           </Badge>
-          <h2 style={{ marginTop: 8 }}>
-            {wallet ? "Apple Wallet" : adapterLabel(item)}
-          </h2>
+          <h2>{wallet ? "Apple Wallet" : adapterLabel(item)}</h2>
         </div>
-        <span
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "0.5rem",
-            flexWrap: "wrap",
-            justifyContent: "flex-end",
-          }}
-        >
+        <span className="panel-actions">
           {failed && !dismissed ? (
             <Button
               variant="ghost"

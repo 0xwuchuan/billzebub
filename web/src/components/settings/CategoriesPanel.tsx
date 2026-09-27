@@ -3,6 +3,7 @@ import { useState, type FormEvent } from "react";
 import type { Category } from "../../api";
 import { SETUP_CATEGORIES } from "../../lib/accounts";
 import { Button } from "../ui/Button";
+import { CategoryChip } from "../ui/CategoryChip";
 
 export function CategoriesPanel({
   categories,
@@ -42,15 +43,23 @@ export function CategoriesPanel({
   return (
     <div className="stack">
       {mode !== "form" ? (
-        <div className="filters settings-chips">
-          {ownerCategories.map((category) => (
-            <span className="chip" aria-pressed="true" key={category.id}>
-              {category.parent_id === null
-                ? category.name
-                : `${parents.find((parent) => parent.id === category.parent_id)?.name ?? ""} / ${category.name}`}
-            </span>
-          ))}
-          <span className="chip">Uncategorized</span>
+        <div className="settings-taxonomy">
+          {ownerCategories.map((category) => {
+            const parent =
+              category.parent_id === null
+                ? null
+                : (parents.find((item) => item.id === category.parent_id)
+                    ?.name ?? null);
+            return (
+              <span className="settings-taxonomy-item" key={category.id}>
+                {parent !== null ? (
+                  <span className="muted">{parent} /</span>
+                ) : null}
+                <CategoryChip name={category.name} />
+              </span>
+            );
+          })}
+          <CategoryChip name="Uncategorized" />
         </div>
       ) : null}
       {mode !== "list" ? (
