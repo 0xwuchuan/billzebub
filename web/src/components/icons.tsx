@@ -67,6 +67,28 @@ export function TransactionsIcon() {
   );
 }
 
+export function RecurringsIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+    >
+      <rect x="2.6" y="3.35" width="10.8" height="10" rx="1.2" />
+      <path d="M2.6 6.35h10.8" />
+      <path d="M5.35 2.4v2.15M10.65 2.4v2.15" />
+      <path d="M5.7 9.55h3.15" />
+      <path d="M7.7 8.2 9.15 9.55 7.7 10.9" />
+    </svg>
+  );
+}
+
 export function ImportsIcon() {
   return (
     <svg

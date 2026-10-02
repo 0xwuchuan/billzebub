@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { SETUP_STORAGE_KEY } from "./lib/setup";
 import { formatMoney } from "./lib/money";
-import { hashFor, parseHash } from "./lib/route";
+import { hashFor, parseHash, titleFor } from "./lib/route";
 import { isoDate } from "./lib/labels";
 import {
   defaultSetupState,
@@ -920,6 +920,20 @@ describe("App", () => {
           return json({ items: [] });
         }
         if (
+          url === "/api/v1/recurrings/proposed" ||
+          url === "/api/v1/recurrings" ||
+          url.startsWith("/api/v1/recurrings?")
+        ) {
+          return json({ items: [] });
+        }
+        if (url.startsWith("/api/v1/recurrings/summary")) {
+          return json({
+            month: "2026-09",
+            total: { amount: "0.00", currency: "SGD" },
+            upcoming: [],
+          });
+        }
+        if (
           url === `/api/v1/imports/${failedImport.id}/dismiss` &&
           init?.method === "POST"
         ) {
@@ -1291,6 +1305,125 @@ describe("formatMoney", () => {
   });
 });
 
+describe("Recurrings navigation", () => {
+  it("places Recurrings after Transactions and badges proposed count only", async () => {
+    seedOnboarded();
+    window.location.hash = "#/overview";
+    vi.stubGlobal(
+      "fetch",
+      mockWorkspace({
+        transactions: [],
+        reviews: [],
+        categories: [
+          {
+            id: "00000000-0000-0000-0000-000000000099",
+            name: "Dining",
+            parent_id: null,
+            active: true,
+          },
+        ],
+        accounts: [configuredAccount()],
+        proposed: [
+          {
+            id: "series-1",
+            counterparty: "Synthetic Stream",
+            amount: { amount: "16.98", currency: "SGD" },
+            amount_min: null,
+            amount_max: null,
+            cadence: "monthly",
+            interval_days: null,
+            next_expected_date: "2026-10-04",
+            category_id: null,
+            primary_account_id: null,
+            status: "proposed",
+            source: "detected",
+            confidence: "0.9",
+            last_matched_tx_id: null,
+            last_amount: { amount: "16.98", currency: "SGD" },
+            linked_count: 3,
+            missed: false,
+            notes: null,
+            cluster_key: "stream",
+          },
+        ],
+        summary: {
+          month: "2026-10",
+          total: { amount: "16.98", currency: "SGD" },
+          upcoming: [],
+        },
+      }),
+    );
+
+    render(<App />);
+
+    const rail = await screen.findByRole("complementary", {
+      name: "Daily navigation",
+    });
+    const labels = [...rail.querySelectorAll(".rail-group .rail-item")].map(
+      (item) => item.getAttribute("aria-label"),
+    );
+    expect(labels).toEqual([
+      "Overview",
+      "Spending",
+      "Review",
+      "Transactions",
+      "Recurrings",
+      "Imports",
+    ]);
+    const recurrings = within(rail).getByRole("button", { name: "Recurrings" });
+    expect(recurrings.querySelector(".badge")).toHaveTextContent("1");
+
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    const drawer = await screen.findByRole("navigation", {
+      name: "Navigation",
+    });
+    const drawerLabels = [
+      ...drawer.querySelectorAll(".rail-group .rail-item"),
+    ].map((item) => item.getAttribute("aria-label"));
+    expect(drawerLabels).toEqual(labels);
+    expect(
+      within(drawer)
+        .getByRole("button", { name: "Recurrings" })
+        .querySelector(".badge"),
+    ).toHaveTextContent("1");
+    expect(await screen.findByText("1 to review")).toBeInTheDocument();
+    expect(screen.getByText("SGD 16.98")).toBeInTheDocument();
+  });
+
+  it("omits the Recurrings badge when nothing is proposed", async () => {
+    seedOnboarded();
+    window.location.hash = "#/overview";
+    vi.stubGlobal(
+      "fetch",
+      mockWorkspace({
+        transactions: [],
+        reviews: [],
+        categories: [
+          {
+            id: "00000000-0000-0000-0000-000000000099",
+            name: "Dining",
+            parent_id: null,
+            active: true,
+          },
+        ],
+        accounts: [configuredAccount()],
+      }),
+    );
+
+    render(<App />);
+
+    const rail = await screen.findByRole("complementary", {
+      name: "Daily navigation",
+    });
+    expect(
+      within(rail)
+        .getByRole("button", { name: "Recurrings" })
+        .querySelector(".badge"),
+    ).toBeNull();
+    expect(screen.queryByText(/to review/)).not.toBeInTheDocument();
+  });
+});
+
 describe("parseHash", () => {
   it("defaults an empty hash to Onboarding before gates and Overview after", () => {
     expect(parseHash("", false).page).toBe("onboarding");
@@ -1309,6 +1442,7 @@ describe("parseHash", () => {
         drawerId: null,
         importId: null,
         accountId: null,
+        recurringTab: "",
       }),
     ).toBe("#/review/blocking");
     expect(hashFor({ ...parseHash("#/settings", true) })).toBe("#/settings");
@@ -1322,6 +1456,7 @@ describe("parseHash", () => {
       drawerId: null,
       importId: "00000000-0000-0000-0000-000000000099",
       accountId: null,
+      recurringTab: "",
     });
     expect(
       parseHash("#/imports?account=00000000-0000-0000-0000-000000000021", true),
@@ -1332,6 +1467,7 @@ describe("parseHash", () => {
       drawerId: null,
       importId: null,
       accountId: "00000000-0000-0000-0000-000000000021",
+      recurringTab: "",
     });
     expect(
       hashFor({
@@ -1341,8 +1477,20 @@ describe("parseHash", () => {
         drawerId: null,
         importId: null,
         accountId: "00000000-0000-0000-0000-000000000021",
+        recurringTab: "",
       }),
     ).toBe("#/imports?account=00000000-0000-0000-0000-000000000021");
+    expect(parseHash("#/recurrings", true)).toMatchObject({
+      page: "recurrings",
+      recurringTab: "",
+    });
+    expect(parseHash("#/recurrings/proposed", true).recurringTab).toBe(
+      "proposed",
+    );
+    expect(hashFor(parseHash("#/recurrings/active", true))).toBe(
+      "#/recurrings/active",
+    );
+    expect(titleFor("recurrings")).toBe("Recurrings");
   });
 });
 
@@ -1415,6 +1563,10 @@ function mockWorkspace(input: {
   adapters?: unknown[];
   imports?: unknown[];
   coverage?: unknown;
+  proposed?: unknown[];
+  active?: unknown[];
+  paused?: unknown[];
+  summary?: unknown;
   identity?: { login: string; name: string };
 }) {
   return vi.fn(async (raw: RequestInfo | URL, init?: RequestInit) => {
@@ -1509,6 +1661,43 @@ function mockWorkspace(input: {
     }
     if (url === "/api/v1/tokens") {
       return json({ items: input.tokens ?? [] });
+    }
+    if (url === "/api/v1/recurrings/proposed") {
+      return json({ items: input.proposed ?? [] });
+    }
+    if (url.startsWith("/api/v1/recurrings/summary")) {
+      return json(
+        input.summary ?? {
+          month: "2026-09",
+          total: { amount: "0.00", currency: "SGD" },
+          upcoming: [],
+        },
+      );
+    }
+    if (
+      url.startsWith("/api/v1/recurrings/") &&
+      url.endsWith("/dismiss") &&
+      init?.method === "POST"
+    ) {
+      return json({ id: "dismissed", status: "dismissed" });
+    }
+    if (url.startsWith("/api/v1/recurrings/") && init?.method === "PATCH") {
+      return json({ id: "updated", status: "active" });
+    }
+    if (url === "/api/v1/recurrings" && init?.method === "POST") {
+      return json({ id: "created", status: "active" }, 201);
+    }
+    if (url === "/api/v1/recurrings" || url.startsWith("/api/v1/recurrings?")) {
+      const status = new URL(url, "http://billzebub.local").searchParams.get(
+        "status",
+      );
+      const items =
+        status === "paused"
+          ? (input.paused ?? [])
+          : status === "active"
+            ? (input.active ?? [])
+            : [];
+      return json({ items });
     }
     if (url.endsWith("/category") && init?.method === "PUT") {
       const transactionId = url.slice(

@@ -1,6 +1,6 @@
 import { useId } from "react";
 
-import type { Transaction } from "../api";
+import type { RecurringSummary, Transaction } from "../api";
 import { CategoryRankList } from "../components/CategoryRankList";
 import {
   DitherBarChart,
@@ -11,6 +11,7 @@ import { useEntrance } from "../hooks/useEntrance";
 import { CONFIRMATION_SERIES } from "../lib/chartSeries";
 import { categoryColor, categoryPrimary } from "../lib/labels";
 import { centsToMoney, formatUnsigned } from "../lib/money";
+import { recurringAmountLabel, relativeDueLabel } from "../lib/recurrings";
 import {
   categoryTotals,
   monthTotals,
@@ -32,6 +33,9 @@ export function OverviewPage({
   onOpenReview,
   onOpenTransactions,
   onFilterCategory,
+  summary,
+  proposedCount,
+  onOpenRecurrings,
 }: {
   transactions: Transaction[];
   reviewCount: number;
@@ -43,12 +47,16 @@ export function OverviewPage({
   onOpenReview: () => void;
   onOpenTransactions: () => void;
   onFilterCategory: (name: string) => void;
+  summary: RecurringSummary | null;
+  proposedCount: number;
+  onOpenRecurrings: () => void;
 }) {
   const fresh = useEntrance("overview");
   const monthId = useId();
   const attentionId = useId();
   const categoriesId = useId();
   const recentId = useId();
+  const recurringId = useId();
   const period = reportingPeriod(transactions, today);
   const totals = monthTotals(transactions, period);
   const categories = categoryTotals(transactions, period);
@@ -146,6 +154,59 @@ export function OverviewPage({
           </button>
         </section>
       </div>
+
+      {summary !== null ? (
+        <section
+          className="card dash-card bento-recurring"
+          aria-labelledby={recurringId}
+        >
+          <button
+            className="recurring-strip"
+            type="button"
+            aria-label={
+              proposedCount > 0
+                ? `Recurrings, ${formatUnsigned(summary.total)} this month, ${proposedCount} to review`
+                : `Recurrings, ${formatUnsigned(summary.total)} this month`
+            }
+            onClick={onOpenRecurrings}
+          >
+            <span className="recurring-strip-head">
+              <span id={recurringId} className="eyebrow">
+                Recurring
+              </span>
+              <span className="bento-link">Recurrings →</span>
+            </span>
+            <span className="recurring-strip-line">
+              <span className="recurring-strip-figure">
+                <span className="recurring-strip-total amount">
+                  {formatUnsigned(summary.total)}
+                </span>
+                <span className="recurring-meta">this month</span>
+              </span>
+              <span className="recurring-due-list">
+                {summary.upcoming.slice(0, 3).map((series) => (
+                  <span className="recurring-due" key={series.id}>
+                    <span className="recurring-due-name">
+                      {series.counterparty}
+                    </span>
+                    <span className="recurring-meta">
+                      {relativeDueLabel(series.next_expected_date, today)}
+                    </span>
+                    <span className="amount">
+                      {recurringAmountLabel(series.amount)}
+                    </span>
+                  </span>
+                ))}
+              </span>
+            </span>
+            {proposedCount > 0 ? (
+              <span className="recurring-review-cue">
+                {proposedCount} to review
+              </span>
+            ) : null}
+          </button>
+        </section>
+      ) : null}
 
       <div className="bento-bottom">
         <article

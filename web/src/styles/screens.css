@@ -1656,6 +1656,331 @@ button.coverage-chip.is-missing:hover {
   color: var(--bz-text);
 }
 
+.bento-recurring {
+  padding: 0;
+}
+
+.recurring-strip {
+  display: grid;
+  gap: var(--bz-space-3);
+  width: 100%;
+  margin: 0;
+  padding: var(--bz-space-4) var(--bz-space-5);
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.recurring-strip:hover {
+  background: color-mix(in srgb, var(--bz-text) 3%, transparent);
+}
+
+.recurring-strip:hover .bento-link {
+  color: var(--bz-text);
+}
+
+.recurring-strip-head,
+.recurring-strip-line,
+.recurring-strip-figure {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--bz-space-2) var(--bz-space-3);
+  min-width: 0;
+}
+
+.recurring-strip-line {
+  align-items: center;
+  justify-content: space-between;
+}
+
+.recurring-strip-head {
+  justify-content: space-between;
+}
+
+.recurring-strip-total {
+  font-size: var(--bz-text-title);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+.recurring-due-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bz-space-2);
+  min-width: 0;
+}
+
+.recurring-due {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  max-width: 100%;
+  min-height: 1.6rem;
+  padding: 0.1rem 0.55rem;
+  border: 1px solid var(--bz-border);
+  border-radius: var(--bz-radius-pill);
+  font-size: var(--bz-text-xs);
+}
+
+.recurring-due-name {
+  overflow: hidden;
+  max-width: 9rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recurring-review-cue {
+  color: var(--bz-attention);
+  font-size: var(--bz-text-sm);
+}
+
+.recurring-page {
+  display: grid;
+  align-content: start;
+  gap: var(--bz-space-4);
+  min-width: 0;
+  padding-bottom: var(--bz-space-6);
+}
+
+.recurring-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bz-space-3);
+}
+
+.recurring-toolbar .filters {
+  margin-bottom: 0;
+}
+
+.recurring-list {
+  display: grid;
+  gap: var(--bz-space-2);
+  min-width: 0;
+}
+
+.recurring-group {
+  display: grid;
+  gap: var(--bz-space-2);
+}
+
+.recurring-group-label {
+  margin: var(--bz-space-2) 0 0;
+  color: var(--bz-muted);
+  font-size: var(--bz-text-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.recurring-row {
+  display: grid;
+  gap: 0.35rem var(--bz-space-3);
+  min-width: 0;
+  padding: var(--bz-space-3) var(--bz-space-4);
+  border: 1px solid var(--bz-border);
+  border-radius: var(--bz-radius-card);
+  background: var(--bz-surface);
+}
+
+.recurring-row[aria-current="true"] {
+  background: color-mix(in srgb, var(--bz-text) 4%, var(--bz-surface));
+}
+
+.recurring-row-top,
+.recurring-row-mid {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bz-space-2) var(--bz-space-3);
+  min-width: 0;
+}
+
+.recurring-name {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recurring-amount {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.recurring-meta,
+.recurring-confidence {
+  color: var(--bz-muted);
+  font-size: var(--bz-text-xs);
+}
+
+.recurring-miss {
+  margin-left: 0.45rem;
+  color: var(--bz-status-provisional);
+  font-size: var(--bz-text-xs);
+  font-weight: 600;
+}
+
+.recurring-actions {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--bz-space-2);
+}
+
+.recurring-row.is-active {
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) auto;
+  grid-template-areas:
+    "name when amount"
+    "tax account actions";
+  align-items: center;
+}
+
+.recurring-row.is-active .recurring-name {
+  grid-area: name;
+}
+
+.recurring-row.is-active .recurring-when {
+  grid-area: when;
+  margin: 0;
+}
+
+.recurring-row.is-active .recurring-amount {
+  grid-area: amount;
+  justify-self: end;
+}
+
+.recurring-row.is-active .recurring-tax {
+  grid-area: tax;
+  min-width: 0;
+}
+
+.recurring-row.is-active .recurring-account {
+  grid-area: account;
+  margin: 0;
+}
+
+.recurring-row.is-active .recurring-actions {
+  grid-area: actions;
+}
+
+.row-menu-panel {
+  position: absolute;
+  z-index: 4;
+  top: calc(100% + var(--bz-space-1));
+  right: 0;
+  display: grid;
+  min-width: 8.5rem;
+  padding: var(--bz-space-1);
+  border: 1px solid var(--bz-border);
+  border-radius: var(--bz-radius-card);
+  background: var(--bz-bg-card);
+  box-shadow: var(--bz-shadow);
+}
+
+.row-menu-panel button {
+  padding: 0.4rem 0.65rem;
+  border: 0;
+  border-radius: var(--bz-radius-control);
+  background: transparent;
+  color: var(--bz-text);
+  font-size: var(--bz-text-sm);
+  text-align: left;
+}
+
+.row-menu-panel button:hover {
+  background: var(--bz-nav-hover);
+}
+
+.paused-fold {
+  display: grid;
+  gap: var(--bz-space-2);
+}
+
+.paused-fold summary {
+  width: max-content;
+  color: var(--bz-muted);
+  font-size: var(--bz-text-sm);
+  cursor: pointer;
+}
+
+.text-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--bz-muted);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+.text-link:hover {
+  color: var(--bz-text);
+}
+
+.btn-quiet-danger:hover {
+  color: var(--bz-danger);
+  background: color-mix(in srgb, var(--bz-danger) 8%, var(--bz-surface));
+}
+
+.recurring-dialog form {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: inherit;
+}
+
+.recurring-dialog-amount {
+  margin-top: var(--bz-space-2);
+  font-weight: 600;
+}
+
+.recurring-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--bz-space-2);
+}
+
+.cat-choice {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.cat-choice legend {
+  margin-bottom: var(--bz-space-2);
+  padding: 0;
+}
+
+.cat-choice-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bz-space-2);
+}
+
+.cat-choice-option {
+  padding: 0.1rem;
+  border: 1px solid transparent;
+  border-radius: var(--bz-radius-pill);
+  background: transparent;
+}
+
+.cat-choice-option.is-selected,
+.cat-choice-option[aria-pressed="true"] {
+  border-color: var(--bz-border-strong);
+  background: color-mix(in srgb, var(--bz-text) 6%, var(--bz-bg-card));
+}
+
 .bento-cat-body {
   display: grid;
   grid-template-columns: 5.5rem minmax(0, 1fr);
@@ -2320,6 +2645,20 @@ button.coverage-chip.is-missing:hover {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .recurring-row.is-active {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "name amount"
+      "when when"
+      "tax actions"
+      "account account";
+  }
+
+  .recurring-strip,
+  .recurring-row {
+    min-width: 0;
+  }
+
   .tx-row.is-compact .tx-row-main {
     display: flex;
     align-items: center;
@@ -2373,6 +2712,16 @@ button.coverage-chip.is-missing:hover {
   .coverage-toggle,
   .coverage-account {
     min-height: 2.75rem;
+  }
+
+  .recurring-dialog {
+    width: 100%;
+    max-width: 100%;
+    max-height: min(92dvh, 44rem);
+    margin-top: auto;
+    margin-bottom: 0;
+    border-bottom: 0;
+    border-radius: var(--bz-radius-lg) var(--bz-radius-lg) 0 0;
   }
 
   .settings-appearance .theme-toggle {

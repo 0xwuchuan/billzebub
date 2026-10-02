@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { Transaction } from "./api";
 import { AppShell } from "./components/AppShell";
 import { TransactionDrawer } from "./components/TransactionDrawer";
+import { useRecurrings } from "./hooks/useRecurrings";
 import { useRoute } from "./hooks/useRoute";
 import { useSetup } from "./hooks/useSetup";
 import { useTheme } from "./hooks/useTheme";
@@ -18,6 +19,7 @@ import { gatesMet } from "./lib/setup";
 import { ImportsPage } from "./pages/ImportsPage";
 import { OnboardingPage } from "./pages/OnboardingPage";
 import { OverviewPage } from "./pages/OverviewPage";
+import { RecurringsPage } from "./pages/RecurringsPage";
 import { ReviewPage } from "./pages/ReviewPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { SpendingPage } from "./pages/SpendingPage";
@@ -37,6 +39,7 @@ export function App() {
   const workspaceReady = !workspace.loading;
   const onboarded = setup.onboarded || (workspaceReady && configured);
   const { route, go } = useRoute(onboarded);
+  const recurrings = useRecurrings();
   const { theme, toggleTheme } = useTheme();
   const [categoryDraft, setCategoryDraft] = useState<Record<string, string>>(
     {},
@@ -100,6 +103,7 @@ export function App() {
       drawerId: null,
       importId: null,
       accountId: null,
+      recurringTab: "",
     });
   }
 
@@ -111,6 +115,7 @@ export function App() {
       drawerId: null,
       importId: null,
       accountId: null,
+      recurringTab: "",
     });
   }
 
@@ -122,6 +127,7 @@ export function App() {
       drawerId: id,
       importId: null,
       accountId: null,
+      recurringTab: "",
     });
   }
 
@@ -133,6 +139,15 @@ export function App() {
       drawerId: null,
       importId: id,
       accountId: route.accountId,
+      recurringTab: "",
+    });
+  }
+
+  function openRecurrings(tab: "proposed" | "active") {
+    go({
+      page: "recurrings",
+      ...emptyRoute,
+      recurringTab: tab,
     });
   }
 
@@ -226,6 +241,7 @@ export function App() {
         periodLabel={monthYearLabel(isoDate(today))}
         reviewCount={workspace.workspace.reviews.length}
         reviewBlocking={blockingCount > 0}
+        proposedCount={recurrings.proposed.length}
         accounts={workspace.workspace.accounts}
         selectedAccountId={listAccount}
         theme={theme}
@@ -265,6 +281,13 @@ export function App() {
             }}
             onFilterCategory={(name) => {
               openTransactions("confirmed", name);
+            }}
+            summary={recurrings.summary}
+            proposedCount={recurrings.proposed.length}
+            onOpenRecurrings={() => {
+              openRecurrings(
+                recurrings.proposed.length > 0 ? "proposed" : "active",
+              );
             }}
           />
         ) : null}
@@ -348,6 +371,32 @@ export function App() {
             }}
           />
         ) : null}
+        {route.page === "recurrings" ? (
+          <RecurringsPage
+            proposed={recurrings.proposed}
+            active={recurrings.active}
+            paused={recurrings.paused}
+            categories={ownerCategories}
+            accounts={workspace.workspace.accounts.map((account) => ({
+              id: account.id,
+              name: account.display_name,
+              currency: account.default_currency,
+            }))}
+            tab={route.recurringTab}
+            loading={recurrings.loading}
+            saving={recurrings.saving}
+            error={recurrings.error}
+            today={today}
+            onTab={(next) => {
+              openRecurrings(next);
+            }}
+            onConfirm={recurrings.confirm}
+            onDismiss={recurrings.dismiss}
+            onUpdate={recurrings.update}
+            onCreate={recurrings.create}
+            onNotice={setToast}
+          />
+        ) : null}
         {route.page === "transactions" ? (
           <TransactionsPage
             transactions={workspace.workspace.transactions.items}
@@ -372,6 +421,7 @@ export function App() {
                 drawerId: null,
                 importId: null,
                 accountId: null,
+                recurringTab: "",
               });
             }}
             onCategory={setListCategory}

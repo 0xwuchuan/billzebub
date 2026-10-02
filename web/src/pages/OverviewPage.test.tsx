@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import type { Transaction } from "../api";
+import type { RecurringSummary, Transaction } from "../api";
 import { OverviewPage } from "./OverviewPage";
 
 const today = new Date(2026, 8, 15);
@@ -53,13 +53,68 @@ const transactions = [
   expense("tx-7", "Synthetic Wallet Cafe", 800, "Dining", 15, true),
 ];
 
-function renderOverview(reviewCount = 3, blockingCount = 1) {
+const summary: RecurringSummary = {
+  month: "2026-09",
+  total: { amount: "86.40", currency: "SGD" },
+  upcoming: [
+    {
+      id: "series-1",
+      counterparty: "Synthetic Stream",
+      amount: { amount: "16.98", currency: "SGD" },
+      amount_min: null,
+      amount_max: null,
+      cadence: "monthly",
+      interval_days: null,
+      next_expected_date: "2026-09-16",
+      category_id: null,
+      primary_account_id: null,
+      status: "active",
+      source: "detected",
+      confidence: "0.9",
+      last_matched_tx_id: null,
+      last_amount: { amount: "16.98", currency: "SGD" },
+      linked_count: 2,
+      missed: false,
+      notes: null,
+      cluster_key: "stream",
+    },
+    {
+      id: "series-2",
+      counterparty: "Synthetic Power",
+      amount: { amount: "42.00", currency: "SGD" },
+      amount_min: null,
+      amount_max: null,
+      cadence: "monthly",
+      interval_days: null,
+      next_expected_date: "2026-09-20",
+      category_id: null,
+      primary_account_id: null,
+      status: "active",
+      source: "manual",
+      confidence: null,
+      last_matched_tx_id: null,
+      last_amount: { amount: "42.00", currency: "SGD" },
+      linked_count: 0,
+      missed: false,
+      notes: null,
+      cluster_key: "power",
+    },
+  ],
+};
+
+function renderOverview(
+  reviewCount = 3,
+  blockingCount = 1,
+  recurring: RecurringSummary | null = null,
+  proposedCount = 0,
+) {
   const onOpenTransaction = vi.fn();
   const onFilterConfirmed = vi.fn();
   const onFilterProvisional = vi.fn();
   const onOpenReview = vi.fn();
   const onOpenTransactions = vi.fn();
   const onFilterCategory = vi.fn();
+  const onOpenRecurrings = vi.fn();
   render(
     <OverviewPage
       transactions={transactions}
@@ -72,6 +127,9 @@ function renderOverview(reviewCount = 3, blockingCount = 1) {
       onOpenReview={onOpenReview}
       onOpenTransactions={onOpenTransactions}
       onFilterCategory={onFilterCategory}
+      summary={recurring}
+      proposedCount={proposedCount}
+      onOpenRecurrings={onOpenRecurrings}
     />,
   );
   return {
@@ -81,6 +139,7 @@ function renderOverview(reviewCount = 3, blockingCount = 1) {
     onOpenReview,
     onOpenTransactions,
     onFilterCategory,
+    onOpenRecurrings,
   };
 }
 
@@ -134,6 +193,23 @@ describe("Overview bento", () => {
     expect(actions.onOpenTransactions).toHaveBeenCalledOnce();
     expect(actions.onOpenTransaction).toHaveBeenCalledWith("tx-1");
     expect(actions.onFilterCategory).toHaveBeenCalledWith("Groceries");
+  });
+
+  it("adds a full-width recurring strip from the summary", () => {
+    const actions = renderOverview(0, 0, summary, 2);
+    const strip = document.querySelector(".bento-recurring");
+    expect(strip).not.toBeNull();
+    expect(strip).toHaveTextContent("Recurring");
+    expect(strip).toHaveTextContent("SGD 86.40");
+    expect(strip).toHaveTextContent("this month");
+    expect(strip).toHaveTextContent("Synthetic Stream");
+    expect(strip).toHaveTextContent("Tomorrow");
+    expect(strip).toHaveTextContent("−SGD 16.98");
+    expect(strip).toHaveTextContent("2 to review");
+    expect(strip).toHaveTextContent("Recurrings →");
+    expect(strip?.querySelector(".cat-chip")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Recurrings/ }));
+    expect(actions.onOpenRecurrings).toHaveBeenCalledOnce();
   });
 
   it("keeps a clear Attention queue calm", () => {
