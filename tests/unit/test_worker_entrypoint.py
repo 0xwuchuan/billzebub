@@ -5,7 +5,11 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from billzebub.entrypoints.worker import JobEnqueuer, worker_handlers
+from billzebub.entrypoints.worker import (
+    JobEnqueuer,
+    enqueue_scheduled_catch_up,
+    worker_handlers,
+)
 from billzebub.jev import JevError
 from billzebub.jev_categorizer import (
     CATEGORIZE_CLAIM_JOB,
@@ -19,6 +23,10 @@ from billzebub.jev_categorizer import (
 )
 from billzebub.jobs import EnqueuedJob
 from billzebub.reconciliation import ReconciliationConfirmation, ReconciliationRun
+from billzebub.recurrings import (
+    DETECT_RECURRING_SERIES_JOB,
+    MATCH_RECURRING_TRANSACTION_JOB,
+)
 from billzebub.statement_extraction import ExtractionOutcome, ExtractionStatus
 from billzebub.worker import JobHandler, RetryableJobError, TerminalJobError
 
@@ -108,17 +116,31 @@ class FakeCategorizer:
         return len(self.pending) + len(self.pending_claims)
 
 
+class FakeRecurrings:
+    def __init__(self) -> None:
+        self.matched: list[UUID] = []
+        self.detected = 0
+
+    def match_transaction(self, transaction_id: UUID) -> None:
+        self.matched.append(transaction_id)
+
+    def detect(self) -> None:
+        self.detected += 1
+
+
 def _handlers(
     queue: FakeQueue,
     extraction: FakeExtraction | None = None,
     reconciliation: FakeReconciliation | None = None,
     categorizer: FakeCategorizer | None = None,
+    recurrings: FakeRecurrings | None = None,
 ) -> dict[str, JobHandler]:
     return worker_handlers(
         queue,
         extraction or FakeExtraction(ExtractionStatus.ACCEPTED),
         reconciliation or FakeReconciliation(),
         categorizer or FakeCategorizer(),
+        recurrings or FakeRecurrings(),
     )
 
 
@@ -206,7 +228,17 @@ def test_reconciliation_enqueues_categorize_jobs_for_confirmations() -> None:
             CATEGORIZE_TRANSACTION_JOB,
             {"transaction_id": str(transaction_id)},
             str(transaction_id),
-        )
+        ),
+        (
+            MATCH_RECURRING_TRANSACTION_JOB,
+            {"transaction_id": str(transaction_id)},
+            f"recurring-match:{transaction_id}",
+        ),
+        (
+            DETECT_RECURRING_SERIES_JOB,
+            {"run_key": f"reconcile:{account_id}"},
+            f"recurring-detect:reconcile:{account_id}",
+        ),
     ]
 
 
@@ -240,7 +272,17 @@ def test_matched_real_time_confirmation_uses_the_same_categorize_hook() -> None:
             CATEGORIZE_TRANSACTION_JOB,
             {"transaction_id": str(transaction_id)},
             str(transaction_id),
-        )
+        ),
+        (
+            MATCH_RECURRING_TRANSACTION_JOB,
+            {"transaction_id": str(transaction_id)},
+            f"recurring-match:{transaction_id}",
+        ),
+        (
+            DETECT_RECURRING_SERIES_JOB,
+            {"run_key": f"reconcile:{account_id}"},
+            f"recurring-detect:reconcile:{account_id}",
+        ),
     ]
 
 
@@ -330,6 +372,37 @@ def test_enqueue_catch_up_uses_run_date_dedupe() -> None:
     queue = FakeQueue()
     enqueue_jev_catch_up(queue, "2026-09-18")
     assert queue.enqueued == [(JEV_CATCH_UP_JOB, {"run_date": "2026-09-18"}, "2026-09-18")]
+
+
+def test_nightly_catch_up_also_enqueues_recurring_detection() -> None:
+    queue = FakeQueue()
+    enqueue_scheduled_catch_up(queue, None)
+    assert queue.enqueued == []
+
+    enqueue_scheduled_catch_up(queue, "2026-09-18")
+    assert queue.enqueued == [
+        (JEV_CATCH_UP_JOB, {"run_date": "2026-09-18"}, "2026-09-18"),
+        (
+            DETECT_RECURRING_SERIES_JOB,
+            {"run_key": "2026-09-18"},
+            "recurring-detect:2026-09-18",
+        ),
+    ]
+
+
+def test_recurring_handlers_match_and_detect() -> None:
+    queue = FakeQueue()
+    recurrings = FakeRecurrings()
+    handlers = _handlers(queue, recurrings=recurrings)
+    transaction_id = uuid4()
+
+    handlers[MATCH_RECURRING_TRANSACTION_JOB]({"transaction_id": str(transaction_id)})
+    handlers[DETECT_RECURRING_SERIES_JOB]({"run_key": "2026-09-18"})
+
+    assert recurrings.matched == [transaction_id]
+    assert recurrings.detected == 1
+    with pytest.raises(TerminalJobError, match="invalid_recurring_job"):
+        handlers[MATCH_RECURRING_TRANSACTION_JOB]({})
 
 
 def test_webhook_notifier_is_removed() -> None:

@@ -33,6 +33,8 @@ def test_migrations_create_current_foundation_tables(database: Database) -> None
         "offset_allocation",
         "pending_review",
         "review_event",
+        "recurring_occurrence",
+        "recurring_series",
         "source_artifact",
         "transaction_version",
     }.issubset(tables)

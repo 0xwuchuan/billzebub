@@ -8,12 +8,13 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, Literal, Protocol, cast
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
-from fastapi import Depends, FastAPI, Header, Request, status
+from fastapi import Depends, FastAPI, Header, Query, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -62,6 +63,16 @@ from billzebub.owner_transaction_actions import (
 from billzebub.owner_workspace import OwnerWorkspace, OwnerWorkspaceError
 from billzebub.persistence.database import Database
 from billzebub.persistence.models import AuditActorKind, FinancialAccountKind
+from billzebub.recurrings import (
+    RecurringConflictError,
+    RecurringCreate,
+    RecurringError,
+    RecurringNotFoundError,
+    Recurrings,
+    RecurringSeriesRecord,
+    RecurringSummary,
+    RecurringUpdate,
+)
 from billzebub.review_actions import (
     ReviewActionError,
     ReviewActions,
@@ -226,6 +237,20 @@ class AppleWalletRuntime(Protocol):
     ) -> AppleWalletCaptureOutcome: ...
 
 
+class RecurringCatalogRuntime(Protocol):
+    def list_series(self, *, status: str | None = None) -> tuple[RecurringSeriesRecord, ...]: ...
+
+    def create_series(self, command: RecurringCreate) -> RecurringSeriesRecord: ...
+
+    def update_series(self, series_id: UUID, command: RecurringUpdate) -> RecurringSeriesRecord: ...
+
+    def dismiss_series(self, series_id: UUID) -> RecurringSeriesRecord: ...
+
+    def match_series(self, series_id: UUID, transaction_id: UUID) -> RecurringSeriesRecord: ...
+
+    def summary(self, *, limit: int = 5, as_of: date | None = None) -> RecurringSummary: ...
+
+
 class CategorizePayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -284,6 +309,77 @@ class ProposalPayload(BaseModel):
 
     proposal_type: ProposalType
     summary: str = Field(min_length=1, max_length=500)
+
+
+class RecurringCreatePayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    counterparty: str = Field(min_length=1, max_length=300)
+    amount: str = Field(pattern=r"^\d+(?:\.\d+)?$")
+    currency: str = Field(pattern=r"^[A-Z]{3}$")
+    cadence: Literal["weekly", "monthly", "yearly", "custom_days"]
+    next_expected_date: date
+    amount_min: str | None = Field(default=None, pattern=r"^\d+(?:\.\d+)?$")
+    amount_max: str | None = Field(default=None, pattern=r"^\d+(?:\.\d+)?$")
+    interval_days: int | None = Field(default=None, ge=1, le=400)
+    category_id: UUID | None = None
+    primary_account_id: UUID | None = None
+    notes: str | None = Field(default=None, max_length=2000)
+
+
+class RecurringPatchPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    counterparty: str | None = Field(default=None, min_length=1, max_length=300)
+    amount: str | None = Field(default=None, pattern=r"^\d+(?:\.\d+)?$")
+    currency: str | None = Field(default=None, pattern=r"^[A-Z]{3}$")
+    cadence: Literal["weekly", "monthly", "yearly", "custom_days"] | None = None
+    interval_days: int | None = Field(default=None, ge=1, le=400)
+    next_expected_date: date | None = None
+    category_id: UUID | None = None
+    primary_account_id: UUID | None = None
+    notes: str | None = Field(default=None, max_length=2000)
+    status: Literal["active", "paused", "ended"] | None = None
+    amount_min: str | None = Field(default=None, pattern=r"^\d+(?:\.\d+)?$")
+    amount_max: str | None = Field(default=None, pattern=r"^\d+(?:\.\d+)?$")
+
+
+class RecurringMatchPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    transaction_id: UUID
+
+
+class RecurringSeriesWire(BaseModel):
+    id: UUID
+    counterparty: str
+    amount: MoneyWire
+    amount_min: MoneyWire | None
+    amount_max: MoneyWire | None
+    cadence: Literal["weekly", "monthly", "yearly", "custom_days"]
+    interval_days: int | None
+    next_expected_date: date
+    category_id: UUID | None
+    primary_account_id: UUID | None
+    status: Literal["proposed", "active", "paused", "ended", "dismissed"]
+    source: Literal["detected", "manual"]
+    confidence: str | None
+    last_matched_tx_id: UUID | None
+    last_amount: MoneyWire
+    linked_count: int
+    missed: bool
+    notes: str | None
+    cluster_key: str
+
+
+class RecurringSeriesPageWire(BaseModel):
+    items: list[RecurringSeriesWire]
+
+
+class RecurringSummaryWire(BaseModel):
+    month: str
+    total: MoneyWire
+    upcoming: list[RecurringSeriesWire]
 
 
 class AppleWalletCaptureWire(BaseModel):
@@ -527,6 +623,7 @@ class Runtime:
     account_bootstrap: AccountBootstrapRuntime | None
     account_aliases: AccountAliasRuntime | None
     apple_wallet_ingestion: AppleWalletRuntime | None
+    recurrings: RecurringCatalogRuntime | None
 
 
 def create_app(
@@ -544,6 +641,7 @@ def create_app(
     account_bootstrap: AccountBootstrapRuntime | None = None,
     account_aliases: AccountAliasRuntime | None = None,
     apple_wallet_ingestion: AppleWalletRuntime | None = None,
+    recurrings: RecurringCatalogRuntime | None = None,
 ) -> FastAPI:
     """Build the HTTP process without creating hidden global dependencies."""
     resolved_settings = settings or Settings()
@@ -560,6 +658,7 @@ def create_app(
     resolved_account_bootstrap = account_bootstrap
     resolved_account_aliases = account_aliases
     resolved_apple_wallet_ingestion = apple_wallet_ingestion
+    resolved_recurrings = recurrings
     if isinstance(resolved_database, Database):
         resolved_catalog = resolved_catalog or ImportCatalog(resolved_database)
         resolved_category_catalog = resolved_category_catalog or CategoryCatalog(resolved_database)
@@ -595,6 +694,8 @@ def create_app(
             )
         if resolved_account_aliases is None:
             resolved_account_aliases = FinancialAccountAliases(resolved_database)
+        if resolved_recurrings is None:
+            resolved_recurrings = Recurrings(resolved_database)
         if (
             resolved_apple_wallet_ingestion is None
             and resolved_settings.apple_wallet_timezone is not None
@@ -627,6 +728,7 @@ def create_app(
         account_bootstrap=resolved_account_bootstrap,
         account_aliases=resolved_account_aliases,
         apple_wallet_ingestion=resolved_apple_wallet_ingestion,
+        recurrings=resolved_recurrings,
     )
 
     @asynccontextmanager
@@ -845,6 +947,15 @@ def create_app(
             )
         return runtime.account_aliases
 
+    def recurrings_resource() -> RecurringCatalogRuntime:
+        if runtime.recurrings is None:
+            raise ProblemError(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "recurrings_unavailable",
+                "Recurrings unavailable",
+            )
+        return runtime.recurrings
+
     def owner_tokens_resource() -> OwnerTokenRuntime:
         if runtime.owner_tokens is None:
             raise ProblemError(
@@ -865,6 +976,7 @@ def create_app(
     account_bootstrap_dependency = Depends(account_bootstrap_resource)
     account_aliases_dependency = Depends(account_aliases_resource)
     owner_tokens_dependency = Depends(owner_tokens_resource)
+    recurrings_dependency = Depends(recurrings_resource)
     agent_dependency = Depends(agent)
     agent_reader_dependency = Depends(agent_reader)
     agent_categorizer_dependency = Depends(agent_categorizer)
@@ -1286,6 +1398,128 @@ def create_app(
             etag=_transaction_etag(transaction),
         )
 
+    @app.get("/api/v1/recurrings", tags=["recurrings"], response_model=RecurringSeriesPageWire)
+    def list_recurrings(
+        series_status: str | None = Query(default=None, alias="status"),
+        _identity: OwnerIdentity = owner_dependency,
+        catalog: RecurringCatalogRuntime = recurrings_dependency,
+    ) -> RecurringSeriesPageWire:
+        try:
+            items = catalog.list_series(status=series_status)
+        except RecurringError as error:
+            raise _recurring_problem(error) from error
+        return RecurringSeriesPageWire(items=[_recurring_series(item) for item in items])
+
+    @app.get(
+        "/api/v1/recurrings/proposed",
+        tags=["recurrings"],
+        response_model=RecurringSeriesPageWire,
+    )
+    def list_proposed_recurrings(
+        _identity: OwnerIdentity = owner_dependency,
+        catalog: RecurringCatalogRuntime = recurrings_dependency,
+    ) -> RecurringSeriesPageWire:
+        items = catalog.list_series(status="proposed")
+        return RecurringSeriesPageWire(items=[_recurring_series(item) for item in items])
+
+    @app.get(
+        "/api/v1/recurrings/summary",
+        tags=["recurrings"],
+        response_model=RecurringSummaryWire,
+    )
+    def recurring_summary(
+        limit: int = Query(default=5, ge=1, le=50),
+        as_of: date | None = None,
+        _identity: OwnerIdentity = owner_dependency,
+        catalog: RecurringCatalogRuntime = recurrings_dependency,
+    ) -> RecurringSummaryWire:
+        try:
+            summary = catalog.summary(limit=limit, as_of=as_of)
+        except RecurringError as error:
+            raise _recurring_problem(error) from error
+        return _recurring_summary(summary)
+
+    @app.post(
+        "/api/v1/recurrings",
+        tags=["recurrings"],
+        status_code=status.HTTP_201_CREATED,
+        response_model=RecurringSeriesWire,
+    )
+    def create_recurring(
+        payload: RecurringCreatePayload,
+        _identity: OwnerIdentity = browser_mutation_dependency,
+        catalog: RecurringCatalogRuntime = recurrings_dependency,
+    ) -> RecurringSeriesWire:
+        try:
+            created = catalog.create_series(
+                RecurringCreate(
+                    counterparty=payload.counterparty,
+                    amount=Decimal(payload.amount),
+                    currency=payload.currency,
+                    cadence=payload.cadence,
+                    next_expected_date=payload.next_expected_date,
+                    amount_min=_optional_decimal(payload.amount_min),
+                    amount_max=_optional_decimal(payload.amount_max),
+                    interval_days=payload.interval_days,
+                    category_id=payload.category_id,
+                    primary_account_id=payload.primary_account_id,
+                    notes=payload.notes,
+                )
+            )
+        except RecurringError as error:
+            raise _recurring_problem(error) from error
+        return _recurring_series(created)
+
+    @app.patch(
+        "/api/v1/recurrings/{series_id}",
+        tags=["recurrings"],
+        response_model=RecurringSeriesWire,
+    )
+    def update_recurring(
+        series_id: UUID,
+        payload: RecurringPatchPayload,
+        _identity: OwnerIdentity = browser_mutation_dependency,
+        catalog: RecurringCatalogRuntime = recurrings_dependency,
+    ) -> RecurringSeriesWire:
+        try:
+            updated = catalog.update_series(series_id, _recurring_update(payload))
+        except RecurringError as error:
+            raise _recurring_problem(error) from error
+        return _recurring_series(updated)
+
+    @app.post(
+        "/api/v1/recurrings/{series_id}/dismiss",
+        tags=["recurrings"],
+        response_model=RecurringSeriesWire,
+    )
+    def dismiss_recurring(
+        series_id: UUID,
+        _identity: OwnerIdentity = browser_mutation_dependency,
+        catalog: RecurringCatalogRuntime = recurrings_dependency,
+    ) -> RecurringSeriesWire:
+        try:
+            dismissed = catalog.dismiss_series(series_id)
+        except RecurringError as error:
+            raise _recurring_problem(error) from error
+        return _recurring_series(dismissed)
+
+    @app.post(
+        "/api/v1/recurrings/{series_id}/match",
+        tags=["recurrings"],
+        response_model=RecurringSeriesWire,
+    )
+    def match_recurring(
+        series_id: UUID,
+        payload: RecurringMatchPayload,
+        _identity: OwnerIdentity = browser_mutation_dependency,
+        catalog: RecurringCatalogRuntime = recurrings_dependency,
+    ) -> RecurringSeriesWire:
+        try:
+            matched = catalog.match_series(series_id, payload.transaction_id)
+        except RecurringError as error:
+            raise _recurring_problem(error) from error
+        return _recurring_series(matched)
+
     @app.get("/api/v1/reviews", tags=["owner"], response_model=OwnerReviewPageWire)
     def list_owner_reviews(
         cursor: str | None = None,
@@ -1467,6 +1701,92 @@ def create_app(
         app.mount("/", StaticFiles(directory=runtime.settings.web_root, html=True), name="web")
 
     return app
+
+
+def _optional_decimal(value: str | None) -> Decimal | None:
+    if value is None:
+        return None
+    return Decimal(value)
+
+
+def _recurring_update(payload: RecurringPatchPayload) -> RecurringUpdate:
+    fields = frozenset(payload.model_fields_set)
+    return RecurringUpdate(
+        set_fields=fields,
+        counterparty=payload.counterparty,
+        amount=_optional_decimal(payload.amount) if "amount" in fields else None,
+        currency=payload.currency,
+        cadence=payload.cadence,
+        interval_days=payload.interval_days,
+        next_expected_date=payload.next_expected_date,
+        category_id=payload.category_id,
+        primary_account_id=payload.primary_account_id,
+        notes=payload.notes,
+        status=payload.status,
+        amount_min=_optional_decimal(payload.amount_min) if "amount_min" in fields else None,
+        amount_max=_optional_decimal(payload.amount_max) if "amount_max" in fields else None,
+    )
+
+
+def _money_wire(money: Any) -> MoneyWire:
+    wire = money.to_wire()
+    return MoneyWire(amount=wire["amount"], currency=wire["currency"])
+
+
+def _recurring_series(series: RecurringSeriesRecord) -> RecurringSeriesWire:
+    confidence = None if series.confidence is None else format(series.confidence, "f")
+    return RecurringSeriesWire(
+        id=series.id,
+        counterparty=series.counterparty,
+        amount=_money_wire(series.amount),
+        amount_min=None if series.amount_min is None else _money_wire(series.amount_min),
+        amount_max=None if series.amount_max is None else _money_wire(series.amount_max),
+        cadence=cast(Literal["weekly", "monthly", "yearly", "custom_days"], series.cadence),
+        interval_days=series.interval_days,
+        next_expected_date=series.next_expected_date,
+        category_id=series.category_id,
+        primary_account_id=series.primary_account_id,
+        status=cast(
+            Literal["proposed", "active", "paused", "ended", "dismissed"],
+            series.status,
+        ),
+        source=cast(Literal["detected", "manual"], series.source),
+        confidence=confidence,
+        last_matched_tx_id=series.last_matched_tx_id,
+        last_amount=_money_wire(series.last_amount),
+        linked_count=series.linked_count,
+        missed=series.missed,
+        notes=series.notes,
+        cluster_key=series.cluster_key,
+    )
+
+
+def _recurring_summary(summary: RecurringSummary) -> RecurringSummaryWire:
+    return RecurringSummaryWire(
+        month=summary.month,
+        total=_money_wire(summary.total),
+        upcoming=[_recurring_series(item) for item in summary.upcoming],
+    )
+
+
+def _recurring_problem(error: RecurringError) -> ProblemError:
+    if isinstance(error, RecurringNotFoundError):
+        return ProblemError(
+            status.HTTP_404_NOT_FOUND,
+            "recurring_not_found",
+            "Recurring series not found",
+        )
+    if isinstance(error, RecurringConflictError):
+        return ProblemError(
+            status.HTTP_409_CONFLICT,
+            "recurring_conflict",
+            "Recurring series conflict",
+        )
+    return ProblemError(
+        status.HTTP_400_BAD_REQUEST,
+        "recurring_request_invalid",
+        "Recurring request invalid",
+    )
 
 
 def _owner_transaction(transaction: Any) -> dict[str, Any]:
