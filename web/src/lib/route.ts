@@ -3,6 +3,7 @@ export type RoutePage =
   | "spending"
   | "review"
   | "transactions"
+  | "recurrings"
   | "imports"
   | "onboarding"
   | "settings";
@@ -11,6 +12,8 @@ export type ReviewFilter = "" | "blocking" | "attention";
 
 export type ConfirmationFilter = "" | "confirmed" | "provisional" | "review";
 
+export type RecurringTab = "" | "proposed" | "active";
+
 export type Route = {
   page: RoutePage;
   reviewFilter: ReviewFilter;
@@ -18,6 +21,7 @@ export type Route = {
   drawerId: string | null;
   importId: string | null;
   accountId: string | null;
+  recurringTab: RecurringTab;
 };
 
 export const emptyRoute = {
@@ -26,6 +30,7 @@ export const emptyRoute = {
   drawerId: null,
   importId: null,
   accountId: null,
+  recurringTab: "" as const,
 };
 
 export function defaultRoute(onboarded: boolean): Route {
@@ -64,6 +69,7 @@ export function parseHash(hash: string, onboarded: boolean): Route {
       drawerId: null,
       importId: null,
       accountId: null,
+      recurringTab: "",
     };
   }
   if (page === "imports") {
@@ -74,6 +80,15 @@ export function parseHash(hash: string, onboarded: boolean): Route {
       drawerId: null,
       importId: rest === "" ? null : rest,
       accountId,
+      recurringTab: "",
+    };
+  }
+  if (page === "recurrings") {
+    const recurringTab = rest === "proposed" || rest === "active" ? rest : "";
+    return {
+      page: "recurrings",
+      ...emptyRoute,
+      recurringTab,
     };
   }
   if (page === "transactions") {
@@ -86,6 +101,7 @@ export function parseHash(hash: string, onboarded: boolean): Route {
         drawerId: drawerId === "" ? null : drawerId,
         importId: null,
         accountId: null,
+        recurringTab: "",
       };
     }
     const confirmation =
@@ -99,6 +115,7 @@ export function parseHash(hash: string, onboarded: boolean): Route {
       drawerId: null,
       importId: null,
       accountId: null,
+      recurringTab: "",
     };
   }
   if (page === "overview") {
@@ -130,6 +147,12 @@ export function hashFor(route: Route): string {
     }
     return `${path}?account=${encodeURIComponent(route.accountId)}`;
   }
+  if (route.page === "recurrings") {
+    if (route.recurringTab === "proposed" || route.recurringTab === "active") {
+      return `#/recurrings/${route.recurringTab}`;
+    }
+    return "#/recurrings";
+  }
   if (route.page === "transactions") {
     if (route.drawerId !== null) {
       return `#/transactions/open/${route.drawerId}`;
@@ -151,6 +174,9 @@ export function titleFor(page: RoutePage): string {
   }
   if (page === "transactions") {
     return "Transactions";
+  }
+  if (page === "recurrings") {
+    return "Recurrings";
   }
   if (page === "spending") {
     return "Spending";

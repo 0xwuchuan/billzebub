@@ -12,6 +12,7 @@ import {
   ImportsIcon,
   MenuIcon,
   OverviewIcon,
+  RecurringsIcon,
   ReviewIcon,
   SettingsIcon,
   SpendingIcon,
@@ -19,7 +20,13 @@ import {
 } from "./icons";
 
 type NavId =
-  "overview" | "spending" | "review" | "transactions" | "imports" | "settings";
+  | "overview"
+  | "spending"
+  | "review"
+  | "transactions"
+  | "recurrings"
+  | "imports"
+  | "settings";
 
 type NavItem = {
   id: NavId;
@@ -34,6 +41,7 @@ type AppShellProps = {
   periodLabel: string;
   reviewCount: number;
   reviewBlocking: boolean;
+  proposedCount: number;
   accounts: FinancialAccount[];
   selectedAccountId: string;
   theme: Theme;
@@ -49,6 +57,7 @@ export function AppShell({
   periodLabel,
   reviewCount,
   reviewBlocking,
+  proposedCount,
   accounts,
   selectedAccountId,
   theme,
@@ -74,6 +83,12 @@ export function AppShell({
       id: "transactions",
       label: "Transactions",
       icon: <TransactionsIcon />,
+    },
+    {
+      id: "recurrings",
+      label: "Recurrings",
+      icon: <RecurringsIcon />,
+      count: proposedCount,
     },
     {
       id: "imports",

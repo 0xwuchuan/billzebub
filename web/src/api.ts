@@ -147,6 +147,64 @@ export type StatementCoverageReport = {
   accounts: StatementCoverageAccount[];
 };
 
+export type RecurringCadence = "weekly" | "monthly" | "yearly" | "custom_days";
+
+export type RecurringStatus =
+  "proposed" | "active" | "paused" | "ended" | "dismissed";
+
+export type RecurringSource = "detected" | "manual";
+
+export type RecurringSeries = {
+  id: string;
+  counterparty: string;
+  amount: Money;
+  amount_min: Money | null;
+  amount_max: Money | null;
+  cadence: RecurringCadence;
+  interval_days: number | null;
+  next_expected_date: string;
+  category_id: string | null;
+  primary_account_id: string | null;
+  status: RecurringStatus;
+  source: RecurringSource;
+  confidence: string | null;
+  last_matched_tx_id: string | null;
+  last_amount: Money;
+  linked_count: number;
+  missed: boolean;
+  notes: string | null;
+  cluster_key: string;
+};
+
+export type RecurringSummary = {
+  month: string;
+  total: Money;
+  upcoming: RecurringSeries[];
+};
+
+export type RecurringPatch = {
+  counterparty?: string;
+  amount?: string;
+  currency?: string;
+  cadence?: RecurringCadence;
+  interval_days?: number | null;
+  next_expected_date?: string;
+  category_id?: string | null;
+  primary_account_id?: string | null;
+  status?: "active" | "paused" | "ended";
+};
+
+export type RecurringCreateInput = {
+  counterparty: string;
+  amount: string;
+  currency: string;
+  cadence: RecurringCadence;
+  next_expected_date: string;
+  interval_days?: number;
+  category_id?: string;
+  primary_account_id?: string;
+};
+
 export type CreateFinancialAccountInput = {
   slug: string;
   display_name: string;
@@ -310,6 +368,63 @@ export async function revokeToken(
 ): Promise<{ id: string; revoked: boolean }> {
   return request<{ id: string; revoked: boolean }>(
     `/api/v1/tokens/${tokenId}/revoke`,
+    {
+      method: "POST",
+      headers: mutationHeaders(),
+      body: JSON.stringify({}),
+    },
+  );
+}
+
+export async function getRecurrings(
+  status?: RecurringStatus,
+): Promise<{ items: RecurringSeries[] }> {
+  const query =
+    status === undefined ? "" : `?status=${encodeURIComponent(status)}`;
+  return request<{ items: RecurringSeries[] }>(`/api/v1/recurrings${query}`);
+}
+
+export async function getProposedRecurrings(): Promise<{
+  items: RecurringSeries[];
+}> {
+  return request<{ items: RecurringSeries[] }>("/api/v1/recurrings/proposed");
+}
+
+export async function getRecurringSummary(
+  limit = 3,
+): Promise<RecurringSummary> {
+  return request<RecurringSummary>(`/api/v1/recurrings/summary?limit=${limit}`);
+}
+
+export async function createRecurring(
+  input: RecurringCreateInput,
+): Promise<RecurringSeries> {
+  return request<RecurringSeries>("/api/v1/recurrings", {
+    method: "POST",
+    headers: mutationHeaders(),
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateRecurring(
+  seriesId: string,
+  patch: RecurringPatch,
+): Promise<RecurringSeries> {
+  return request<RecurringSeries>(
+    `/api/v1/recurrings/${encodeURIComponent(seriesId)}`,
+    {
+      method: "PATCH",
+      headers: mutationHeaders(),
+      body: JSON.stringify(patch),
+    },
+  );
+}
+
+export async function dismissRecurring(
+  seriesId: string,
+): Promise<RecurringSeries> {
+  return request<RecurringSeries>(
+    `/api/v1/recurrings/${encodeURIComponent(seriesId)}/dismiss`,
     {
       method: "POST",
       headers: mutationHeaders(),
