@@ -1098,3 +1098,115 @@ class ArtifactArrival(Base):
     )
 
     __table_args__ = (Index("ix_artifact_arrival_artifact_received", "artifact_id", "received_at"),)
+
+
+class RecurringSeries(Base):
+    """A repeating spend pattern the owner can confirm, pause, or dismiss."""
+
+    __tablename__ = "recurring_series"
+
+    id: Mapped[UUID] = mapped_column(PostgresUUID(as_uuid=True), primary_key=True, default=uuid7)
+    counterparty: Mapped[str] = mapped_column(String(300), nullable=False)
+    normalized_counterparty: Mapped[str] = mapped_column(String(300), nullable=False)
+    cluster_key: Mapped[str] = mapped_column(String(360), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(), nullable=False)
+    amount_min: Mapped[Decimal | None] = mapped_column(Numeric())
+    amount_max: Mapped[Decimal | None] = mapped_column(Numeric())
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    cadence: Mapped[str] = mapped_column(String(20), nullable=False)
+    interval_days: Mapped[int | None] = mapped_column(Integer)
+    next_expected_date: Mapped[date] = mapped_column(Date, nullable=False)
+    category_id: Mapped[UUID | None] = mapped_column(
+        PostgresUUID(as_uuid=True),
+        ForeignKey("category.id", ondelete="RESTRICT"),
+    )
+    primary_account_id: Mapped[UUID | None] = mapped_column(
+        PostgresUUID(as_uuid=True),
+        ForeignKey("financial_account.id", ondelete="RESTRICT"),
+    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    source: Mapped[str] = mapped_column(String(20), nullable=False)
+    confidence: Mapped[Decimal | None] = mapped_column(Numeric())
+    last_matched_tx_id: Mapped[UUID | None] = mapped_column(
+        PostgresUUID(as_uuid=True),
+        ForeignKey("financial_transaction.id", ondelete="RESTRICT"),
+    )
+    notes: Mapped[str | None] = mapped_column(Text)
+    missed: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("cluster_key", name="uq_recurring_series_cluster_key"),
+        CheckConstraint("length(btrim(counterparty)) > 0", name="counterparty_present"),
+        CheckConstraint(
+            "length(btrim(normalized_counterparty)) > 0",
+            name="normalized_counterparty_present",
+        ),
+        CheckConstraint("length(btrim(cluster_key)) > 0", name="cluster_key_present"),
+        CheckConstraint("amount > 0", name="amount_positive"),
+        CheckConstraint(
+            "(amount_min IS NULL AND amount_max IS NULL) OR "
+            "(amount_min IS NOT NULL AND amount_max IS NOT NULL AND amount_min > 0 "
+            "AND amount_min <= amount AND amount <= amount_max)",
+            name="amount_bounds",
+        ),
+        CheckConstraint("currency ~ '^[A-Z]{3}$'", name="currency_iso_style"),
+        CheckConstraint(
+            "cadence IN ('weekly', 'monthly', 'yearly', 'custom_days')",
+            name="cadence_known",
+        ),
+        CheckConstraint(
+            "(cadence = 'custom_days' AND interval_days IS NOT NULL AND interval_days > 0) OR "
+            "(cadence IN ('weekly', 'monthly', 'yearly') AND interval_days IS NULL)",
+            name="cadence_interval",
+        ),
+        CheckConstraint(
+            "status IN ('proposed', 'active', 'paused', 'ended', 'dismissed')",
+            name="status_known",
+        ),
+        CheckConstraint("source IN ('detected', 'manual')", name="source_known"),
+        CheckConstraint(
+            "(source = 'manual' AND confidence IS NULL) OR "
+            "(source = 'detected' AND confidence IS NOT NULL AND confidence >= 0 "
+            "AND confidence <= 1)",
+            name="confidence_matches_source",
+        ),
+        CheckConstraint("notes IS NULL OR length(btrim(notes)) > 0", name="notes_present"),
+        Index("ix_recurring_series_status_next_expected", "status", "next_expected_date"),
+    )
+
+
+class RecurringOccurrence(Base):
+    """Link from a Recurring Series to one settled Transaction."""
+
+    __tablename__ = "recurring_occurrence"
+
+    id: Mapped[UUID] = mapped_column(PostgresUUID(as_uuid=True), primary_key=True, default=uuid7)
+    series_id: Mapped[UUID] = mapped_column(
+        PostgresUUID(as_uuid=True),
+        ForeignKey("recurring_series.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    transaction_id: Mapped[UUID] = mapped_column(
+        PostgresUUID(as_uuid=True),
+        ForeignKey("financial_transaction.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    matched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    match_kind: Mapped[str] = mapped_column(String(20), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "series_id",
+            "transaction_id",
+            name="uq_recurring_occurrence_series_transaction",
+        ),
+        UniqueConstraint("transaction_id", name="uq_recurring_occurrence_transaction_id"),
+        CheckConstraint("match_kind IN ('auto', 'manual')", name="match_kind_known"),
+        Index("ix_recurring_occurrence_series_matched", "series_id", "matched_at"),
+    )

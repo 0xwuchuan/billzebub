@@ -35,6 +35,13 @@ from billzebub.jev_categorizer import (
 from billzebub.jobs import EnqueuedJob, JobQueue
 from billzebub.persistence.database import Database
 from billzebub.reconciliation import Reconciliation, ReconciliationRun
+from billzebub.recurrings import (
+    DETECT_RECURRING_SERIES_JOB,
+    MATCH_RECURRING_TRANSACTION_JOB,
+    Recurrings,
+    enqueue_recurring_detection,
+    enqueue_recurring_match,
+)
 from billzebub.statement_adapters import configured_statement_adapters
 from billzebub.statement_extraction import (
     ExtractionOutcome,
@@ -81,11 +88,26 @@ class TransactionCategorizerRuntime(Protocol):
     def enqueue_pending(self, queue: JobEnqueuer) -> int: ...
 
 
+class RecurringRuntime(Protocol):
+    def match_transaction(self, transaction_id: UUID) -> object: ...
+
+    def detect(self) -> object: ...
+
+
+def enqueue_scheduled_catch_up(queue: JobEnqueuer, run_date: str | None) -> None:
+    """Queue the nightly Jev catch-up and the recurring detector together."""
+    if run_date is None:
+        return
+    enqueue_jev_catch_up(queue, run_date)
+    enqueue_recurring_detection(queue, run_date)
+
+
 def worker_handlers(
     queue: JobEnqueuer,
     extraction: StatementExtractionRuntime,
     reconciliation: ReconciliationRuntime,
     categorizer: TransactionCategorizerRuntime,
+    recurrings: RecurringRuntime,
 ) -> dict[str, JobHandler]:
     """Build durable pipeline handlers without exposing worker mechanics."""
 
@@ -114,6 +136,9 @@ def worker_handlers(
         run = reconciliation.reconcile_account(account_id)
         for confirmation in run.confirmations:
             enqueue_transaction_categorization(queue, confirmation.transaction_id)
+            enqueue_recurring_match(queue, confirmation.transaction_id)
+        if run.confirmations:
+            enqueue_recurring_detection(queue, f"reconcile:{account_id}")
 
     def categorize_transaction(payload: dict[str, Any]) -> None:
         try:
@@ -145,12 +170,25 @@ def worker_handlers(
         if queued:
             logger.info("jev catch-up queued %s categorizations", queued)
 
+    def match_recurring_transaction(payload: dict[str, Any]) -> None:
+        try:
+            transaction_id = UUID(str(payload["transaction_id"]))
+        except (KeyError, ValueError) as error:
+            raise TerminalJobError("invalid_recurring_job") from error
+        recurrings.match_transaction(transaction_id)
+
+    def detect_recurring_series(payload: dict[str, Any]) -> None:
+        del payload
+        recurrings.detect()
+
     return {
         "extract_statement": extract_statement,
         "reconcile_financial_account": reconcile_financial_account,
         CATEGORIZE_TRANSACTION_JOB: categorize_transaction,
         CATEGORIZE_CLAIM_JOB: categorize_claim,
         JEV_CATCH_UP_JOB: jev_catch_up,
+        MATCH_RECURRING_TRANSACTION_JOB: match_recurring_transaction,
+        DETECT_RECURRING_SERIES_JOB: detect_recurring_series,
     }
 
 
@@ -197,6 +235,7 @@ def main() -> None:
     )
     reconciliation = Reconciliation(database)
     categorizer = JevCategorizer(database, jev_proposer_from_settings(settings))
+    recurrings = Recurrings(database)
     inbox = StatementInbox(
         database,
         ArtifactCapture(artifact_store, database),
@@ -211,7 +250,7 @@ def main() -> None:
 
     worker = Worker(
         queue,
-        handlers=worker_handlers(queue, extraction, reconciliation, categorizer),
+        handlers=worker_handlers(queue, extraction, reconciliation, categorizer, recurrings),
         worker_id=f"{socket.gethostname()}:{id(stop)}",
         poll_seconds=settings.worker_poll_seconds,
     )
@@ -222,8 +261,7 @@ def main() -> None:
             except Exception:
                 logging.error("statement inbox poll failed")
             run_date = catchup.catchup_date(datetime.now(UTC))
-            if run_date is not None:
-                enqueue_jev_catch_up(queue, run_date)
+            enqueue_scheduled_catch_up(queue, run_date)
             if not worker.run_once():
                 stop.wait(settings.worker_poll_seconds)
     finally:
