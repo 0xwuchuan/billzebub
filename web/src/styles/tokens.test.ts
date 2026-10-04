@@ -68,7 +68,7 @@ describe("design tokens", () => {
         dark,
         {
           action: "#cecdc3",
-          provisional: "#c46a2b",
+          provisional: "#c4a574",
           attention: "#6e8cae",
           blocking: "#b85c58",
           lime: "#7d9a56",
@@ -78,7 +78,7 @@ describe("design tokens", () => {
         light,
         {
           action: "#100f0f",
-          provisional: "#a6531a",
+          provisional: "#8c6d3a",
           attention: "#3d5f86",
           blocking: "#8f3d3a",
           lime: "#5c7a32",

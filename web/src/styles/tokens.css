@@ -28,7 +28,7 @@
   --bz-on-accent: #100f0f;
   --bz-confirmed: color-mix(in srgb, var(--bz-text) 55%, transparent);
   --bz-positive: var(--bz-confirmed);
-  --bz-provisional: #c46a2b;
+  --bz-provisional: #c4a574;
   --bz-attention: #6e8cae;
   --bz-review-dot: var(--bz-attention);
   --bz-blocking: #b85c58;
@@ -120,7 +120,7 @@
   --bz-action: #100f0f;
   --bz-on-accent: #fffcf0;
   --bz-confirmed: color-mix(in srgb, var(--bz-text) 55%, transparent);
-  --bz-provisional: #a6531a;
+  --bz-provisional: #8c6d3a;
   --bz-attention: #3d5f86;
   --bz-blocking: #8f3d3a;
 
