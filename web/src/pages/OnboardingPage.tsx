@@ -138,7 +138,7 @@ export function OnboardingPage({
                 {step.hint}
               </p>
               <Button
-                variant="primary"
+                variant={index === 0 || last ? "primary" : "ghost"}
                 disabled={!valid}
                 onClick={() => {
                   if (last) {
@@ -252,6 +252,7 @@ function StepBody({
             onRotateToken={onRotateToken}
             onRevokeToken={onRevokeToken}
             onDismissIssuedToken={onDismissIssuedToken}
+            actionVariant="ghost"
           />
         </div>
       </div>

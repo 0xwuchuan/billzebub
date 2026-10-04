@@ -1,7 +1,7 @@
 import { useEffect, useId, useState, type ReactNode } from "react";
 
 import type { FinancialAccount } from "../api";
-import { accountKindColor, groupedAccounts } from "../lib/accounts";
+import { groupedAccounts } from "../lib/accounts";
 import type { Theme } from "../lib/theme";
 import type { Route, RoutePage } from "../lib/route";
 import { titleFor } from "../lib/route";
@@ -286,10 +286,7 @@ function RailContent({
                   onSelectAccount(account.id);
                 }}
               >
-                <i
-                  className="rail-account-dot"
-                  style={{ background: accountKindColor(account.kind) }}
-                />
+                <i className="rail-account-dot" aria-hidden="true" />
                 <span className="rail-account-name">
                   {account.display_name}
                 </span>

@@ -604,10 +604,10 @@ function Evidence({
               </Button>
             ) : null}
             {needsSetup
-              ? review.allowed_decisions.map((choice) => (
+              ? review.allowed_decisions.map((choice, index) => (
                   <Button
                     key={choice}
-                    variant="primary"
+                    variant={index === 0 ? "primary" : "ghost"}
                     onClick={onOpenSettings}
                   >
                     {decisionLabel(choice)}
@@ -621,7 +621,9 @@ function Evidence({
                     variant={
                       choice.includes("exclude") || choice === "keep_quarantine"
                         ? "outline"
-                        : "primary"
+                        : primaryDecision(review) === choice
+                          ? "primary"
+                          : "ghost"
                     }
                     disabled={saving === review.id}
                     onClick={() => {

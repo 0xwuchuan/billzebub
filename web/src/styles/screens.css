@@ -977,15 +977,15 @@ button.cat-row:hover {
 }
 
 .coverage-count.is-missing {
-  color: var(--bz-blocking);
-}
-
-.coverage-count.is-partial {
   color: var(--bz-provisional);
 }
 
+.coverage-count.is-partial {
+  color: var(--bz-text);
+}
+
 .coverage-count.is-present {
-  color: var(--bz-confirmed);
+  color: var(--bz-muted);
 }
 
 .coverage-head h2 {
@@ -1056,30 +1056,26 @@ button.coverage-chip {
   cursor: pointer;
 }
 
-.coverage-chip.is-present {
-  --coverage-tone: var(--bz-confirmed);
-}
-
-.coverage-chip.is-partial {
-  --coverage-tone: var(--bz-provisional);
-}
-
-.coverage-chip.is-missing {
-  --coverage-tone: var(--bz-blocking);
-}
-
 .coverage-chip.is-present,
 .coverage-chip.is-partial,
 .coverage-chip.is-missing {
-  border-color: transparent;
-  background: color-mix(in srgb, var(--coverage-tone) 16%, var(--bz-bg-card));
-  color: var(--coverage-tone);
+  background: transparent;
 }
 
-button.coverage-chip.is-present:hover,
-button.coverage-chip.is-partial:hover,
-button.coverage-chip.is-missing:hover {
-  background: color-mix(in srgb, var(--coverage-tone) 24%, var(--bz-bg-card));
+.coverage-chip.is-present {
+  color: var(--bz-muted);
+}
+
+.coverage-chip.is-partial {
+  color: var(--bz-text);
+}
+
+.coverage-chip.is-missing {
+  color: var(--bz-provisional);
+}
+
+button.coverage-chip:hover {
+  background: color-mix(in srgb, var(--bz-text) 10%, var(--bz-bg-card));
 }
 
 .imports-stage .panel-head h2 {
@@ -1168,15 +1164,15 @@ button.coverage-chip.is-missing:hover {
 }
 
 .coverage-swatch.is-present {
-  --coverage-tone: var(--bz-confirmed);
+  --coverage-tone: var(--bz-muted);
 }
 
 .coverage-swatch.is-partial {
-  --coverage-tone: var(--bz-provisional);
+  --coverage-tone: var(--bz-text);
 }
 
 .coverage-swatch.is-missing {
-  --coverage-tone: var(--bz-blocking);
+  --coverage-tone: var(--bz-provisional);
 }
 
 .import-filters {
@@ -2338,6 +2334,23 @@ button.coverage-chip.is-missing:hover {
   border-color: var(--bz-action);
   background: var(--bz-action);
   color: var(--bz-on-accent);
+}
+
+.tx-page.has-bulk .tx-detail .btn-primary,
+.tx-page.has-bulk .drawer .btn-primary,
+.tx-page.has-bulk .tx-detail .btn-primary:hover,
+.tx-page.has-bulk .drawer .btn-primary:hover {
+  border-color: transparent;
+  background: transparent;
+  color: var(--bz-muted);
+  font-weight: 500;
+}
+
+.tx-page.has-bulk .tx-detail .btn-primary:hover,
+.tx-page.has-bulk .drawer .btn-primary:hover {
+  border-color: var(--bz-border-strong);
+  background: var(--bz-surface-hover);
+  color: var(--bz-text);
 }
 
 .theme-row {

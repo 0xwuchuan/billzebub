@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -44,6 +46,21 @@ describe("categoryColor", () => {
     expect(color).toMatch(/^var\(--bz-hue-/);
     expect(categoryColor("School")).toBe(color);
     expect(color).not.toMatch(/#[0-9a-fA-F]{3,8}/);
+  });
+
+  it("hashes category hues without cyan, red, or status colors", () => {
+    const source = readFileSync("src/lib/labels.ts", "utf8");
+    const list = source.slice(
+      source.indexOf("const CATEGORY_HUES"),
+      source.indexOf("] as const"),
+    );
+    expect(list).toMatch(/--bz-hue-lime/);
+    expect(list).toMatch(/--bz-hue-yellow/);
+    expect(list).not.toMatch(/--bz-hue-cyan/);
+    expect(list).not.toMatch(/--bz-hue-red/);
+    expect(list).not.toMatch(
+      /--bz-action|--bz-provisional|--bz-attention|--bz-blocking/,
+    );
   });
 });
 
