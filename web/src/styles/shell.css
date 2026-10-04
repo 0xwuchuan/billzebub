@@ -169,7 +169,7 @@
   width: 0.45rem;
   height: 0.45rem;
   border-radius: var(--bz-radius-pill);
-  background: var(--bz-accent);
+  background: var(--bz-muted);
 }
 
 .rail-account-name {

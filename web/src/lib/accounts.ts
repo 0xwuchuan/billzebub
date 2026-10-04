@@ -56,19 +56,6 @@ export function accountKindLabel(kind: string): string {
     .replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
-export function accountKindColor(kind: string): string {
-  if (kind === "credit_card") {
-    return "var(--bz-accent)";
-  }
-  if (kind === "paylah") {
-    return "var(--bz-positive)";
-  }
-  if (kind === "depository") {
-    return "var(--bz-cat-utilities)";
-  }
-  return "var(--bz-muted)";
-}
-
 export function groupedAccounts(accounts: FinancialAccount[]): AccountGroup[] {
   const map = new Map<string, FinancialAccount[]>();
   for (const account of accounts) {

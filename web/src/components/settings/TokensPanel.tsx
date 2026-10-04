@@ -10,6 +10,7 @@ export function TokensPanel({
   onRevokeToken,
   onDismissIssuedToken,
   mode = "all",
+  actionVariant = "primary",
 }: {
   tokens: IntegrationToken[];
   issuedToken: IssuedToken | null;
@@ -19,6 +20,7 @@ export function TokensPanel({
   onRevokeToken: (tokenId: string) => Promise<void>;
   onDismissIssuedToken: () => void;
   mode?: "all" | "list" | "issue";
+  actionVariant?: "primary" | "ghost";
 }) {
   return (
     <div className="stack">
@@ -63,7 +65,7 @@ export function TokensPanel({
             once and never written to localStorage.
           </p>
           <Button
-            variant="primary"
+            variant={actionVariant}
             disabled={saving === "token"}
             onClick={() => {
               void onIssueToken();

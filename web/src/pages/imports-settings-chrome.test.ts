@@ -26,17 +26,32 @@ describe("imports and settings chrome", () => {
     expect(settings).not.toMatch(/style=\{\{/);
   });
 
-  it("paints coverage chips from status tokens", () => {
-    const block = screens.slice(
+  it("paints missing months in provisional text and present months in muted text", () => {
+    const months = screens.slice(
       screens.indexOf(".coverage-chip.is-present"),
-      screens.indexOf(".import-summary {"),
+      screens.indexOf(".imports-stage .panel-head h2"),
     );
-    expect(block).toMatch(/--bz-confirmed/);
-    expect(block).toMatch(/--bz-provisional/);
-    expect(block).toMatch(/--bz-blocking/);
-    expect(block).toMatch(/16%/);
-    expect(block).not.toMatch(/#[0-9a-fA-F]{3,8}/);
-    expect(block).not.toMatch(/border-color:\s*color-mix/);
+    expect(months).toMatch(
+      /\.coverage-chip\.is-missing\s*\{[^}]*color:\s*var\(--bz-provisional\)/,
+    );
+    expect(months).toMatch(
+      /\.coverage-chip\.is-present\s*\{[^}]*color:\s*var\(--bz-muted\)/,
+    );
+    expect(months).not.toMatch(/--bz-confirmed/);
+    expect(months).not.toMatch(/--bz-blocking/);
+    expect(months).not.toMatch(
+      /background:\s*color-mix\(\s*in srgb,\s*var\(--coverage-tone\)/,
+    );
+    expect(months).not.toMatch(/#[0-9a-fA-F]{3,8}/);
+
+    const counts = screens.slice(
+      screens.indexOf(".coverage-count.is-missing"),
+      screens.indexOf(".coverage-head h2"),
+    );
+    expect(counts).toMatch(/--bz-provisional/);
+    expect(counts).toMatch(/--bz-muted/);
+    expect(counts).not.toMatch(/--bz-confirmed/);
+    expect(counts).not.toMatch(/--bz-blocking/);
   });
 
   it("selects a coverage row with a quiet fill", () => {

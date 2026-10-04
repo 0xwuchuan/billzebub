@@ -198,7 +198,7 @@ const NAMED_CATEGORY_COLORS: Record<string, string> = {
 };
 
 const CATEGORY_HUES = [
-  "var(--bz-hue-cyan)",
+  "var(--bz-hue-lime)",
   "var(--bz-hue-orange)",
   "var(--bz-hue-blue)",
   "var(--bz-hue-purple)",
@@ -208,7 +208,6 @@ const CATEGORY_HUES = [
   "var(--bz-hue-amber)",
   "var(--bz-hue-violet)",
   "var(--bz-hue-pink)",
-  "var(--bz-hue-red)",
   "var(--bz-hue-yellow)",
 ] as const;
 

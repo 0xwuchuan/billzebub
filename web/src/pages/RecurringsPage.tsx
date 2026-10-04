@@ -84,6 +84,7 @@ export function RecurringsPage({
   const explicit = tab === "proposed" || tab === "active" ? tab : null;
   const view =
     explicit ?? (loading ? null : proposed.length > 0 ? "proposed" : "active");
+  const sheetHasPrimary = editor !== null && editor.kind !== "end";
 
   useEffect(() => {
     if (menuId === null) {
@@ -193,7 +194,7 @@ export function RecurringsPage({
           </button>
         </div>
         <Button
-          variant="primary"
+          variant={sheetHasPrimary ? "ghost" : "primary"}
           onClick={() => {
             setEditor({ kind: "add" });
           }}
@@ -453,7 +454,7 @@ function ProposedRow({
           ) : null}
         </p>
         <div className="recurring-actions">
-          <Button variant="primary" disabled={saving} onClick={onConfirm}>
+          <Button variant="ghost" disabled={saving} onClick={onConfirm}>
             Confirm
           </Button>
           <Button
