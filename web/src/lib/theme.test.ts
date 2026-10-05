@@ -4,7 +4,9 @@ import {
   applyTheme,
   readStoredTheme,
   resolveTheme,
+  syncThemeColor,
   systemTheme,
+  THEME_CHROME_COLOR,
   THEME_STORAGE_KEY,
   writeStoredTheme,
 } from "./theme";
@@ -13,6 +15,9 @@ afterEach(() => {
   window.localStorage.clear();
   document.documentElement.removeAttribute("data-theme");
   document.documentElement.style.colorScheme = "";
+  document
+    .querySelectorAll('meta[name="theme-color"]')
+    .forEach((node) => node.remove());
 });
 
 describe("theme preference", () => {
@@ -42,5 +47,27 @@ describe("theme preference", () => {
     applyTheme("light");
     expect(document.documentElement.dataset.theme).toBe("light");
     expect(document.documentElement.style.colorScheme).toBe("light");
+  });
+
+  it("paints the theme-color meta with the app background", () => {
+    const light = document.createElement("meta");
+    light.name = "theme-color";
+    light.media = "(prefers-color-scheme: light)";
+    light.content = "#000000";
+    const dark = document.createElement("meta");
+    dark.name = "theme-color";
+    dark.media = "(prefers-color-scheme: dark)";
+    dark.content = "#ffffff";
+    document.head.append(light, dark);
+
+    syncThemeColor("light");
+    expect(light.content).toBe(THEME_CHROME_COLOR.light);
+    expect(dark.content).toBe(THEME_CHROME_COLOR.light);
+
+    applyTheme("dark");
+    expect(light.content).toBe(THEME_CHROME_COLOR.dark);
+    expect(dark.content).toBe(THEME_CHROME_COLOR.dark);
+    expect(THEME_CHROME_COLOR.dark).toBe("#100f0f");
+    expect(THEME_CHROME_COLOR.light).toBe("#e6e4d9");
   });
 });

@@ -2,6 +2,12 @@ export type Theme = "light" | "dark";
 
 export const THEME_STORAGE_KEY = "bz.theme";
 
+/** Matches `--bz-bg`, the surface the phone top bar actually paints. */
+export const THEME_CHROME_COLOR: Record<Theme, string> = {
+  dark: "#100f0f",
+  light: "#e6e4d9",
+};
+
 export function isTheme(value: string | null): value is Theme {
   return value === "light" || value === "dark";
 }
@@ -64,6 +70,28 @@ export function applyTheme(
   }
   root.dataset.theme = theme;
   root.style.colorScheme = theme;
+  syncThemeColor(theme, root.ownerDocument);
+}
+
+export function syncThemeColor(
+  theme: Theme,
+  doc: Document | null = defaultDocument(),
+): void {
+  if (doc === null) {
+    return;
+  }
+  const color = THEME_CHROME_COLOR[theme];
+  const metas = doc.head.querySelectorAll('meta[name="theme-color"]');
+  if (metas.length === 0) {
+    const meta = doc.createElement("meta");
+    meta.name = "theme-color";
+    meta.content = color;
+    doc.head.appendChild(meta);
+    return;
+  }
+  for (const meta of metas) {
+    meta.setAttribute("content", color);
+  }
 }
 
 function defaultStorage(): Pick<Storage, "getItem" | "setItem"> | null {
@@ -90,4 +118,11 @@ function defaultRoot(): HTMLElement | null {
     return null;
   }
   return document.documentElement;
+}
+
+function defaultDocument(): Document | null {
+  if (typeof document === "undefined") {
+    return null;
+  }
+  return document;
 }

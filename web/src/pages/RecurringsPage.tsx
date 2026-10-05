@@ -801,6 +801,10 @@ function SeriesDialog({
                     Counterparty
                     <input
                       className="field"
+                      type="text"
+                      autoComplete="off"
+                      autoCapitalize="words"
+                      enterKeyHint="next"
                       value={counterparty}
                       onChange={(event) => {
                         setCounterparty(event.target.value);
@@ -811,7 +815,12 @@ function SeriesDialog({
                     Amount
                     <input
                       className="field"
+                      type="text"
                       inputMode="decimal"
+                      autoComplete="off"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      enterKeyHint="done"
                       value={amount}
                       onChange={(event) => {
                         setAmount(event.target.value);
@@ -864,7 +873,12 @@ function SeriesDialog({
                   Interval days
                   <input
                     className="field"
+                    type="text"
                     inputMode="numeric"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    enterKeyHint="done"
                     value={intervalDays}
                     onChange={(event) => {
                       setIntervalDays(event.target.value);
@@ -877,6 +891,8 @@ function SeriesDialog({
                 <input
                   className="field"
                   type="date"
+                  autoComplete="off"
+                  enterKeyHint="done"
                   value={nextExpected}
                   onChange={(event) => {
                     setNextExpected(event.target.value);

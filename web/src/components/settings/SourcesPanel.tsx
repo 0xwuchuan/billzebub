@@ -78,8 +78,12 @@ export function SourcesPanel({
             Apple Wallet card label
             <input
               className="field"
+              type="text"
               value={cardLabel}
               autoComplete="off"
+              autoCapitalize="words"
+              autoCorrect="off"
+              enterKeyHint="done"
               placeholder="Card name from Wallet"
               onChange={(event) => {
                 setCardLabel(event.target.value);
