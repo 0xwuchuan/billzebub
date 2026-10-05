@@ -40,11 +40,13 @@ textarea {
   color: inherit;
 }
 
-input,
-textarea,
-select {
-  /* iOS zooms the page when a focused field is under 16px and does not zoom back. */
-  font-size: 16px;
+@media (pointer: coarse) {
+  input,
+  textarea,
+  select {
+    /* iOS zooms the page when a focused field is under 16px and does not zoom back. */
+    font-size: 16px;
+  }
 }
 
 button,
@@ -130,13 +132,8 @@ p {
 .step-dot,
 .account-toggle,
 .statement-cell,
-.queue-item,
-.tx-row-main,
-.cat-row,
 .cat-picker-option,
 .cat-picker-trigger,
-.recurring-strip,
-.bento-attention-hit,
 .bento-link,
 .bento-hero-foot button,
 .text-link,
@@ -159,13 +156,8 @@ p {
 .coverage-account:active,
 .account-toggle:active,
 .statement-cell[data-action]:active,
-.queue-item:active,
-.tx-row-main:active,
-.cat-row:active,
 .cat-picker-option:active,
 .cat-picker-trigger:active,
-.recurring-strip:active,
-.bento-attention-hit:active,
 .bento-link:active,
 .bento-hero-foot button:active,
 .text-link:active,
@@ -173,6 +165,25 @@ p {
 .step-dot:active,
 .import-details summary:active {
   transform: scale(var(--bz-press));
+}
+
+.recurring-strip,
+.bento-attention-hit,
+.tx-row-main,
+.queue-item,
+.cat-row {
+  transition: background-color var(--bz-t-press) var(--bz-ease-out);
+}
+
+.recurring-strip:active,
+.bento-attention-hit:active {
+  background: var(--bz-surface-hover);
+}
+
+.tx-row-main:active,
+.queue-item:active,
+.cat-row:active {
+  background: color-mix(in srgb, var(--bz-text) 6%, var(--bz-bg-card));
 }
 
 .stage-enter {
@@ -536,13 +547,8 @@ p {
   .coverage-account:active,
   .account-toggle:active,
   .statement-cell[data-action]:active,
-  .queue-item:active,
-  .tx-row-main:active,
-  .cat-row:active,
   .cat-picker-option:active,
   .cat-picker-trigger:active,
-  .recurring-strip:active,
-  .bento-attention-hit:active,
   .bento-link:active,
   .bento-hero-foot button:active,
   .text-link:active,

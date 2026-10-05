@@ -157,7 +157,7 @@
 }
 
 @media (hover: hover) and (pointer: fine) {
-  button.cat-row:hover {
+  button.cat-row:hover:not(:active) {
     background: var(--bz-surface-hover);
   }
 }
@@ -320,7 +320,7 @@
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .queue-item:hover {
+  .queue-item:hover:not(:active) {
     background: var(--bz-surface-hover);
   }
 }
@@ -1804,7 +1804,7 @@ button.coverage-chip {
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .recurring-strip:hover {
+  .recurring-strip:hover:not(:active) {
     background: color-mix(in srgb, var(--bz-text) 3%, transparent);
   }
 
@@ -2431,7 +2431,7 @@ button.coverage-chip {
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .tx-row-main:hover {
+  .tx-row-main:hover:not(:active) {
     background: transparent;
   }
 }

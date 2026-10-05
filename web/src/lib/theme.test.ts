@@ -49,7 +49,7 @@ describe("theme preference", () => {
     expect(document.documentElement.style.colorScheme).toBe("light");
   });
 
-  it("paints the theme-color meta with the elevated background", () => {
+  it("paints the theme-color meta with the app background", () => {
     const light = document.createElement("meta");
     light.name = "theme-color";
     light.media = "(prefers-color-scheme: light)";
@@ -67,7 +67,7 @@ describe("theme preference", () => {
     applyTheme("dark");
     expect(light.content).toBe(THEME_CHROME_COLOR.dark);
     expect(dark.content).toBe(THEME_CHROME_COLOR.dark);
-    expect(THEME_CHROME_COLOR.dark).toBe("#1c1b1a");
-    expect(THEME_CHROME_COLOR.light).toBe("#f2f0e5");
+    expect(THEME_CHROME_COLOR.dark).toBe("#100f0f");
+    expect(THEME_CHROME_COLOR.light).toBe("#e6e4d9");
   });
 });

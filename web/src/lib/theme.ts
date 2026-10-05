@@ -2,10 +2,10 @@ export type Theme = "light" | "dark";
 
 export const THEME_STORAGE_KEY = "bz.theme";
 
-/** Matches `--bz-bg-elevated`, the surface behind the top bar. */
+/** Matches `--bz-bg`, the surface the phone top bar actually paints. */
 export const THEME_CHROME_COLOR: Record<Theme, string> = {
-  dark: "#1c1b1a",
-  light: "#f2f0e5",
+  dark: "#100f0f",
+  light: "#e6e4d9",
 };
 
 export function isTheme(value: string | null): value is Theme {
