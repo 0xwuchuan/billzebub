@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "./App";
 import { SETUP_STORAGE_KEY } from "./lib/setup";
-import { formatMoney } from "./lib/money";
+import { formatMoney, splitMoneyText } from "./lib/money";
 import { hashFor, parseHash, titleFor } from "./lib/route";
 import { isoDate } from "./lib/labels";
 import {
@@ -1302,6 +1302,17 @@ describe("formatMoney", () => {
     expect(formatMoney({ amount: "-12.34", currency: "SGD" })).toBe(
       "−SGD 12.34",
     );
+  });
+
+  it("splits a hero amount between the currency and the figure", () => {
+    expect(splitMoneyText("SGD 1,234,567.89")).toEqual({
+      currency: "SGD",
+      figure: "1,234,567.89",
+    });
+    expect(splitMoneyText("−SGD 12.34")).toEqual({
+      currency: "−SGD",
+      figure: "12.34",
+    });
   });
 });
 

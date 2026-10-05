@@ -41,7 +41,8 @@ describe("StatementCoveragePanel", () => {
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     expect(screen.getByText(/1 missing/)).toBeInTheDocument();
     expect(screen.getByText(/1 partial/)).toBeInTheDocument();
-    expect(screen.getByText(/last 6 mo · Asia\/Singapore/)).toBeInTheDocument();
+    expect(screen.getByText("last 6 mo")).toBeInTheDocument();
+    expect(screen.getByText("Asia/Singapore")).toBeInTheDocument();
     expect(
       screen.queryByText(/Missing months have no accepted/),
     ).not.toBeInTheDocument();

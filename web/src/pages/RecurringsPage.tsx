@@ -15,6 +15,8 @@ import type {
   RecurringSeries,
 } from "../api";
 import { CloseIcon, PlusIcon } from "../components/icons";
+import { MoneyText } from "../components/MoneyText";
+import { UserLabel } from "../components/UserLabel";
 import { Button } from "../components/ui/Button";
 import { CategoryChip } from "../components/ui/CategoryChip";
 import { useEntrance } from "../hooks/useEntrance";
@@ -438,9 +440,11 @@ function ProposedRow({
       }}
     >
       <div className="recurring-row-top">
-        <strong className="recurring-name">{series.counterparty}</strong>
+        <strong className="recurring-name">
+          <UserLabel value={series.counterparty} />
+        </strong>
         <span className="recurring-amount amount">
-          {recurringAmountLabel(series.amount)}
+          <MoneyText text={recurringAmountLabel(series.amount)} />
         </span>
       </div>
       <div className="recurring-row-mid">
@@ -508,7 +512,9 @@ function ActiveRow({
       data-recurring-row
       data-series-id={series.id}
     >
-      <strong className="recurring-name">{series.counterparty}</strong>
+      <strong className="recurring-name">
+        <UserLabel value={series.counterparty} />
+      </strong>
       <p className="recurring-when recurring-meta">
         <span>{relativeDueLabel(series.next_expected_date, today)}</span>
         <span aria-hidden="true"> · </span>
@@ -516,12 +522,14 @@ function ActiveRow({
         {series.missed ? <span className="recurring-miss">Missed</span> : null}
       </p>
       <span className="recurring-amount amount">
-        {recurringAmountLabel(series.amount)}
+        <MoneyText text={recurringAmountLabel(series.amount)} />
       </span>
       <div className="recurring-tax">
         {category !== null ? <CategoryChip name={category} /> : null}
       </div>
-      <p className="recurring-account recurring-meta">{account ?? ""}</p>
+      <p className="recurring-account recurring-meta" title={account ?? ""}>
+        {account === null ? "" : <UserLabel value={account} kind="account" />}
+      </p>
       <div className="recurring-actions" data-row-menu>
         <button
           className="icon-btn"

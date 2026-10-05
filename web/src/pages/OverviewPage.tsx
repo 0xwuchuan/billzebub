@@ -2,6 +2,8 @@ import { useId } from "react";
 
 import type { RecurringSummary, Transaction } from "../api";
 import { CategoryRankList } from "../components/CategoryRankList";
+import { MoneyText } from "../components/MoneyText";
+import { UserLabel } from "../components/UserLabel";
 import {
   DitherBarChart,
   DitherDonutChart,
@@ -81,9 +83,12 @@ export function OverviewPage({
             <div className="bento-hero-main">
               <div className="bento-hero-copy">
                 <p className="bento-figure amount">
-                  {formatUnsigned(
-                    centsToMoney(totals.estimatedCents, totals.currency),
-                  )}
+                  <MoneyText
+                    hero
+                    text={formatUnsigned(
+                      centsToMoney(totals.estimatedCents, totals.currency),
+                    )}
+                  />
                 </p>
                 <p className="bento-hero-foot">
                   <button
@@ -94,9 +99,11 @@ export function OverviewPage({
                     <i className="cell-dot confirmed" aria-hidden="true" />
                     Confirmed
                     <span className="amount">
-                      {formatUnsigned(
-                        centsToMoney(totals.confirmedCents, totals.currency),
-                      )}
+                      <MoneyText
+                        text={formatUnsigned(
+                          centsToMoney(totals.confirmedCents, totals.currency),
+                        )}
+                      />
                     </span>
                   </button>
                   <span className="bento-foot-sep" aria-hidden="true">
@@ -110,9 +117,14 @@ export function OverviewPage({
                     <i className="cell-dot provisional" aria-hidden="true" />
                     Provisional
                     <span className="amount">
-                      {formatUnsigned(
-                        centsToMoney(totals.provisionalCents, totals.currency),
-                      )}
+                      <MoneyText
+                        text={formatUnsigned(
+                          centsToMoney(
+                            totals.provisionalCents,
+                            totals.currency,
+                          ),
+                        )}
+                      />
                     </span>
                   </button>
                 </p>
@@ -179,7 +191,7 @@ export function OverviewPage({
             <span className="recurring-strip-line">
               <span className="recurring-strip-figure">
                 <span className="recurring-strip-total amount">
-                  {formatUnsigned(summary.total)}
+                  <MoneyText text={formatUnsigned(summary.total)} />
                 </span>
                 <span className="recurring-meta">this month</span>
               </span>
@@ -187,13 +199,13 @@ export function OverviewPage({
                 {summary.upcoming.slice(0, 3).map((series) => (
                   <span className="recurring-due" key={series.id}>
                     <span className="recurring-due-name">
-                      {series.counterparty}
+                      <UserLabel value={series.counterparty} />
                     </span>
                     <span className="recurring-meta">
                       {relativeDueLabel(series.next_expected_date, today)}
                     </span>
                     <span className="amount">
-                      {recurringAmountLabel(series.amount)}
+                      <MoneyText text={recurringAmountLabel(series.amount)} />
                     </span>
                   </span>
                 ))}

@@ -3,6 +3,8 @@ import { useEffect, useMemo, useState } from "react";
 import type { Transaction } from "./api";
 import { AppShell } from "./components/AppShell";
 import { TransactionDrawer } from "./components/TransactionDrawer";
+import { DemoDataChrome } from "./dev/DemoDataChrome";
+import { useFixtureMode } from "./dev/fixtureMode";
 import { useRecurrings } from "./hooks/useRecurrings";
 import { useRoute } from "./hooks/useRoute";
 import { useSetup } from "./hooks/useSetup";
@@ -27,6 +29,7 @@ import { TransactionsPage } from "./pages/TransactionsPage";
 
 export function App() {
   const workspace = useWorkspace();
+  const fixtureMode = useFixtureMode();
   const ownerCategories = workspace.workspace.categories.filter(
     (category) => category.active && category.name !== "Uncategorized",
   );
@@ -37,7 +40,9 @@ export function App() {
   const { state: setup, dispatch: setupDispatch } = useSetup(gates);
   const configured = gatesMet(gates);
   const workspaceReady = !workspace.loading;
-  const onboarded = setup.onboarded || (workspaceReady && configured);
+  const fixtureOn = fixtureMode !== null;
+  const onboarded =
+    fixtureOn || setup.onboarded || (workspaceReady && configured);
   const { route, go } = useRoute(onboarded);
   const recurrings = useRecurrings();
   const { theme, toggleTheme } = useTheme();
@@ -187,7 +192,8 @@ export function App() {
     }
   }
 
-  const showOnboarding = workspaceReady && !setup.onboarded && !configured;
+  const showOnboarding =
+    !fixtureOn && workspaceReady && !setup.onboarded && !configured;
   if (showOnboarding) {
     return (
       <OnboardingPage
@@ -260,6 +266,7 @@ export function App() {
         }}
         onToggleTheme={toggleTheme}
       >
+        {import.meta.env.DEV ? <DemoDataChrome /> : null}
         {route.page === "overview" ? (
           <OverviewPage
             transactions={workspace.workspace.transactions.items}

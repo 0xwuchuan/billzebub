@@ -1,6 +1,9 @@
 import type { Category, Transaction } from "../api";
 import { useOverlayMedia } from "../hooks/useOverlayMedia";
 import { CloseIcon } from "./icons";
+import { counterpartyText } from "../lib/identity";
+import { MoneyText } from "./MoneyText";
+import { UserLabel } from "./UserLabel";
 import { Button } from "./ui/Button";
 import { CategoryChip } from "./ui/CategoryChip";
 import { categoryLabel, dayMonthLabel, kindLabel } from "../lib/labels";
@@ -96,8 +99,13 @@ function DrawerBody({
     <>
       <div className="drawer-head">
         <div className="decision-hero drawer-hero">
-          <h2 id="drawer-title" className="decision-subject">
-            {transaction.counterparty}
+          <h2
+            id="drawer-title"
+            className={`decision-subject${transaction.counterparty.trim() === "" ? " is-unknown" : ""}`}
+            dir="auto"
+            title={counterpartyText(transaction.counterparty)}
+          >
+            {counterpartyText(transaction.counterparty)}
           </h2>
           <p className="hero-value amount drawer-amount">
             {provisional ? (
@@ -107,11 +115,14 @@ function DrawerBody({
                 aria-label="Provisional"
               />
             ) : null}
-            {formatUnsigned(amount)}
+            <MoneyText hero text={formatUnsigned(amount)} />
           </p>
           <p className="decision-meta">
             {dayMonthLabel(transaction.effective_date)} ·{" "}
-            {transaction.financial_account.name}
+            <UserLabel
+              value={transaction.financial_account.name}
+              kind="account"
+            />
           </p>
         </div>
         <button
@@ -128,7 +139,12 @@ function DrawerBody({
           <dt>{provisional ? "Authorized Amount" : "Posted Amount"}</dt>
           <dd>{formatUnsigned(amount)}</dd>
           <dt>Financial Account</dt>
-          <dd>{transaction.financial_account.name}</dd>
+          <dd>
+            <UserLabel
+              value={transaction.financial_account.name}
+              kind="account"
+            />
+          </dd>
           <dt>Transaction Kind</dt>
           <dd>{kindLabel(transaction.kind)}</dd>
           <dt>Category</dt>

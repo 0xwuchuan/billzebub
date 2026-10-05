@@ -101,7 +101,7 @@ describe("ImportsPage extraction filters", () => {
     expect(screen.getAllByText("citi-credit-card").length).toBeGreaterThan(0);
     expect(screen.queryByText("dbs-credit-card")).not.toBeInTheDocument();
     expect(screen.getAllByText("accepted").length).toBeGreaterThan(0);
-    expect(screen.getByText("2 Claims")).toBeInTheDocument();
+    expect(screen.getByText("2 claims")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "All" }));
     expect(screen.getAllByText("dbs-credit-card").length).toBeGreaterThan(0);

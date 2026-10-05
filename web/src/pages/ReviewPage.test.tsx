@@ -218,7 +218,7 @@ describe("ReviewPage", () => {
     });
 
     expect(
-      screen.getByRole("heading", { name: "Unknown Counterparty" }),
+      screen.getByRole("heading", { name: "Unknown counterparty" }),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("heading", { name: "Category needed" }),

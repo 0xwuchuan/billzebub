@@ -53,9 +53,9 @@ describe("TxRow", () => {
     expect(row.querySelector(".cat-chip")).not.toBeNull();
     expect(row.querySelector(".provisional-badge")).not.toBeNull();
     expect(row).not.toHaveTextContent(provisional.id);
-    expect(
-      within(row).getByText("10 Jan · Synthetic Card"),
-    ).toBeInTheDocument();
+    expect(row.querySelector(".meta")).toHaveTextContent(
+      "10 Jan · Synthetic Card",
+    );
   });
 
   it("marks a provisional row with an amount-side dot instead of a badge", () => {

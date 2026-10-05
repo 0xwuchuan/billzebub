@@ -2,6 +2,7 @@ import { useId, useState } from "react";
 
 import type { StatementCoverageReport } from "../api";
 import { shortMonthLabel } from "../lib/labels";
+import { UserLabel } from "./UserLabel";
 
 const COVERAGE_EXPANDED_KEY = "bz.imports.coverageExpanded";
 
@@ -100,7 +101,10 @@ export function StatementCoveragePanel({
                           onSelectAccount(account.id);
                         }}
                       >
-                        {account.display_name}
+                        <UserLabel
+                          value={account.display_name}
+                          kind="account"
+                        />
                       </button>
                       <div className="coverage-months">
                         {account.months.map((item) => {
@@ -179,12 +183,10 @@ function CoverageSummary({
   const windowMonths = coverage?.window_months ?? 6;
   const timezone = coverage?.timezone ?? "Asia/Singapore";
   return (
-    <span className="coverage-summary">
+    <span className="coverage-units">
       <CoverageCounts counts={counts} />
-      <span className="coverage-meta">
-        {" "}
-        · last {windowMonths} mo · {timezone}
-      </span>
+      <span className="coverage-unit">last {windowMonths} mo</span>
+      <span className="coverage-unit">{timezone}</span>
     </span>
   );
 }
@@ -195,23 +197,24 @@ function CoverageCounts({
   counts: { accounts: number; missing: number; partial: number };
 }) {
   if (counts.accounts === 0) {
-    return <span className="coverage-meta">No accounts yet</span>;
+    return <span className="coverage-unit">No accounts yet</span>;
   }
   if (counts.missing === 0 && counts.partial === 0) {
-    return <span className="coverage-count is-present">all present</span>;
+    return (
+      <span className="coverage-unit coverage-count is-present">
+        all present
+      </span>
+    );
   }
   return (
     <>
       {counts.missing > 0 ? (
-        <span className="coverage-count is-missing">
+        <span className="coverage-unit coverage-count is-missing">
           {counts.missing} missing
         </span>
       ) : null}
-      {counts.missing > 0 && counts.partial > 0 ? (
-        <span className="coverage-meta"> · </span>
-      ) : null}
       {counts.partial > 0 ? (
-        <span className="coverage-count is-partial">
+        <span className="coverage-unit coverage-count is-partial">
           {counts.partial} partial
         </span>
       ) : null}

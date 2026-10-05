@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 
 import type { Category, ImportRecord, Review, Transaction } from "../api";
 import { CategoryPicker } from "../components/CategoryPicker";
+import { MoneyText } from "../components/MoneyText";
+import { UserLabel } from "../components/UserLabel";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { useDeskMedia } from "../hooks/useDeskMedia";
@@ -27,6 +29,7 @@ import {
   openedLabel,
   reviewTitle,
 } from "../lib/labels";
+import { UNKNOWN_COUNTERPARTY, formatAccountLabel } from "../lib/identity";
 import { formatUnsigned } from "../lib/money";
 import type { ReviewFilter } from "../lib/route";
 
@@ -416,6 +419,7 @@ function QueueItem({
       ? categorizationAmount(review.context)
       : activityAmount(transaction);
   const amount = amountMoney === null ? null : formatUnsigned(amountMoney);
+  const title = queueTitle(review, transaction, importRecord);
   return (
     <button
       className={`queue-item${blocking ? " is-blocking" : ""}`}
@@ -427,14 +431,20 @@ function QueueItem({
     >
       <span>
         <span className="queue-title">
-          {queueTitle(review, transaction, importRecord)}
+          <UserLabel value={title === UNKNOWN_COUNTERPARTY ? "" : title} />
         </span>
         <span className="queue-reason">
           {openedLabel(review.created_at, today)}
         </span>
       </span>
       <span className="queue-right">
-        <span className="amount">{amount ?? queueFallbackAmount(review)}</span>
+        <span className="amount">
+          {amount === null ? (
+            queueFallbackAmount(review)
+          ) : (
+            <MoneyText text={amount} />
+          )}
+        </span>
       </span>
     </button>
   );
@@ -517,9 +527,19 @@ function Evidence({
       : contextString(review.context, "effective_date") !== null
         ? dayMonthLabel(contextString(review.context, "effective_date") ?? "")
         : null;
-  const facts = [account, when, openedLabel(review.created_at, today)]
-    .filter((part): part is string => part !== null && part !== "")
-    .join(" · ");
+  const accountShown = account === "" ? "" : formatAccountLabel(account);
+  const factParts = [
+    account,
+    when,
+    openedLabel(review.created_at, today),
+  ].filter((part): part is string => part !== null && part !== "");
+  const shownParts = [
+    accountShown,
+    when,
+    openedLabel(review.created_at, today),
+  ].filter((part): part is string => part !== null && part !== "");
+  const facts = factParts.join(" · ");
+  const factsShown = shownParts.join(" · ");
   return (
     <>
       <div className="panel-head">
@@ -554,12 +574,24 @@ function Evidence({
       </div>
       <div className={`evidence-body${fresh ? " stage-enter" : ""}`}>
         <div className="decision-hero">
-          <h2 className="decision-subject">{subject}</h2>
+          <h2
+            className={`decision-subject${subject === UNKNOWN_COUNTERPARTY ? " is-unknown" : ""}`}
+            dir="auto"
+            title={subject}
+          >
+            {subject === UNKNOWN_COUNTERPARTY ? (
+              subject
+            ) : (
+              <UserLabel value={subject} />
+            )}
+          </h2>
           {amount !== null ? (
-            <p className="decision-amount amount">{amount}</p>
+            <p className="decision-amount amount">
+              <MoneyText hero text={amount} />
+            </p>
           ) : null}
-          <p className="decision-meta">
-            {facts}
+          <p className="decision-meta" title={facts}>
+            {factsShown}
             {jevLine !== null ? (
               <span className="decision-meta-jev">{jevLine}</span>
             ) : null}
@@ -595,12 +627,15 @@ function Evidence({
             {categorization && assignable !== undefined ? (
               <Button
                 variant="primary"
+                title="Assign Category"
                 disabled={draft === "" || saving === assignable.id}
                 onClick={() => {
                   onAssign(assignable);
                 }}
               >
-                {saving === assignable.id ? "Saving…" : "Assign Category"}
+                <span className="decision-choice">
+                  {saving === assignable.id ? "Saving…" : "Assign Category"}
+                </span>
               </Button>
             ) : null}
             {needsSetup
@@ -608,9 +643,12 @@ function Evidence({
                   <Button
                     key={choice}
                     variant={index === 0 ? "primary" : "ghost"}
+                    title={decisionLabel(choice)}
                     onClick={onOpenSettings}
                   >
-                    {decisionLabel(choice)}
+                    <span className="decision-choice">
+                      {decisionLabel(choice)}
+                    </span>
                   </Button>
                 ))
               : null}
@@ -625,12 +663,15 @@ function Evidence({
                           ? "primary"
                           : "ghost"
                     }
+                    title={decisionLabel(choice)}
                     disabled={saving === review.id}
                     onClick={() => {
                       onDecide(review, choice);
                     }}
                   >
-                    {saving === review.id ? "Saving…" : decisionLabel(choice)}
+                    <span className="decision-choice">
+                      {saving === review.id ? "Saving…" : decisionLabel(choice)}
+                    </span>
                   </Button>
                 ))
               : null}
@@ -748,7 +789,9 @@ function decisionSubject(
   importRecord: ImportRecord | undefined,
 ): string {
   if (transaction !== undefined) {
-    return transaction.counterparty;
+    return transaction.counterparty.trim() === ""
+      ? UNKNOWN_COUNTERPARTY
+      : transaction.counterparty;
   }
   const fromContext = categorizationCounterparty(review.context);
   if (fromContext !== null) {
@@ -761,7 +804,7 @@ function decisionSubject(
     return importRecord.adapter_key;
   }
   if (review.condition_code === "categorization_needed") {
-    return "Unknown Counterparty";
+    return "Unknown counterparty";
   }
   return reviewTitle(review.condition_code);
 }
