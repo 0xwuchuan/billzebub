@@ -295,6 +295,8 @@ button.cat-row:hover {
   position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
+  max-width: 100%;
+  min-width: 0;
   align-items: center;
   gap: var(--bz-space-3);
   width: 100%;
@@ -304,6 +306,11 @@ button.cat-row:hover {
   background: transparent;
   color: inherit;
   text-align: left;
+}
+
+.queue-item > span {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .queue-item:hover {
@@ -331,6 +338,9 @@ button.cat-row:hover {
 .queue-reason,
 .queue-age {
   display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   color: var(--bz-muted);
   font-size: var(--bz-text-xs);
@@ -339,6 +349,9 @@ button.cat-row:hover {
 }
 
 .queue-right {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   text-align: right;
   font-size: var(--bz-text-sm);
 }
@@ -485,6 +498,8 @@ button.cat-row:hover {
 }
 
 .decision-amount {
+  max-width: 100%;
+  overflow-wrap: anywhere;
   font-size: var(--bz-text-hero);
   font-weight: 600;
   letter-spacing: -0.045em;
@@ -1112,6 +1127,7 @@ button.coverage-chip:hover {
   display: grid;
   justify-items: end;
   gap: 0.15rem;
+  max-width: 46%;
 }
 
 .panel-actions {
@@ -1238,6 +1254,7 @@ button.coverage-chip:hover {
 }
 
 .imports-stage .queue-item {
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.8fr);
   gap: var(--bz-space-2);
   padding: 0.28rem 0.7rem;
 }
@@ -1456,8 +1473,10 @@ button.coverage-chip:hover {
 
 .dash-grid {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--bz-space-4);
   min-width: 0;
+  max-width: 100%;
   padding-bottom: var(--bz-space-6);
 }
 
@@ -1536,6 +1555,8 @@ button.coverage-chip:hover {
 }
 
 .bento-figure {
+  max-width: 100%;
+  overflow-wrap: anywhere;
   font-size: var(--bz-text-display);
   font-weight: 600;
   letter-spacing: -0.045em;
@@ -1555,7 +1576,10 @@ button.coverage-chip:hover {
 .bento-hero-foot button {
   display: inline-flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.35rem;
+  max-width: 100%;
+  min-width: 0;
   padding: 0;
   border: 0;
   background: transparent;
@@ -1808,8 +1832,10 @@ button.coverage-chip:hover {
 }
 
 .recurring-amount {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
   font-weight: 600;
-  white-space: nowrap;
 }
 
 .recurring-meta,
@@ -1977,12 +2003,30 @@ button.coverage-chip:hover {
   background: color-mix(in srgb, var(--bz-text) 6%, var(--bz-bg-card));
 }
 
+.bento-categories {
+  container-type: inline-size;
+}
+
 .bento-cat-body {
   display: grid;
   grid-template-columns: 5.5rem minmax(0, 1fr);
   gap: var(--bz-space-3);
   align-items: center;
   padding: 0 var(--bz-space-4) var(--bz-space-4);
+}
+
+/* Root font grows faster than the card (200% zoom). Stack the donut
+   so category names and amounts keep a full row. */
+@container (max-width: 16rem) {
+  .bento-cat-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .bento-cat-body .dither-donut canvas {
+    width: 5.5rem;
+    height: 5.5rem;
+    max-width: 100%;
+  }
 }
 
 .bento-cat-body:not(:has(.dither-donut)) {
@@ -2068,10 +2112,17 @@ button.coverage-chip:hover {
   min-width: 8.5rem;
 }
 
+.tx-page,
+.tx-split,
+.tx-list-col {
+  min-width: 0;
+  max-width: 100%;
+}
+
 .tx-page {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--bz-space-4);
-  min-width: 0;
   padding-bottom: var(--bz-space-6);
 }
 
@@ -2168,14 +2219,19 @@ button.coverage-chip:hover {
 }
 
 .tx-list {
+  min-width: 0;
+  max-width: 100%;
   overflow: hidden;
 }
 
 .tx-group-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
   gap: var(--bz-space-3);
+  max-width: 100%;
+  min-width: 0;
   padding: 0.85rem var(--bz-space-5) 0.35rem;
   color: var(--bz-muted);
   font-size: var(--bz-text-xs);
@@ -2192,6 +2248,8 @@ button.coverage-chip:hover {
 .tx-row {
   display: flex;
   align-items: stretch;
+  min-width: 0;
+  max-width: 100%;
   border-bottom: 1px solid var(--bz-border);
 }
 
@@ -2221,6 +2279,7 @@ button.coverage-chip:hover {
   gap: var(--bz-space-3);
   width: 100%;
   min-width: 0;
+  max-width: 100%;
   min-height: var(--bz-row-h);
   padding: 0.45rem var(--bz-space-5) 0.45rem var(--bz-space-3);
   border: 0;
@@ -2271,14 +2330,18 @@ button.coverage-chip:hover {
   align-items: center;
   justify-content: flex-end;
   gap: var(--bz-space-2);
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .tx-amount {
-  flex: 0 0 auto;
+  width: max-content;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
   font-weight: 600;
   text-align: right;
-  white-space: nowrap;
 }
 
 .bulk-bar {
@@ -2514,11 +2577,13 @@ button.coverage-chip:hover {
   }
 
   .tx-row-main {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    display: flex;
+    flex-wrap: wrap;
     align-items: center;
     column-gap: var(--bz-space-2);
     row-gap: 0.2rem;
+    min-width: 0;
+    max-width: 100%;
     min-height: 2.75rem;
     padding-top: 0.4rem;
     padding-bottom: 0.4rem;
@@ -2526,8 +2591,8 @@ button.coverage-chip:hover {
   }
 
   .tx-row-copy {
-    grid-column: 1;
-    grid-row: 1;
+    flex: 1 1 7rem;
+    min-width: 0;
   }
 
   .tx-row-copy strong {
@@ -2542,30 +2607,60 @@ button.coverage-chip:hover {
   }
 
   .tx-row-status {
-    grid-column: 1 / -1;
-    grid-row: 2;
+    flex: 1 0 100%;
+    order: 3;
   }
 
   .tx-amount-side {
-    grid-column: 2;
-    grid-row: 1;
-    align-self: start;
-    margin-top: 0.1rem;
+    flex: 0 1 auto;
+    width: max-content;
+    max-width: 100%;
+    margin-left: auto;
+    order: 2;
   }
 
-  .cat-row {
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas:
-      "chip figures"
-      "meter meter";
+  .cat-row,
+  .cat-row.is-plain {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    column-gap: var(--bz-space-2);
+    row-gap: 0.2rem;
+  }
+
+  .cat-row > .cat-chip {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: min(9.75rem, 100%);
+  }
+
+  .cat-row > .cat-figures {
+    flex: 0 0 auto;
+    width: max-content;
+    max-width: 100%;
+    margin-left: auto;
+  }
+
+  .cat-row > .cat-meter {
+    flex: 1 0 100%;
   }
 
   .cat-figures {
     min-width: 0;
+    max-width: 100%;
+  }
+
+  .cat-figures .amount {
+    width: max-content;
+    max-width: 100%;
+    overflow-wrap: anywhere;
   }
 
   .cat-chip {
-    max-width: 9.75rem;
+    max-width: min(9.75rem, 100%);
   }
 
   .tx-page.has-bulk {
@@ -2674,14 +2769,28 @@ button.coverage-chip:hover {
 
   .tx-row.is-compact .tx-row-main {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
+    min-width: 0;
+    max-width: 100%;
     min-height: 2.5rem;
     padding-top: 0.28rem;
     padding-bottom: 0.28rem;
   }
 
+  .tx-row.is-compact .tx-row-copy {
+    flex: 1 1 100%;
+    max-width: 100%;
+  }
+
   .tx-row.is-compact .tx-row-trailing {
     display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    margin-left: 0;
   }
 
   .tx-row.is-compact .tx-row-copy strong {
@@ -2694,7 +2803,11 @@ button.coverage-chip:hover {
     grid-column: auto;
     grid-row: auto;
     align-self: center;
+    flex: 0 0 auto;
+    width: max-content;
+    max-width: 100%;
     margin-top: 0;
+    margin-left: auto;
   }
 
   button.bento-link {
@@ -2791,8 +2904,10 @@ button.coverage-chip:hover {
 
   .review-page .evidence-pane > .panel-head {
     flex: 0 0 auto;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     gap: var(--bz-space-2);
+    min-width: 0;
+    max-width: 100%;
     padding: var(--bz-space-3) var(--bz-space-4);
   }
 
