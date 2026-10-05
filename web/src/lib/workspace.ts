@@ -450,7 +450,7 @@ export function transactionFromReviewContext(
       name: contextString(review.context, "account") ?? "",
     },
     counterparty:
-      categorizationCounterparty(review.context) ?? "Unknown Counterparty",
+      categorizationCounterparty(review.context) ?? "Unknown counterparty",
     posted_amount: amount ?? { amount: "0", currency: "SGD" },
     authorized_amount: null,
     effective_date: contextString(review.context, "effective_date") ?? "",

@@ -6,6 +6,7 @@ import type { Theme } from "../lib/theme";
 import type { Route, RoutePage } from "../lib/route";
 import { titleFor } from "../lib/route";
 import { ThemeToggle } from "./ThemeToggle";
+import { UserLabel } from "./UserLabel";
 import { Badge } from "./ui/Badge";
 import {
   CloseIcon,
@@ -288,7 +289,7 @@ function RailContent({
               >
                 <i className="rail-account-dot" aria-hidden="true" />
                 <span className="rail-account-name">
-                  {account.display_name}
+                  <UserLabel value={account.display_name} kind="account" />
                 </span>
               </button>
             ))}

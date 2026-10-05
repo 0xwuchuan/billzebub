@@ -7,6 +7,9 @@ import {
   isExpense,
   needsCategorization,
 } from "../lib/workspace";
+import { counterpartyText } from "../lib/identity";
+import { MoneyText } from "./MoneyText";
+import { UserLabel } from "./UserLabel";
 import { Badge } from "./ui/Badge";
 import { CategoryChip } from "./ui/CategoryChip";
 import { ProvisionalBadge } from "./ui/ProvisionalBadge";
@@ -38,14 +41,21 @@ export function TxRow({
   const review = needsCategorization(transaction);
   const rowClass = `tx-row${selected ? " is-selected" : ""}${density === "compact" ? " is-compact" : ""}`;
 
+  const counterparty = counterpartyText(transaction.counterparty);
+  const unknown = transaction.counterparty.trim() === "";
   const body = (
     <>
       <span className="tx-row-copy">
-        <strong>{transaction.counterparty}</strong>
+        <strong className={unknown ? "is-unknown" : undefined}>
+          <UserLabel value={transaction.counterparty} />
+        </strong>
         <span className="meta">
           {dayMonthLabel(transaction.effective_date)}
           {" · "}
-          {transaction.financial_account.name}
+          <UserLabel
+            value={transaction.financial_account.name}
+            kind="account"
+          />
         </span>
       </span>
       <span className="tx-row-trailing">
@@ -66,7 +76,7 @@ export function TxRow({
             />
           ) : null}
           <strong className={`amount tx-amount${transfer ? " muted" : ""}`}>
-            {amount}
+            <MoneyText text={amount} />
           </strong>
         </span>
       </span>
@@ -92,7 +102,7 @@ export function TxRow({
   return (
     <div className={rowClass}>
       <label className="tx-check">
-        <span className="sr-only">Select {transaction.counterparty}</span>
+        <span className="sr-only">Select {counterparty}</span>
         <input
           type="checkbox"
           checked={checked}

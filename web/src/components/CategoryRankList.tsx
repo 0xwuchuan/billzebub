@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 
+import { MoneyText } from "./MoneyText";
 import { categoryColor, categoryPrimary } from "../lib/labels";
 import { centsToMoney, formatUnsigned } from "../lib/money";
 import { CategoryChip } from "./ui/CategoryChip";
@@ -47,7 +48,9 @@ export function CategoryRankList({
                 <span className="cat-share">{share}%</span>
               ) : null}
               <span className="amount">
-                {formatUnsigned(centsToMoney(item.cents, currency))}
+                <MoneyText
+                  text={formatUnsigned(centsToMoney(item.cents, currency))}
+                />
               </span>
             </span>
           </>

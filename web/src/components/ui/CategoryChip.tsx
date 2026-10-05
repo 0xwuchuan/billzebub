@@ -13,7 +13,9 @@ export function CategoryChip({ name }: { name: string }) {
       style={{ "--cat-color": color } as CSSProperties}
     >
       <i className="cat-chip-dot" aria-hidden="true" />
-      <span className="cat-chip-label">{label}</span>
+      <span className="cat-chip-label" dir="auto" title={label}>
+        {label}
+      </span>
     </span>
   );
 }

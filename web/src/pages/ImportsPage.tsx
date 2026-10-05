@@ -2,9 +2,11 @@ import { useState } from "react";
 
 import type { ImportRecord, StatementCoverageReport } from "../api";
 import { StatementCoveragePanel } from "../components/StatementCoveragePanel";
+import { UserLabel } from "../components/UserLabel";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { useEntrance } from "../hooks/useEntrance";
+import { claimCountLabel } from "../lib/identity";
 import { openedLabel } from "../lib/labels";
 
 type ExtractionStatusFilter = "failed" | "accepted" | "all";
@@ -183,16 +185,21 @@ function ImportRow({
       }}
     >
       <span>
-        <span className="queue-title">{adapterLabel(item)}</span>
+        <span className="queue-title">
+          <UserLabel value={adapterLabel(item)} kind="file" />
+        </span>
         <span className="queue-reason">{periodLabel(item)}</span>
       </span>
       <span className="queue-right">
         <Badge tone={dismissed ? "count" : failed ? "blocking" : "confirmed"}>
           {dismissed ? "dismissed" : item.status}
         </Badge>
-        <span className="queue-age">
+        <span
+          className={`queue-age${item.failure_code === null ? "" : " is-failure"}`}
+          title={item.failure_code ?? claimCountLabel(item.claim_count)}
+        >
           {item.failure_code === null
-            ? `${item.claim_count} Claims`
+            ? claimCountLabel(item.claim_count)
             : item.failure_code}
         </span>
       </span>
@@ -225,7 +232,12 @@ function ImportDetail({
           <Badge tone={dismissed ? "count" : failed ? "blocking" : "confirmed"}>
             {dismissed ? "dismissed" : item.status}
           </Badge>
-          <h2>{wallet ? "Apple Wallet" : adapterLabel(item)}</h2>
+          <h2 title={wallet ? "Apple Wallet" : adapterLabel(item)}>
+            {wallet ? "Apple Wallet" : adapterLabel(item)}
+          </h2>
+          {wallet ? null : (
+            <p className="import-filename">{adapterLabel(item)}</p>
+          )}
         </div>
         <span className="panel-actions">
           {failed && !dismissed ? (

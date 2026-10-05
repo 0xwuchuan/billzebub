@@ -499,7 +499,6 @@ button.cat-row:hover {
 
 .decision-amount {
   max-width: 100%;
-  overflow-wrap: anywhere;
   font-size: var(--bz-text-hero);
   font-weight: 600;
   letter-spacing: -0.045em;
@@ -507,8 +506,25 @@ button.cat-row:hover {
 }
 
 .decision-meta {
+  display: -webkit-box;
+  overflow: hidden;
   color: var(--bz-muted);
   font-size: var(--bz-text-sm);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.decision-choice {
+  display: -webkit-box;
+  overflow: hidden;
+  max-width: 100%;
+  line-height: 1.25;
+  text-align: center;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
 
 .decision-meta-jev {
@@ -981,14 +997,20 @@ button.cat-row:hover {
   white-space: nowrap;
 }
 
-.coverage-summary {
-  display: inline-flex;
+.coverage-units {
+  display: flex;
+  flex: 1 1 auto;
   flex-wrap: wrap;
   align-items: baseline;
+  gap: 0.15rem 0.7rem;
   min-width: 0;
   color: var(--bz-muted);
   font-size: var(--bz-text-sm);
   font-weight: 400;
+}
+
+.coverage-unit {
+  white-space: nowrap;
 }
 
 .coverage-count.is-missing {
@@ -1100,10 +1122,26 @@ button.coverage-chip:hover {
 }
 
 .imports-stage .import-hero h2 {
+  display: -webkit-box;
   margin-top: var(--bz-space-2);
+  overflow: hidden;
   font-size: var(--bz-text-title);
   font-weight: 600;
   letter-spacing: -0.03em;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.import-filename {
+  margin: 0.2rem 0 0;
+  color: var(--bz-muted);
+  font-size: var(--bz-text-sm);
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  user-select: text;
 }
 
 .imports-stage .queue-item[aria-current="true"] {
@@ -1556,7 +1594,6 @@ button.coverage-chip:hover {
 
 .bento-figure {
   max-width: 100%;
-  overflow-wrap: anywhere;
   font-size: var(--bz-text-display);
   font-weight: 600;
   letter-spacing: -0.045em;
@@ -1834,7 +1871,6 @@ button.coverage-chip:hover {
 .recurring-amount {
   min-width: 0;
   max-width: 100%;
-  overflow-wrap: anywhere;
   font-weight: 600;
 }
 
@@ -1842,6 +1878,15 @@ button.coverage-chip:hover {
 .recurring-confidence {
   color: var(--bz-muted);
   font-size: var(--bz-text-xs);
+}
+
+.recurring-row .recurring-meta,
+.recurring-row .recurring-account {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .recurring-miss {
@@ -2336,12 +2381,76 @@ button.coverage-chip:hover {
 }
 
 .tx-amount {
-  width: max-content;
   min-width: 0;
   max-width: 100%;
-  overflow-wrap: anywhere;
   font-weight: 600;
   text-align: right;
+}
+
+.money-figure {
+  position: relative;
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  max-width: 100%;
+}
+
+.queue-title .user-label.is-split,
+.recurring-name .user-label.is-split,
+.tx-row-copy strong .user-label.is-split,
+.recurring-due-name .user-label.is-split,
+.decision-subject .user-label.is-split {
+  width: 100%;
+}
+
+.money-value {
+  white-space: nowrap;
+}
+
+.tx-amount .money-figure,
+.recurring-amount .money-figure,
+.cat-figures .money-figure {
+  justify-content: flex-end;
+}
+
+.user-label {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.kv .user-label,
+.decision-subject .user-label:not(.is-split) {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.user-label.is-unknown,
+.tx-row-copy strong.is-unknown,
+.decision-subject.is-unknown {
+  color: var(--bz-muted);
+  font-style: normal;
+}
+
+.user-label.is-split {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.user-label-lead {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-label-tail {
+  flex: 0 0 auto;
+  max-width: 72%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .bulk-bar {
@@ -2602,6 +2711,27 @@ button.coverage-chip:hover {
     -webkit-line-clamp: 2;
   }
 
+  .tx-row-copy strong:has(.user-label.is-split) {
+    display: block;
+    white-space: nowrap;
+    -webkit-line-clamp: unset;
+    line-clamp: unset;
+  }
+
+  .tx-summary {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.15rem;
+  }
+
+  .tx-summary-sep {
+    display: none;
+  }
+
+  .queue-age.is-failure {
+    display: none;
+  }
+
   .tx-row-trailing {
     display: contents;
   }
@@ -2613,7 +2743,6 @@ button.coverage-chip:hover {
 
   .tx-amount-side {
     flex: 0 1 auto;
-    width: max-content;
     max-width: 100%;
     margin-left: auto;
     order: 2;
@@ -2654,9 +2783,34 @@ button.coverage-chip:hover {
   }
 
   .cat-figures .amount {
-    width: max-content;
     max-width: 100%;
-    overflow-wrap: anywhere;
+  }
+
+  .recurring-due-list {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .recurring-due {
+    display: flex;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .recurring-due-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: none;
+  }
+
+  .recurring-due .recurring-meta,
+  .recurring-due .amount {
+    flex: 0 0 auto;
+    white-space: nowrap;
   }
 
   .cat-chip {
@@ -2727,12 +2881,6 @@ button.coverage-chip:hover {
     width: auto;
     min-width: 0;
     max-width: 100%;
-  }
-
-  .tx-summary {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--bz-space-1) var(--bz-space-2);
   }
 
   .row .when {

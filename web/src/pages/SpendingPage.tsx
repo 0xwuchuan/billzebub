@@ -8,6 +8,7 @@ import { Button } from "../components/ui/Button";
 import { useEntrance } from "../hooks/useEntrance";
 import { CONFIRMATION_SERIES } from "../lib/chartSeries";
 import { categoryColor, categoryPrimary } from "../lib/labels";
+import { MoneyText } from "../components/MoneyText";
 import { centsToMoney, formatUnsigned } from "../lib/money";
 import {
   categoryTotals,
@@ -56,9 +57,11 @@ export function SpendingPage({
           <div className="spend-hero-copy">
             <p className="eyebrow">Spent this month</p>
             <p className="hero-value bento-figure amount">
-              {formatUnsigned(
-                centsToMoney(month.estimatedCents, month.currency),
-              )}
+              <MoneyText
+                text={formatUnsigned(
+                  centsToMoney(month.estimatedCents, month.currency),
+                )}
+              />
             </p>
             <p className="muted">
               Confirmed plus eligible provisional activity. Share bars include
@@ -85,23 +88,29 @@ export function SpendingPage({
         <article className="card metric-card">
           <p className="eyebrow">Six-month estimate</p>
           <p className="metric-value amount">
-            {formatUnsigned(centsToMoney(estimatedCents, "SGD"))}
+            <MoneyText
+              text={formatUnsigned(centsToMoney(estimatedCents, "SGD"))}
+            />
           </p>
           <p className="muted">Confirmed plus eligible provisional activity</p>
         </article>
         <article className="card metric-card">
           <p className="eyebrow">Confirmed</p>
           <p className="metric-value amount">
-            {formatUnsigned(centsToMoney(confirmedCents, "SGD"))}
+            <MoneyText
+              text={formatUnsigned(centsToMoney(confirmedCents, "SGD"))}
+            />
           </p>
           <p className="muted">Posted Amounts from accepted statements</p>
         </article>
         <article className="card metric-card">
           <p className="eyebrow">Active-month average</p>
           <p className="metric-value amount">
-            {formatUnsigned(
-              centsToMoney(Math.round(estimatedCents / activeMonths), "SGD"),
-            )}
+            <MoneyText
+              text={formatUnsigned(
+                centsToMoney(Math.round(estimatedCents / activeMonths), "SGD"),
+              )}
+            />
           </p>
           <p className="muted">Across months with recorded spending</p>
         </article>
