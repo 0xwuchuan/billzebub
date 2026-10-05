@@ -1163,9 +1163,12 @@ button.coverage-chip:hover {
 
 .imports-stage .queue-right {
   display: grid;
+  flex: none;
   justify-items: end;
   gap: 0.15rem;
-  max-width: 46%;
+  min-width: max-content;
+  max-width: none;
+  overflow: visible;
 }
 
 .panel-actions {
@@ -1292,9 +1295,15 @@ button.coverage-chip:hover {
 }
 
 .imports-stage .queue-item {
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.8fr);
+  display: flex;
+  align-items: center;
   gap: var(--bz-space-2);
   padding: 0.28rem 0.7rem;
+}
+
+.imports-stage .queue-item > span:first-child {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .imports-stage .queue-title {
@@ -2389,10 +2398,15 @@ button.coverage-chip:hover {
 
 .money-figure {
   position: relative;
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: baseline;
   max-width: 100%;
+}
+
+.money-figure.is-row {
+  white-space: nowrap;
+}
+
+.money-figure.is-hero {
+  white-space: normal;
 }
 
 .queue-title .user-label.is-split,
@@ -2407,10 +2421,10 @@ button.coverage-chip:hover {
   white-space: nowrap;
 }
 
-.tx-amount .money-figure,
-.recurring-amount .money-figure,
-.cat-figures .money-figure {
-  justify-content: flex-end;
+.tx-amount,
+.recurring-amount,
+.cat-figures .amount {
+  text-align: right;
 }
 
 .user-label {
@@ -2432,9 +2446,16 @@ button.coverage-chip:hover {
 }
 
 .user-label.is-split {
-  display: flex;
+  display: inline-flex;
+  gap: 0;
   min-width: 0;
   max-width: 100%;
+  vertical-align: bottom;
+}
+
+.user-label.is-url {
+  display: inline;
+  white-space: nowrap;
 }
 
 .user-label-lead {
@@ -2447,9 +2468,6 @@ button.coverage-chip:hover {
 
 .user-label-tail {
   flex: 0 0 auto;
-  max-width: 72%;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -2711,8 +2729,11 @@ button.coverage-chip:hover {
     -webkit-line-clamp: 2;
   }
 
-  .tx-row-copy strong:has(.user-label.is-split) {
+  .tx-row-copy strong:has(.user-label.is-split),
+  .tx-row-copy strong:has(.user-label.is-url) {
     display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
     white-space: nowrap;
     -webkit-line-clamp: unset;
     line-clamp: unset;

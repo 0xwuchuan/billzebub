@@ -84,6 +84,7 @@ export function OverviewPage({
               <div className="bento-hero-copy">
                 <p className="bento-figure amount">
                   <MoneyText
+                    hero
                     text={formatUnsigned(
                       centsToMoney(totals.estimatedCents, totals.currency),
                     )}

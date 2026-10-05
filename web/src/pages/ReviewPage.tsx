@@ -587,7 +587,7 @@ function Evidence({
           </h2>
           {amount !== null ? (
             <p className="decision-amount amount">
-              <MoneyText text={amount} />
+              <MoneyText hero text={amount} />
             </p>
           ) : null}
           <p className="decision-meta" title={facts}>

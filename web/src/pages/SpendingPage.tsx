@@ -58,6 +58,7 @@ export function SpendingPage({
             <p className="eyebrow">Spent this month</p>
             <p className="hero-value bento-figure amount">
               <MoneyText
+                hero
                 text={formatUnsigned(
                   centsToMoney(month.estimatedCents, month.currency),
                 )}

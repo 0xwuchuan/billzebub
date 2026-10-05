@@ -55,6 +55,13 @@ export function UserLabel({
       <SplitLabel title={value} lead={shape.stem} tail={`.${shape.ext}`} />
     );
   }
+  if (shape.kind === "url") {
+    return (
+      <span className="user-label is-url" dir="auto" title={value}>
+        {shape.text}
+      </span>
+    );
+  }
   return (
     <span className="user-label" dir="auto" title={value}>
       {shape.text}
@@ -73,8 +80,14 @@ function SplitLabel({
 }) {
   return (
     <span className="user-label is-split" dir="auto" title={title}>
-      <span className="user-label-lead">{lead}</span>
-      <span className="user-label-tail">{tail}</span>
+      {[
+        <span className="user-label-lead" key="lead">
+          {lead}
+        </span>,
+        <span className="user-label-tail" key="tail">
+          {tail}
+        </span>,
+      ]}
     </span>
   );
 }

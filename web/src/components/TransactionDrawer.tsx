@@ -115,7 +115,7 @@ function DrawerBody({
                 aria-label="Provisional"
               />
             ) : null}
-            <MoneyText text={formatUnsigned(amount)} />
+            <MoneyText hero text={formatUnsigned(amount)} />
           </p>
           <p className="decision-meta">
             {dayMonthLabel(transaction.effective_date)} ·{" "}
