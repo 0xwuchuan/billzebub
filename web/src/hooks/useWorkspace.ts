@@ -33,6 +33,7 @@ import {
   type Transaction,
   type TransactionPage,
 } from "../api";
+import { useFixtureMode, type FixtureMode } from "../dev/fixtureMode";
 import { messageFor } from "../lib/labels";
 
 export type WorkspaceSnapshot = {
@@ -67,21 +68,25 @@ export function useWorkspace() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [issuedToken, setIssuedToken] = useState<IssuedToken | null>(null);
   const [includeDismissed, setIncludeDismissed] = useState(false);
+  const fixtureMode = useFixtureMode();
 
   const loadWorkspace = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      setWorkspace(await fetchWorkspace(includeDismissed));
+      setWorkspace(await loadSnapshot(includeDismissed, fixtureMode));
     } catch (requestError) {
       setWorkspace(emptyWorkspace);
       setError(messageFor(requestError));
     } finally {
       setLoading(false);
     }
-  }, [includeDismissed]);
+  }, [fixtureMode, includeDismissed]);
 
   useEffect(() => {
+    if (import.meta.env.DEV && fixtureMode !== null) {
+      return;
+    }
     let active = true;
     void fetchWorkspace()
       .then((next) => {
@@ -103,11 +108,39 @@ export function useWorkspace() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [fixtureMode]);
+
+  useEffect(() => {
+    if (!import.meta.env.DEV || fixtureMode === null) {
+      return;
+    }
+    let active = true;
+    void loadSnapshot(includeDismissed, fixtureMode)
+      .then((next) => {
+        if (active) {
+          setWorkspace(next);
+          setError(null);
+        }
+      })
+      .catch((requestError: unknown) => {
+        if (active) {
+          setWorkspace(emptyWorkspace);
+          setError(messageFor(requestError));
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setLoading(false);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [fixtureMode, includeDismissed]);
 
   async function loadMoreTransactions(): Promise<void> {
     const cursor = workspace.transactions.next_cursor;
-    if (cursor === null) {
+    if (cursor === null || (import.meta.env.DEV && fixtureMode !== null)) {
       return;
     }
     setLoadingMore(true);
@@ -134,6 +167,47 @@ export function useWorkspace() {
   ): Promise<boolean> {
     if (categoryId === "") {
       return false;
+    }
+    if (import.meta.env.DEV && fixtureMode !== null) {
+      const category = workspace.categories.find(
+        (item) => item.id === categoryId,
+      );
+      if (category === undefined) {
+        return false;
+      }
+      setWorkspace((current) => ({
+        ...current,
+        transactions: {
+          ...current.transactions,
+          items: current.transactions.items.map((item) =>
+            item.id === transaction.id
+              ? {
+                  ...item,
+                  category_splits: [
+                    {
+                      id: category.id,
+                      name: category.name,
+                      amount: item.posted_amount,
+                    },
+                  ],
+                  reviews: item.reviews.filter(
+                    (review) =>
+                      review.condition_code !== "categorization_needed",
+                  ),
+                }
+              : item,
+          ),
+        },
+        reviews: current.reviews.filter(
+          (review) =>
+            !(
+              review.subject_type === "transaction" &&
+              review.subject_id === transaction.id &&
+              review.condition_code === "categorization_needed"
+            ),
+        ),
+      }));
+      return true;
     }
     setSaving(transaction.id);
     setError(null);
@@ -169,6 +243,13 @@ export function useWorkspace() {
     review: Review,
     choice: string,
   ): Promise<boolean> {
+    if (import.meta.env.DEV && fixtureMode !== null) {
+      setWorkspace((current) => ({
+        ...current,
+        reviews: current.reviews.filter((item) => item.id !== review.id),
+      }));
+      return true;
+    }
     setSaving(review.id);
     setError(null);
     try {
@@ -187,6 +268,10 @@ export function useWorkspace() {
   }
 
   async function addAccount(input: CreateFinancialAccountInput): Promise<void> {
+    if (import.meta.env.DEV && fixtureMode !== null) {
+      setError("Example data stays in the browser. Nothing was written.");
+      return;
+    }
     setSaving("account");
     setError(null);
     try {
@@ -206,6 +291,10 @@ export function useWorkspace() {
     accountId: string,
     cardLabel: string,
   ): Promise<void> {
+    if (import.meta.env.DEV && fixtureMode !== null) {
+      setError("Example data stays in the browser. Nothing was written.");
+      return;
+    }
     setSaving("alias");
     setError(null);
     try {
@@ -226,6 +315,10 @@ export function useWorkspace() {
   }
 
   async function addCategory(name: string, parentId?: string): Promise<void> {
+    if (import.meta.env.DEV && fixtureMode !== null) {
+      setError("Example data stays in the browser. Nothing was written.");
+      return;
+    }
     setSaving("category");
     setError(null);
     try {
@@ -242,6 +335,10 @@ export function useWorkspace() {
   }
 
   async function addToken(): Promise<void> {
+    if (import.meta.env.DEV && fixtureMode !== null) {
+      setError("Example data stays in the browser. Nothing was written.");
+      return;
+    }
     setSaving("token");
     setError(null);
     try {
@@ -273,6 +370,10 @@ export function useWorkspace() {
   }
 
   async function replaceToken(tokenId: string): Promise<void> {
+    if (import.meta.env.DEV && fixtureMode !== null) {
+      setError("Example data stays in the browser. Nothing was written.");
+      return;
+    }
     setSaving(tokenId);
     setError(null);
     try {
@@ -301,6 +402,10 @@ export function useWorkspace() {
   }
 
   async function removeToken(tokenId: string): Promise<void> {
+    if (import.meta.env.DEV && fixtureMode !== null) {
+      setError("Example data stays in the browser. Nothing was written.");
+      return;
+    }
     setSaving(tokenId);
     setError(null);
     try {
@@ -324,6 +429,9 @@ export function useWorkspace() {
 
   async function showDismissedImports(show: boolean): Promise<void> {
     setIncludeDismissed(show);
+    if (import.meta.env.DEV && fixtureMode !== null) {
+      return;
+    }
     setError(null);
     try {
       await refreshImports(show);
@@ -333,6 +441,22 @@ export function useWorkspace() {
   }
 
   async function dismissFailedExtraction(extractionId: string): Promise<void> {
+    if (import.meta.env.DEV && fixtureMode !== null) {
+      const dismissedAt = new Date().toISOString();
+      setWorkspace((current) => ({
+        ...current,
+        imports: current.imports.flatMap((item) => {
+          if (item.id !== extractionId) {
+            return [item];
+          }
+          if (!includeDismissed) {
+            return [];
+          }
+          return [{ ...item, dismissed_at: dismissedAt }];
+        }),
+      }));
+      return;
+    }
     setSaving(extractionId);
     setError(null);
     try {
@@ -346,6 +470,22 @@ export function useWorkspace() {
   }
 
   async function dismissAllFailedExtractions(): Promise<void> {
+    if (import.meta.env.DEV && fixtureMode !== null) {
+      const dismissedAt = new Date().toISOString();
+      setWorkspace((current) => ({
+        ...current,
+        imports: includeDismissed
+          ? current.imports.map((item) =>
+              item.status === "failed" && item.dismissed_at === null
+                ? { ...item, dismissed_at: dismissedAt }
+                : item,
+            )
+          : current.imports.filter(
+              (item) => item.status !== "failed" || item.dismissed_at !== null,
+            ),
+      }));
+      return;
+    }
     setSaving("imports-dismiss-failed");
     setError(null);
     try {
@@ -383,6 +523,17 @@ export function useWorkspace() {
       setIssuedToken(null);
     },
   };
+}
+
+async function loadSnapshot(
+  includeDismissed: boolean,
+  mode: FixtureMode | null,
+): Promise<WorkspaceSnapshot> {
+  if (import.meta.env.DEV && mode !== null) {
+    const { workspaceFor } = await import("../dev/worstCaseFixture");
+    return workspaceFor(mode, { includeDismissed });
+  }
+  return fetchWorkspace(includeDismissed);
 }
 
 async function fetchWorkspace(
