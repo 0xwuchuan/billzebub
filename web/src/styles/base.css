@@ -2,6 +2,14 @@
   box-sizing: border-box;
 }
 
+html {
+  /* Kill the gray tap flash; press feedback lives on :active. */
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  /* App scroll lives in .stage, drawers, and sheets — not the document. */
+  overscroll-behavior: none;
+}
+
 html,
 body,
 #root {
@@ -13,6 +21,7 @@ body,
 
 body {
   margin: 0;
+  overscroll-behavior: none;
   background: var(--bz-bg);
   color: var(--bz-text);
   font-family: var(--bz-font);
@@ -25,9 +34,68 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
   color: inherit;
+}
+
+input,
+textarea,
+select {
+  /* iOS zooms the page when a focused field is under 16px and does not zoom back. */
+  font-size: 16px;
+}
+
+button,
+a,
+summary,
+label,
+[role="button"],
+[role="menuitem"] {
+  touch-action: manipulation;
+}
+
+.btn,
+.icon-btn,
+.chip,
+.rail-item,
+.rail-account,
+.cat-picker-option,
+.cat-picker-trigger,
+.coverage-chip,
+.coverage-toggle,
+.account-toggle,
+.step-dot,
+.text-link,
+.bento-link,
+.row-menu-panel button,
+.nav-backdrop,
+.drawer-backdrop,
+a,
+summary,
+[role="menuitem"] {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.amount,
+.tx-amount,
+.tx-row-copy,
+.hero-value,
+.bento-figure,
+.cell-value,
+.queue-title,
+.queue-reason,
+.decision-subject,
+.decision-amount,
+.recurring-strip-total,
+.drawer-hero,
+.kv dd,
+.claim {
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 button {
@@ -57,11 +125,23 @@ p {
 .rail-account,
 .chip,
 .coverage-chip,
+.coverage-toggle,
+.coverage-account,
 .step-dot,
 .account-toggle,
 .statement-cell,
 .queue-item,
-.tx-row-main {
+.tx-row-main,
+.cat-row,
+.cat-picker-option,
+.cat-picker-trigger,
+.recurring-strip,
+.bento-attention-hit,
+.bento-link,
+.bento-hero-foot button,
+.text-link,
+.row-menu-panel button,
+.import-details summary {
   transition:
     transform var(--bz-t-press) var(--bz-ease-out),
     background-color var(--bz-t-ui) var(--bz-ease-out),
@@ -75,10 +155,23 @@ p {
 .rail-account:active,
 .chip:active,
 .coverage-chip:active,
+.coverage-toggle:active,
+.coverage-account:active,
 .account-toggle:active,
 .statement-cell[data-action]:active,
 .queue-item:active,
-.tx-row-main:active {
+.tx-row-main:active,
+.cat-row:active,
+.cat-picker-option:active,
+.cat-picker-trigger:active,
+.recurring-strip:active,
+.bento-attention-hit:active,
+.bento-link:active,
+.bento-hero-foot button:active,
+.text-link:active,
+.row-menu-panel button:active,
+.step-dot:active,
+.import-details summary:active {
   transform: scale(var(--bz-press));
 }
 
@@ -153,14 +246,16 @@ p {
   color: var(--bz-muted);
 }
 
-.btn-ghost:hover,
-.icon-btn:hover,
-.btn-outline:hover,
-.field:hover,
-.select:hover {
-  border-color: var(--bz-border-strong);
-  background: var(--bz-surface-hover);
-  color: var(--bz-text);
+@media (hover: hover) and (pointer: fine) {
+  .btn-ghost:hover,
+  .icon-btn:hover,
+  .btn-outline:hover,
+  .field:hover,
+  .select:hover {
+    border-color: var(--bz-border-strong);
+    background: var(--bz-surface-hover);
+    color: var(--bz-text);
+  }
 }
 
 .btn-outline {
@@ -174,8 +269,10 @@ p {
   font-weight: 600;
 }
 
-.btn-primary:hover {
-  background: color-mix(in srgb, var(--bz-accent) 86%, var(--bz-text));
+@media (hover: hover) and (pointer: fine) {
+  .btn-primary:hover {
+    background: color-mix(in srgb, var(--bz-accent) 86%, var(--bz-text));
+  }
 }
 
 .btn-danger {
@@ -432,11 +529,26 @@ p {
   .btn:active,
   .icon-btn:active,
   .rail-item:active,
+  .rail-account:active,
   .chip:active,
   .coverage-chip:active,
+  .coverage-toggle:active,
+  .coverage-account:active,
   .account-toggle:active,
   .statement-cell[data-action]:active,
-  .queue-item:active {
+  .queue-item:active,
+  .tx-row-main:active,
+  .cat-row:active,
+  .cat-picker-option:active,
+  .cat-picker-trigger:active,
+  .recurring-strip:active,
+  .bento-attention-hit:active,
+  .bento-link:active,
+  .bento-hero-foot button:active,
+  .text-link:active,
+  .row-menu-panel button:active,
+  .step-dot:active,
+  .import-details summary:active {
     transform: none;
   }
 }

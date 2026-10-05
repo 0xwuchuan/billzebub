@@ -5,6 +5,38 @@ import { describe, expect, it } from "vitest";
 const shell = readFileSync("src/styles/shell.css", "utf8");
 const base = readFileSync("src/styles/base.css", "utf8");
 const screens = readFileSync("src/styles/screens.css", "utf8");
+const html = readFileSync("index.html", "utf8");
+
+function withoutHoverMedia(source: string): string {
+  const needle = "@media (hover: hover) and (pointer: fine)";
+  let result = "";
+  let index = 0;
+  while (index < source.length) {
+    const at = source.indexOf(needle, index);
+    if (at === -1) {
+      result += source.slice(index);
+      break;
+    }
+    result += source.slice(index, at);
+    const open = source.indexOf("{", at);
+    let depth = 0;
+    let cursor = open;
+    for (; cursor < source.length; cursor += 1) {
+      const char = source[cursor];
+      if (char === "{") {
+        depth += 1;
+      } else if (char === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          cursor += 1;
+          break;
+        }
+      }
+    }
+    index = cursor;
+  }
+  return result;
+}
 
 function blockAfter(source: string, marker: string): string {
   const start = source.indexOf(marker);
@@ -123,6 +155,50 @@ describe("phone layout contracts", () => {
     const tablet = blockAfter(screens, "@media (max-width: 64rem)");
     const empty = tablet.slice(tablet.indexOf(".evidence-pane.is-empty"));
     expect(empty).toMatch(/min-height:\s*0/);
+  });
+
+  it("keeps hover rules behind a fine pointer", () => {
+    for (const source of [base, shell, screens]) {
+      expect(withoutHoverMedia(source)).not.toMatch(/:hover/);
+      expect(source).toMatch(/@media \(hover: hover\) and \(pointer: fine\)/);
+    }
+  });
+
+  it("uses dynamic viewport units and keeps zoom enabled", () => {
+    const css = `${base}\n${shell}\n${screens}`;
+    expect(css).not.toMatch(/100vh/);
+    expect(css).toMatch(/minmax\(40vh,\s*1fr\)/);
+    expect(html).toMatch(/viewport-fit=cover/);
+    expect(html).toMatch(/interactive-widget=resizes-content/);
+    expect(html).not.toMatch(/maximum-scale|user-scalable/);
+    expect(html).toMatch(/theme-color/);
+    expect(html).toMatch(/#f2f0e5/);
+    expect(html).toMatch(/#1c1b1a/);
+  });
+
+  it("sets the mobile baseline on the document and controls", () => {
+    expect(base).toMatch(/-webkit-tap-highlight-color:\s*transparent/);
+    expect(base).toMatch(/overscroll-behavior:\s*none/);
+    expect(base).toMatch(/font-size:\s*16px/);
+    expect(base).toMatch(/touch-action:\s*manipulation/);
+    expect(base).not.toMatch(/body\s*\{[^}]*user-select:\s*none/);
+    expect(base).toMatch(/\.amount,\s*\n\.tx-amount[\s\S]*user-select:\s*text/);
+  });
+
+  it("pads the phone drawer and sheets away from the notch", () => {
+    const drawer = shell.slice(
+      shell.indexOf(".nav-drawer.open"),
+      shell.indexOf(".nav-drawer .rail-body"),
+    );
+    expect(drawer).toMatch(/safe-area-inset-top/);
+    expect(drawer).toMatch(/safe-area-inset-bottom/);
+    expect(drawer).toMatch(/safe-area-inset-left/);
+    expect(shell).toMatch(
+      /\.drawer-body\s*\{[^}]*overscroll-behavior:\s*contain/,
+    );
+    expect(screens).toMatch(
+      /\.settings-dialog-body\s*\{[^}]*overscroll-behavior:\s*contain/,
+    );
   });
 
   it("clears the transactions bulk bar, including the safe area", () => {

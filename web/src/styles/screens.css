@@ -24,8 +24,10 @@
   border-left: 0;
 }
 
-button.statement-cell:hover {
-  background: var(--bz-surface-hover);
+@media (hover: hover) and (pointer: fine) {
+  button.statement-cell:hover {
+    background: var(--bz-surface-hover);
+  }
 }
 
 .cell-label {
@@ -154,8 +156,10 @@ button.statement-cell:hover {
   grid-area: figures;
 }
 
-button.cat-row:hover {
-  background: var(--bz-surface-hover);
+@media (hover: hover) and (pointer: fine) {
+  button.cat-row:hover {
+    background: var(--bz-surface-hover);
+  }
 }
 
 .bars {
@@ -228,8 +232,10 @@ button.cat-row:hover {
   border-bottom: 0;
 }
 
-.row:hover {
-  background: var(--bz-surface-hover);
+@media (hover: hover) and (pointer: fine) {
+  .row:hover {
+    background: var(--bz-surface-hover);
+  }
 }
 
 .row .when,
@@ -313,8 +319,10 @@ button.cat-row:hover {
   max-width: 100%;
 }
 
-.queue-item:hover {
-  background: var(--bz-surface-hover);
+@media (hover: hover) and (pointer: fine) {
+  .queue-item:hover {
+    background: var(--bz-surface-hover);
+  }
 }
 
 .queue-item[aria-current="true"] {
@@ -415,6 +423,7 @@ button.cat-row:hover {
   margin: var(--bz-space-2) 0 0;
   padding: 0;
   overflow: auto;
+  overscroll-behavior: contain;
   list-style: none;
 }
 
@@ -432,9 +441,14 @@ button.cat-row:hover {
   cursor: pointer;
 }
 
-.cat-picker-option.is-active,
-.cat-picker-option:hover {
+.cat-picker-option.is-active {
   background: color-mix(in srgb, var(--bz-text) 12%, var(--bz-bg-card));
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .cat-picker-option:hover {
+    background: color-mix(in srgb, var(--bz-text) 12%, var(--bz-bg-card));
+  }
 }
 
 .cat-picker-empty {
@@ -588,7 +602,10 @@ button.cat-row:hover {
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: var(--bz-space-8) var(--bz-space-5);
+  padding: calc(var(--bz-space-8) + env(safe-area-inset-top, 0px))
+    calc(var(--bz-space-5) + env(safe-area-inset-right, 0px))
+    calc(var(--bz-space-8) + env(safe-area-inset-bottom, 0px))
+    calc(var(--bz-space-5) + env(safe-area-inset-left, 0px));
 }
 
 .onboard-card {
@@ -883,6 +900,7 @@ button.cat-row:hover {
   min-height: 0;
   max-height: min(36rem, calc(100dvh - 8.5rem));
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: var(--bz-space-5);
 }
 
@@ -909,10 +927,12 @@ button.cat-row:hover {
   color: var(--bz-on-accent);
 }
 
-.settings-dialog .btn-primary:hover {
-  border-color: var(--bz-action);
-  background: color-mix(in srgb, var(--bz-action) 86%, var(--bz-text));
-  color: var(--bz-on-accent);
+@media (hover: hover) and (pointer: fine) {
+  .settings-dialog .btn-primary:hover {
+    border-color: var(--bz-action);
+    background: color-mix(in srgb, var(--bz-action) 86%, var(--bz-text));
+    color: var(--bz-on-accent);
+  }
 }
 
 .settings-taxonomy {
@@ -1043,14 +1063,22 @@ button.cat-row:hover {
   border-radius: var(--bz-radius-md);
 }
 
-.coverage-row:hover {
-  background: color-mix(in srgb, var(--bz-text) 6%, var(--bz-bg-card));
+@media (hover: hover) and (pointer: fine) {
+  .coverage-row:hover {
+    background: color-mix(in srgb, var(--bz-text) 6%, var(--bz-bg-card));
+  }
 }
 
-.coverage-row.is-selected,
-.coverage-row.is-selected:hover {
+.coverage-row.is-selected {
   border-color: transparent;
   background: color-mix(in srgb, var(--bz-text) 12%, var(--bz-bg-card));
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .coverage-row.is-selected:hover {
+    border-color: transparent;
+    background: color-mix(in srgb, var(--bz-text) 12%, var(--bz-bg-card));
+  }
 }
 
 .coverage-account {
@@ -1063,9 +1091,14 @@ button.cat-row:hover {
   text-align: left;
 }
 
-.coverage-account:hover,
 .coverage-account[aria-pressed="true"] {
   color: var(--bz-text);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .coverage-account:hover {
+    color: var(--bz-text);
+  }
 }
 
 .coverage-months {
@@ -1111,8 +1144,10 @@ button.coverage-chip {
   color: var(--bz-provisional);
 }
 
-button.coverage-chip:hover {
-  background: color-mix(in srgb, var(--bz-text) 10%, var(--bz-bg-card));
+@media (hover: hover) and (pointer: fine) {
+  button.coverage-chip:hover {
+    background: color-mix(in srgb, var(--bz-text) 10%, var(--bz-bg-card));
+  }
 }
 
 .imports-stage .panel-head h2 {
@@ -1245,18 +1280,28 @@ button.coverage-chip:hover {
   font-weight: 500;
 }
 
-.import-filters .chip:hover {
-  border-color: transparent;
-  background: color-mix(in srgb, var(--bz-text) 6%, var(--bz-bg-elevated));
-  color: var(--bz-text);
+@media (hover: hover) and (pointer: fine) {
+  .import-filters .chip:hover {
+    border-color: transparent;
+    background: color-mix(in srgb, var(--bz-text) 6%, var(--bz-bg-elevated));
+    color: var(--bz-text);
+  }
 }
 
-.import-filters .chip[aria-pressed="true"],
-.import-filters .chip[aria-pressed="true"]:hover {
+.import-filters .chip[aria-pressed="true"] {
   border-color: transparent;
   background: color-mix(in srgb, var(--bz-text) 12%, var(--bz-bg-elevated));
   color: var(--bz-text);
   font-weight: 600;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .import-filters .chip[aria-pressed="true"]:hover {
+    border-color: transparent;
+    background: color-mix(in srgb, var(--bz-text) 12%, var(--bz-bg-elevated));
+    color: var(--bz-text);
+    font-weight: 600;
+  }
 }
 
 .extractions-stage {
@@ -1332,18 +1377,28 @@ button.coverage-chip:hover {
   font-weight: 500;
 }
 
-.chip.chip-quiet:hover {
-  border-color: transparent;
-  background: color-mix(in srgb, var(--bz-text) 6%, var(--bz-bg-elevated));
-  color: var(--bz-text);
+@media (hover: hover) and (pointer: fine) {
+  .chip.chip-quiet:hover {
+    border-color: transparent;
+    background: color-mix(in srgb, var(--bz-text) 6%, var(--bz-bg-elevated));
+    color: var(--bz-text);
+  }
 }
 
-.chip.chip-quiet[aria-pressed="true"],
-.chip.chip-quiet[aria-pressed="true"]:hover {
+.chip.chip-quiet[aria-pressed="true"] {
   border-color: transparent;
   background: color-mix(in srgb, var(--bz-text) 12%, var(--bz-bg-elevated));
   color: var(--bz-text);
   font-weight: 600;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .chip.chip-quiet[aria-pressed="true"]:hover {
+    border-color: transparent;
+    background: color-mix(in srgb, var(--bz-text) 12%, var(--bz-bg-elevated));
+    color: var(--bz-text);
+    font-weight: 600;
+  }
 }
 
 .import-summary {
@@ -1371,8 +1426,10 @@ button.coverage-chip:hover {
   font-size: var(--bz-text-sm);
 }
 
-.import-details summary:hover {
-  color: var(--bz-text);
+@media (hover: hover) and (pointer: fine) {
+  .import-details summary:hover {
+    color: var(--bz-text);
+  }
 }
 
 .import-details[open] summary {
@@ -1633,8 +1690,10 @@ button.coverage-chip:hover {
   font: inherit;
 }
 
-.bento-hero-foot button:hover {
-  color: var(--bz-text);
+@media (hover: hover) and (pointer: fine) {
+  .bento-hero-foot button:hover {
+    color: var(--bz-text);
+  }
 }
 
 .bento-hero-foot .amount {
@@ -1693,8 +1752,10 @@ button.coverage-chip:hover {
   font-size: var(--bz-text-sm);
 }
 
-.bento-attention-hit:hover .bento-link {
-  color: var(--bz-text);
+@media (hover: hover) and (pointer: fine) {
+  .bento-attention-hit:hover .bento-link {
+    color: var(--bz-text);
+  }
 }
 
 .bento-head {
@@ -1718,8 +1779,10 @@ button.coverage-chip:hover {
   letter-spacing: -0.01em;
 }
 
-.bento-link:hover {
-  color: var(--bz-text);
+@media (hover: hover) and (pointer: fine) {
+  .bento-link:hover {
+    color: var(--bz-text);
+  }
 }
 
 .bento-recurring {
@@ -1740,12 +1803,14 @@ button.coverage-chip:hover {
   text-align: left;
 }
 
-.recurring-strip:hover {
-  background: color-mix(in srgb, var(--bz-text) 3%, transparent);
-}
+@media (hover: hover) and (pointer: fine) {
+  .recurring-strip:hover {
+    background: color-mix(in srgb, var(--bz-text) 3%, transparent);
+  }
 
-.recurring-strip:hover .bento-link {
-  color: var(--bz-text);
+  .recurring-strip:hover .bento-link {
+    color: var(--bz-text);
+  }
 }
 
 .recurring-strip-head,
@@ -1974,8 +2039,10 @@ button.coverage-chip:hover {
   text-align: left;
 }
 
-.row-menu-panel button:hover {
-  background: var(--bz-nav-hover);
+@media (hover: hover) and (pointer: fine) {
+  .row-menu-panel button:hover {
+    background: var(--bz-nav-hover);
+  }
 }
 
 .paused-fold {
@@ -2000,13 +2067,15 @@ button.coverage-chip:hover {
   text-underline-offset: 0.15em;
 }
 
-.text-link:hover {
-  color: var(--bz-text);
-}
+@media (hover: hover) and (pointer: fine) {
+  .text-link:hover {
+    color: var(--bz-text);
+  }
 
-.btn-quiet-danger:hover {
-  color: var(--bz-danger);
-  background: color-mix(in srgb, var(--bz-danger) 8%, var(--bz-surface));
+  .btn-quiet-danger:hover {
+    color: var(--bz-danger);
+    background: color-mix(in srgb, var(--bz-danger) 8%, var(--bz-surface));
+  }
 }
 
 .recurring-dialog form {
@@ -2212,18 +2281,28 @@ button.coverage-chip:hover {
   font-weight: 500;
 }
 
-.tx-toolbar .chip:hover {
-  border-color: transparent;
-  background: color-mix(in srgb, var(--bz-text) 6%, var(--bz-bg-elevated));
-  color: var(--bz-text);
+@media (hover: hover) and (pointer: fine) {
+  .tx-toolbar .chip:hover {
+    border-color: transparent;
+    background: color-mix(in srgb, var(--bz-text) 6%, var(--bz-bg-elevated));
+    color: var(--bz-text);
+  }
 }
 
-.tx-toolbar .chip[aria-pressed="true"],
-.tx-toolbar .chip[aria-pressed="true"]:hover {
+.tx-toolbar .chip[aria-pressed="true"] {
   border-color: transparent;
   background: color-mix(in srgb, var(--bz-text) 12%, var(--bz-bg-elevated));
   color: var(--bz-text);
   font-weight: 600;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .tx-toolbar .chip[aria-pressed="true"]:hover {
+    border-color: transparent;
+    background: color-mix(in srgb, var(--bz-text) 12%, var(--bz-bg-elevated));
+    color: var(--bz-text);
+    font-weight: 600;
+  }
 }
 
 .add-filter {
@@ -2311,14 +2390,22 @@ button.coverage-chip:hover {
   border-bottom: 0;
 }
 
-.tx-row:hover {
-  background: color-mix(in srgb, var(--bz-text) 6%, var(--bz-bg-card));
+@media (hover: hover) and (pointer: fine) {
+  .tx-row:hover {
+    background: color-mix(in srgb, var(--bz-text) 6%, var(--bz-bg-card));
+  }
 }
 
-.tx-row.is-selected,
-.tx-row.is-selected:hover {
+.tx-row.is-selected {
   background: color-mix(in srgb, var(--bz-text) 12%, var(--bz-bg-card));
   box-shadow: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .tx-row.is-selected:hover {
+    background: color-mix(in srgb, var(--bz-text) 12%, var(--bz-bg-card));
+    box-shadow: none;
+  }
 }
 
 .tx-check {
@@ -2343,8 +2430,10 @@ button.coverage-chip:hover {
   text-align: left;
 }
 
-.tx-row-main:hover {
-  background: transparent;
+@media (hover: hover) and (pointer: fine) {
+  .tx-row-main:hover {
+    background: transparent;
+  }
 }
 
 .tx-row-copy {
@@ -2474,7 +2563,7 @@ button.coverage-chip:hover {
 .bulk-bar {
   position: fixed;
   left: 50%;
-  bottom: var(--bz-space-6);
+  bottom: calc(var(--bz-space-6) + env(safe-area-inset-bottom, 0px));
   z-index: 18;
   display: flex;
   flex-wrap: wrap;
@@ -2507,10 +2596,12 @@ button.coverage-chip:hover {
   color: var(--bz-text);
 }
 
-.bulk-bar .btn-ghost:hover {
-  border-color: transparent;
-  background: color-mix(in srgb, var(--bz-text) 8%, var(--bz-bg-card));
-  color: var(--bz-text);
+@media (hover: hover) and (pointer: fine) {
+  .bulk-bar .btn-ghost:hover {
+    border-color: transparent;
+    background: color-mix(in srgb, var(--bz-text) 8%, var(--bz-bg-card));
+    color: var(--bz-text);
+  }
 }
 
 .bulk-bar .select {
@@ -2527,20 +2618,20 @@ button.coverage-chip:hover {
 }
 
 .tx-page.has-bulk .tx-detail .btn-primary,
-.tx-page.has-bulk .drawer .btn-primary,
-.tx-page.has-bulk .tx-detail .btn-primary:hover,
-.tx-page.has-bulk .drawer .btn-primary:hover {
+.tx-page.has-bulk .drawer .btn-primary {
   border-color: transparent;
   background: transparent;
   color: var(--bz-muted);
   font-weight: 500;
 }
 
-.tx-page.has-bulk .tx-detail .btn-primary:hover,
-.tx-page.has-bulk .drawer .btn-primary:hover {
-  border-color: var(--bz-border-strong);
-  background: var(--bz-surface-hover);
-  color: var(--bz-text);
+@media (hover: hover) and (pointer: fine) {
+  .tx-page.has-bulk .tx-detail .btn-primary:hover,
+  .tx-page.has-bulk .drawer .btn-primary:hover {
+    border-color: var(--bz-border-strong);
+    background: var(--bz-surface-hover);
+    color: var(--bz-text);
+  }
 }
 
 .theme-row {
@@ -2571,10 +2662,12 @@ button.coverage-chip:hover {
   color: var(--bz-muted);
 }
 
-.settings-appearance .theme-toggle:hover {
-  border-color: transparent;
-  background: var(--bz-nav-hover);
-  color: var(--bz-text);
+@media (hover: hover) and (pointer: fine) {
+  .settings-appearance .theme-toggle:hover {
+    border-color: transparent;
+    background: var(--bz-nav-hover);
+    color: var(--bz-text);
+  }
 }
 
 .settings-theme-phone {
@@ -3019,6 +3112,20 @@ button.coverage-chip:hover {
     border-radius: var(--bz-radius-lg) var(--bz-radius-lg) 0 0;
   }
 
+  .settings-dialog {
+    max-height: min(
+      44rem,
+      calc(
+        100dvh - env(safe-area-inset-top, 0px) -
+          env(safe-area-inset-bottom, 0px) - 1rem
+      )
+    );
+  }
+
+  .settings-dialog-body {
+    padding-bottom: calc(var(--bz-space-5) + env(safe-area-inset-bottom, 0px));
+  }
+
   .settings-appearance .theme-toggle {
     display: none;
   }
@@ -3201,7 +3308,10 @@ button.coverage-chip:hover {
   }
 
   .onboard {
-    padding: var(--bz-space-4);
+    padding: calc(var(--bz-space-4) + env(safe-area-inset-top, 0px))
+      calc(var(--bz-space-4) + env(safe-area-inset-right, 0px))
+      calc(var(--bz-space-4) + env(safe-area-inset-bottom, 0px))
+      calc(var(--bz-space-4) + env(safe-area-inset-left, 0px));
   }
 
   .onboard-card {
@@ -3259,6 +3369,7 @@ button.coverage-chip:hover {
     flex: 1 1 auto;
     min-height: 0;
     overflow: auto;
+    overscroll-behavior: contain;
     border: 0;
     border-radius: 0;
     background: transparent;

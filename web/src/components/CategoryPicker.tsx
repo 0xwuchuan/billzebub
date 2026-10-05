@@ -62,6 +62,12 @@ export function CategoryPicker({
           className="field"
           role="combobox"
           type="text"
+          inputMode="search"
+          autoComplete="off"
+          autoCapitalize="off"
+          autoCorrect="off"
+          enterKeyHint="search"
+          spellCheck={false}
           data-cat-search="true"
           aria-expanded="true"
           aria-controls={listId}

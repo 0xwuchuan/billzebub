@@ -203,16 +203,30 @@ function StepBody({
       <div className="stack">
         <label className="field-label">
           Reporting Currency
-          <input className="field" value="SGD" readOnly />
+          <input
+            className="field"
+            type="text"
+            value="SGD"
+            readOnly
+            autoComplete="off"
+          />
         </label>
         <label className="field-label">
           Timezone
-          <input className="field" value="Asia/Singapore" readOnly />
+          <input
+            className="field"
+            type="text"
+            value="Asia/Singapore"
+            readOnly
+            autoComplete="off"
+          />
         </label>
         <label className="field-label">
           Owner identity
           <input
             className="field"
+            type="text"
+            autoComplete="off"
             value={identity?.login ?? "waiting for Tailscale…"}
             readOnly
           />

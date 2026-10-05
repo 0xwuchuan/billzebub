@@ -2,8 +2,21 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
+    />
     <meta name="color-scheme" content="light dark" />
+    <meta
+      name="theme-color"
+      media="(prefers-color-scheme: light)"
+      content="#f2f0e5"
+    />
+    <meta
+      name="theme-color"
+      media="(prefers-color-scheme: dark)"
+      content="#1c1b1a"
+    />
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
@@ -22,9 +35,18 @@
                 : "dark";
           document.documentElement.dataset.theme = theme;
           document.documentElement.style.colorScheme = theme;
+          var chrome = theme === "light" ? "#f2f0e5" : "#1c1b1a";
+          var metas = document.querySelectorAll('meta[name="theme-color"]');
+          for (var i = 0; i < metas.length; i++) {
+            metas[i].setAttribute("content", chrome);
+          }
         } catch (error) {
           document.documentElement.dataset.theme = "dark";
           document.documentElement.style.colorScheme = "dark";
+          var fallback = document.querySelectorAll('meta[name="theme-color"]');
+          for (var j = 0; j < fallback.length; j++) {
+            fallback[j].setAttribute("content", "#1c1b1a");
+          }
         }
       })();
     </script>

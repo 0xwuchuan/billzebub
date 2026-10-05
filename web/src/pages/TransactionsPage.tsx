@@ -156,6 +156,13 @@ export function TransactionsPage({
         <input
           className="field"
           id="q"
+          type="search"
+          inputMode="search"
+          autoComplete="off"
+          autoCapitalize="off"
+          autoCorrect="off"
+          enterKeyHint="search"
+          spellCheck={false}
           value={query}
           placeholder="Search"
           onChange={(event) => {

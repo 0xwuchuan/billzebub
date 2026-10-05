@@ -131,8 +131,14 @@ export function AccountsPanel({
               Slug
               <input
                 className="field"
+                type="text"
                 value={slug}
                 required
+                autoComplete="off"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                enterKeyHint="next"
                 placeholder="dbs-live-fresh"
                 onChange={(event) => {
                   setSlug(event.target.value);
@@ -143,8 +149,12 @@ export function AccountsPanel({
               Display name
               <input
                 className="field"
+                type="text"
                 value={displayName}
                 required
+                autoComplete="off"
+                autoCapitalize="words"
+                enterKeyHint="next"
                 placeholder="DBS Live Fresh"
                 onChange={(event) => {
                   setDisplayName(event.target.value);
@@ -173,9 +183,14 @@ export function AccountsPanel({
                   Statement account identifier
                   <input
                     className="field"
+                    type="text"
                     value={identifier}
                     required
                     autoComplete="off"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    enterKeyHint="next"
                     onChange={(event) => {
                       setIdentifier(event.target.value);
                     }}
@@ -185,9 +200,14 @@ export function AccountsPanel({
                   Password secret filename (optional)
                   <input
                     className="field"
+                    type="text"
                     value={secretName}
                     placeholder="dbs-live-fresh.password"
                     autoComplete="off"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    enterKeyHint="done"
                     onChange={(event) => {
                       setSecretName(event.target.value);
                     }}

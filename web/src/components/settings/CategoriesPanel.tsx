@@ -86,7 +86,11 @@ export function CategoriesPanel({
               Category name
               <input
                 className="field"
+                type="text"
                 value={name}
+                autoComplete="off"
+                autoCapitalize="words"
+                enterKeyHint="done"
                 placeholder="Family, Pets, Home"
                 onChange={(event) => {
                   setName(event.target.value);

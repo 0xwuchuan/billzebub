@@ -23,7 +23,9 @@
   min-height: 0;
   overflow: hidden;
   gap: var(--bz-space-4);
-  padding: var(--bz-space-5) var(--bz-space-3);
+  padding: calc(var(--bz-space-5) + env(safe-area-inset-top, 0px))
+    var(--bz-space-3) calc(var(--bz-space-5) + env(safe-area-inset-bottom, 0px))
+    calc(var(--bz-space-3) + env(safe-area-inset-left, 0px));
   border-right: 1px solid var(--bz-border);
   background: var(--bz-rail-bg);
 }
@@ -34,6 +36,7 @@
   gap: var(--bz-space-4);
   min-height: 0;
   overflow: hidden auto;
+  overscroll-behavior: contain;
   flex: 1 1 auto;
 }
 
@@ -115,9 +118,11 @@
   font-size: var(--bz-text-xs);
 }
 
-.rail-item:hover {
-  background: var(--bz-nav-hover);
-  color: var(--bz-text);
+@media (hover: hover) and (pointer: fine) {
+  .rail-item:hover {
+    background: var(--bz-nav-hover);
+    color: var(--bz-text);
+  }
 }
 
 .rail-item[aria-current="page"] {
@@ -126,8 +131,10 @@
   font-weight: 600;
 }
 
-.rail-item[aria-current="page"]:hover {
-  background: var(--bz-nav-active);
+@media (hover: hover) and (pointer: fine) {
+  .rail-item[aria-current="page"]:hover {
+    background: var(--bz-nav-active);
+  }
 }
 
 .rail-accounts {
@@ -154,9 +161,11 @@
   text-align: left;
 }
 
-.rail-account:hover {
-  background: var(--bz-nav-hover);
-  color: var(--bz-text);
+@media (hover: hover) and (pointer: fine) {
+  .rail-account:hover {
+    background: var(--bz-nav-hover);
+    color: var(--bz-text);
+  }
 }
 
 .rail-account[aria-current="true"] {
@@ -201,10 +210,12 @@
   border-radius: var(--bz-radius-control);
 }
 
-.rail-foot .theme-toggle:hover {
-  border-color: transparent;
-  background: var(--bz-nav-hover);
-  color: var(--bz-text);
+@media (hover: hover) and (pointer: fine) {
+  .rail-foot .theme-toggle:hover {
+    border-color: transparent;
+    background: var(--bz-nav-hover);
+    color: var(--bz-text);
+  }
 }
 
 .main {
@@ -223,7 +234,9 @@
   gap: var(--bz-space-4);
   flex: 0 0 auto;
   min-width: 0;
-  padding: var(--bz-space-5) var(--bz-space-8) var(--bz-space-4);
+  padding: calc(var(--bz-space-5) + env(safe-area-inset-top, 0px))
+    calc(var(--bz-space-8) + env(safe-area-inset-right, 0px)) var(--bz-space-4)
+    var(--bz-space-8);
 }
 
 .topbar-actions {
@@ -284,7 +297,11 @@
   min-height: 0;
   overflow: hidden;
   gap: var(--bz-space-4);
-  padding: var(--bz-space-4) var(--bz-space-3);
+  padding: calc(var(--bz-space-4) + env(safe-area-inset-top, 0px))
+    calc(var(--bz-space-3) + env(safe-area-inset-right, 0px))
+    calc(var(--bz-space-4) + env(safe-area-inset-bottom, 0px))
+    calc(var(--bz-space-3) + env(safe-area-inset-left, 0px));
+  overscroll-behavior: contain;
   border-right: 1px solid var(--bz-border);
   background: var(--bz-rail-bg);
 }
@@ -318,13 +335,14 @@
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 0 var(--bz-space-8) var(--bz-space-8);
+  padding: 0 calc(var(--bz-space-8) + env(safe-area-inset-right, 0px))
+    calc(var(--bz-space-8) + env(safe-area-inset-bottom, 0px)) var(--bz-space-8);
 }
 
 .toast {
   position: fixed;
-  right: var(--bz-space-6);
-  bottom: var(--bz-space-6);
+  right: calc(var(--bz-space-6) + env(safe-area-inset-right, 0px));
+  bottom: calc(var(--bz-space-6) + env(safe-area-inset-bottom, 0px));
   z-index: 40;
   padding: 0.65rem 0.85rem;
   border: 1px solid var(--bz-border-strong);
@@ -359,7 +377,10 @@
   flex-direction: column;
   width: min(26rem, 100%);
   max-width: 100%;
-  height: 100%;
+  height: 100dvh;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
   border-left: 1px solid var(--bz-border);
   background: var(--bz-surface);
   transform: translateX(12px);
@@ -437,6 +458,7 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
   display: grid;
   align-content: start;
   gap: var(--bz-space-5);
@@ -466,7 +488,10 @@
 @media (max-height: 44rem) {
   .rail {
     gap: var(--bz-space-3);
-    padding: var(--bz-space-3) var(--bz-space-2);
+    padding: calc(var(--bz-space-3) + env(safe-area-inset-top, 0px))
+      var(--bz-space-2)
+      calc(var(--bz-space-3) + env(safe-area-inset-bottom, 0px))
+      calc(var(--bz-space-2) + env(safe-area-inset-left, 0px));
   }
 
   .rail-body {
@@ -486,7 +511,10 @@
 @media (max-height: 32rem) {
   .rail {
     gap: var(--bz-space-2);
-    padding: var(--bz-space-2);
+    padding: calc(var(--bz-space-2) + env(safe-area-inset-top, 0px))
+      calc(var(--bz-space-2) + env(safe-area-inset-right, 0px))
+      calc(var(--bz-space-2) + env(safe-area-inset-bottom, 0px))
+      calc(var(--bz-space-2) + env(safe-area-inset-left, 0px));
   }
 
   .rail-body {
@@ -528,7 +556,9 @@
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
     gap: var(--bz-space-2);
-    padding: var(--bz-space-3) var(--bz-space-4);
+    padding: calc(var(--bz-space-3) + env(safe-area-inset-top, 0px))
+      calc(var(--bz-space-4) + env(safe-area-inset-right, 0px))
+      var(--bz-space-3) calc(var(--bz-space-4) + env(safe-area-inset-left, 0px));
     align-items: center;
   }
 
@@ -542,14 +572,16 @@
   }
 
   .stage {
-    padding-left: var(--bz-space-4);
-    padding-right: var(--bz-space-4);
+    padding-top: 0;
+    padding-right: calc(var(--bz-space-4) + env(safe-area-inset-right, 0px));
+    padding-bottom: calc(var(--bz-space-8) + env(safe-area-inset-bottom, 0px));
+    padding-left: calc(var(--bz-space-4) + env(safe-area-inset-left, 0px));
   }
 
   .toast {
-    right: var(--bz-space-4);
-    bottom: var(--bz-space-4);
-    left: var(--bz-space-4);
+    right: calc(var(--bz-space-4) + env(safe-area-inset-right, 0px));
+    bottom: calc(var(--bz-space-4) + env(safe-area-inset-bottom, 0px));
+    left: calc(var(--bz-space-4) + env(safe-area-inset-left, 0px));
   }
 
   .nav-drawer {
@@ -575,9 +607,14 @@
     left: 0;
     right: 0;
     width: 100%;
-    height: min(88dvh, 100%);
+    height: min(88dvh, 100dvh);
     max-height: 100dvh;
+    padding-top: 0;
+    padding-right: env(safe-area-inset-right, 0px);
+    padding-bottom: 0;
+    padding-left: env(safe-area-inset-left, 0px);
     overflow: hidden;
+    overscroll-behavior: contain;
     border-left: 0;
     border-top: 1px solid var(--bz-border);
     border-radius: var(--bz-radius-lg) var(--bz-radius-lg) 0 0;
