@@ -5,6 +5,7 @@ from __future__ import annotations
 import calendar
 import hashlib
 import re
+from collections.abc import Callable
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
@@ -38,14 +39,56 @@ _PAYMENT_PATTERN = re.compile(
 )
 _CASH_PATTERN = re.compile(r"\b(?:CASH\s+ADVANCE|CASH\s+WITHDRAWAL|ATM\s+CASH)\b", re.IGNORECASE)
 _DETAIL_ACCOUNT_PATTERN = re.compile(r"(?<!\d)(?P<account>(?:\d{4}[\s-]*){4})(?!\d)")
+_MASKED_CARD_PATTERN = re.compile(r"(?<![A-Za-z0-9])(?:[Xx*]{4}[\s-]*){3}(?P<last4>\d{4})(?!\d)")
+_MASKED_ACCOUNT_BALANCE_PATTERN = re.compile(
+    rf"^\s*(?:[Xx*]{{4}}[\s-]*){{3}}(?P<last4>\d{{4}})\s+(?:S\$|\$)?\s*{_AMOUNT}",
+    re.IGNORECASE,
+)
 _STATEMENT_DATE_MISSING = "Statement date not found"
-_DATE_TEXT = r"(?:[A-Za-z]{3,9}\s+\d{1,2},\s+\d{4}|\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})"
+# Month-first with a comma is the Rewards/PremierMiles due-date line. The other
+# arms cover day-first commas, hyphenated months, ISO dates, and numeric DMY.
+_DATE_TEXT = (
+    r"(?:"
+    r"[A-Za-z]{3,9}\s+\d{1,2},\s+\d{4}"
+    r"|\d{1,2}\s+[A-Za-z]{3,9},\s+\d{4}"
+    r"|\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4}"
+    r"|[A-Za-z]{3,9}\s+\d{1,2}\s+\d{4}"
+    r"|\d{1,2}-[A-Za-z]{3,9}-\d{4}"
+    r"|\d{4}-\d{2}-\d{2}"
+    r"|\d{1,2}/\d{1,2}/\d{4}"
+    r")"
+)
+_RANGE_SEP = r"\s*(?:-|\u2013|\u2014|\bto\b)\s*"
 _PAYMENT_DUE_DATE_PATTERN = re.compile(
     rf"Payment\s+Due\s+Date\s*:?\s*(?P<due>{_DATE_TEXT})",
     re.IGNORECASE,
 )
 _PAYMENT_DUE_LABEL_PATTERN = re.compile(r"Payment\s+Due\s+Date\s*:?\s*$", re.IGNORECASE)
 _DATE_ONLY_PATTERN = re.compile(rf"^\s*(?P<due>{_DATE_TEXT})\s*$", re.IGNORECASE)
+_STATEMENT_DATE_PATTERN = re.compile(
+    rf"Statement\s+Date\s*:?\s*(?P<due>{_DATE_TEXT})",
+    re.IGNORECASE,
+)
+_STATEMENT_DATE_LABEL_PATTERN = re.compile(r"Statement\s+Date\s*:?\s*$", re.IGNORECASE)
+_PERIOD_LABEL = r"(?:Statement\s+(?:Date|Period)|Billing\s+Period)"
+_STATEMENT_PERIOD_PATTERN = re.compile(
+    rf"{_PERIOD_LABEL}\s*:?\s*(?P<start>{_DATE_TEXT}){_RANGE_SEP}(?P<end>{_DATE_TEXT})",
+    re.IGNORECASE,
+)
+_PERIOD_LABEL_ONLY_PATTERN = re.compile(rf"{_PERIOD_LABEL}\s*:?\s*$", re.IGNORECASE)
+_DATE_RANGE_LINE_PATTERN = re.compile(
+    rf"^\s*(?P<start>{_DATE_TEXT}){_RANGE_SEP}(?P<end>{_DATE_TEXT})\s*$",
+    re.IGNORECASE,
+)
+_TWO_COLUMN_LABEL_PATTERN = re.compile(
+    r"Statement\s+Date\b.*\bPayment\s+Due\s+Date\b",
+    re.IGNORECASE,
+)
+_TWO_DATES_PATTERN = re.compile(
+    rf"(?P<first>{_DATE_TEXT}).*?(?P<second>{_DATE_TEXT})",
+    re.IGNORECASE,
+)
+_DATE_TEXT_PATTERN = re.compile(_DATE_TEXT)
 _MONTH_WORDS: tuple[tuple[str, int], ...] = (
     ("january", 1),
     ("february", 2),
@@ -96,7 +139,7 @@ def citi_credit_card_adapter(*, bank: type[Any] = _CitiCreditBank) -> MonopolySt
     """Build the versioned Citi adapter used by the worker registry."""
     return MonopolyStatementAdapter(
         key="citi-credit-card",
-        adapter_version="citi-credit-2",
+        adapter_version="citi-credit-3",
         institution="citi",
         definition=MonopolyAdapterDefinition(
             bank=bank,
@@ -111,10 +154,10 @@ def _selection(
     statement: Any,
     expected_account_identifier: str | None,
 ) -> MonopolyStatementSelection:
-    metadata = _metadata(statement)
+    metadata = _metadata(statement, expected_account_identifier)
     if (
         expected_account_identifier is not None
-        and metadata.account_identifier != expected_account_identifier
+        and metadata.account_identifier != expected_account_identifier.strip()
     ):
         raise StatementAdapterError("account_mismatch")
     return MonopolyStatementSelection(
@@ -123,10 +166,13 @@ def _selection(
     )
 
 
-def _metadata(statement: Any) -> MonopolyStatementMetadata:
+def _metadata(
+    statement: Any,
+    expected_account_identifier: str | None,
+) -> MonopolyStatementMetadata:
     lines = [line for page in statement.pages for line in page.lines]
     statement_date = _statement_date(statement, lines)
-    account_number = _detail_account_number(statement)
+    account_number = _account_number(statement, lines, expected_account_identifier)
     closing_balance = _account_balance(lines, account_number)
     opening_balance = _single_balance(
         lines,
@@ -173,14 +219,32 @@ def _statement_date(statement: Any, lines: list[str]) -> date:
 
 
 def _fallback_statement_date(statement: Any, lines: list[str]) -> date | None:
-    """Cycle end when PremierMiles omits the Statement Date line.
+    """Cycle end when Monopoly cannot parse a Statement Date line.
 
-    Payment Due Date is the preferred anchor: it is after the billing cycle, so
-    transaction dates on the statement are not after it. ``_cycle_start`` then
-    derives the period. A filename month and year is the next source, using the
-    last day of that month. ``eStatement_July.pdf`` has no year, so it cannot
-    stand alone.
+    A labeled statement date wins, including a colon or the next line, and a
+    two-column header whose dates sit on the following line. A statement-period
+    range is next: dateparser rejects ``12 Feb 2026 - 11 Mar 2026``, which is
+    the March PremierMiles shape, and the range end is the cycle end.
+    Payment Due Date remains the anchor when those are absent. A filename month
+    and year is last, using the last day of that month. ``eStatement_July.pdf``
+    has no year, so it cannot stand alone.
     """
+    statement_dates = _labeled_statement_dates(lines)
+    if len(statement_dates) > 1:
+        raise StatementAdapterError(
+            "statement_metadata_ambiguous",
+            {"field": "statement_date", "match_count": len(statement_dates)},
+        )
+    if len(statement_dates) == 1:
+        return statement_dates[0]
+    period_ends = _statement_period_ends(lines)
+    if len(period_ends) > 1:
+        raise StatementAdapterError(
+            "statement_metadata_ambiguous",
+            {"field": "statement_date", "match_count": len(period_ends)},
+        )
+    if len(period_ends) == 1:
+        return period_ends[0]
     due_dates = _payment_due_dates(lines)
     if len(due_dates) > 1:
         raise StatementAdapterError(
@@ -190,6 +254,63 @@ def _fallback_statement_date(statement: Any, lines: list[str]) -> date | None:
     if len(due_dates) == 1:
         return due_dates[0]
     return _filename_statement_date(getattr(statement, "file_path", None))
+
+
+def _labeled_statement_dates(lines: list[str]) -> tuple[date, ...]:
+    found: list[date] = []
+    for index, line in enumerate(lines):
+        if _STATEMENT_PERIOD_PATTERN.search(line) is not None:
+            continue
+        parsed = _two_column_statement_date(lines, index)
+        if parsed is None:
+            parsed = _single_statement_date(lines, index)
+        if parsed is not None and parsed not in found:
+            found.append(parsed)
+    return tuple(found)
+
+
+def _two_column_statement_date(lines: list[str], index: int) -> date | None:
+    line = lines[index]
+    if _TWO_COLUMN_LABEL_PATTERN.search(line) is None or _DATE_TEXT_PATTERN.search(line):
+        return None
+    if index + 1 >= len(lines):
+        return None
+    match = _TWO_DATES_PATTERN.search(lines[index + 1])
+    if match is None:
+        return None
+    return _parse_date_text(match.group("first"))
+
+
+def _single_statement_date(lines: list[str], index: int) -> date | None:
+    line = lines[index]
+    match = _STATEMENT_DATE_PATTERN.search(line)
+    parsed = _parse_date_text(match.group("due")) if match is not None else None
+    if (
+        parsed is None
+        and _STATEMENT_DATE_LABEL_PATTERN.search(line) is not None
+        and index + 1 < len(lines)
+        and _DATE_RANGE_LINE_PATTERN.search(lines[index + 1]) is None
+    ):
+        next_line = _DATE_ONLY_PATTERN.search(lines[index + 1])
+        parsed = _parse_date_text(next_line.group("due")) if next_line is not None else None
+    return parsed
+
+
+def _statement_period_ends(lines: list[str]) -> tuple[date, ...]:
+    found: list[date] = []
+    for index, line in enumerate(lines):
+        match = _STATEMENT_PERIOD_PATTERN.search(line)
+        parsed = _parse_date_text(match.group("end")) if match is not None else None
+        if (
+            parsed is None
+            and _PERIOD_LABEL_ONLY_PATTERN.search(line) is not None
+            and index + 1 < len(lines)
+        ):
+            next_range = _DATE_RANGE_LINE_PATTERN.search(lines[index + 1])
+            parsed = _parse_date_text(next_range.group("end")) if next_range is not None else None
+        if parsed is not None and parsed not in found:
+            found.append(parsed)
+    return tuple(found)
 
 
 def _payment_due_dates(lines: list[str]) -> tuple[date, ...]:
@@ -206,7 +327,20 @@ def _payment_due_dates(lines: list[str]) -> tuple[date, ...]:
 
 
 def _parse_date_text(text: str) -> date | None:
-    parts = text.replace(",", " ").split()
+    stripped = text.strip()
+    iso = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})", stripped)
+    if iso is not None:
+        return _calendar_date(int(iso.group(1)), int(iso.group(2)), int(iso.group(3)))
+    numeric = re.fullmatch(r"(\d{1,2})/(\d{1,2})/(\d{4})", stripped)
+    if numeric is not None:
+        return _calendar_date(int(numeric.group(3)), int(numeric.group(2)), int(numeric.group(1)))
+    hyphenated = re.fullmatch(r"(\d{1,2})-([A-Za-z]{3,9})-(\d{4})", stripped)
+    if hyphenated is not None:
+        month = _MONTH_NUMBERS.get(hyphenated.group(2).casefold())
+        if month is None:
+            return None
+        return _calendar_date(int(hyphenated.group(3)), month, int(hyphenated.group(1)))
+    parts = stripped.replace(",", " ").split()
     if len(parts) != 3:
         return None
     if parts[0].isdigit() and parts[2].isdigit():
@@ -218,8 +352,12 @@ def _parse_date_text(text: str) -> date | None:
     month = _MONTH_NUMBERS.get(month_text.casefold())
     if month is None:
         return None
+    return _calendar_date(int(year_text), month, int(day_text))
+
+
+def _calendar_date(year: int, month: int, day: int) -> date | None:
     try:
-        return date(int(year_text), month, int(day_text))
+        return date(year, month, day)
     except ValueError:
         return None
 
@@ -238,34 +376,129 @@ def _filename_statement_date(file_path: object) -> date | None:
     return date(year, month, calendar.monthrange(year, month)[1])
 
 
-def _detail_account_number(statement: Any) -> str:
-    accounts: set[str] = set()
+def _account_number(
+    statement: Any,
+    lines: list[str],
+    expected_account_identifier: str | None,
+) -> str:
+    """Card number used for identity, digest, and the closing-balance line.
+
+    The 16-digit number in the ten lines above the transaction header is the
+    primary key. PremierMiles text often has no such number. A masked last4 in
+    that window is the same identifier. Otherwise the Financial Account's
+    configured last4 is the fallback, and a unique summary line ending in that
+    last4 supplies the full number for the existing balance match.
+    """
+    full_accounts: set[str] = set()
+    masked_last4: set[str] = set()
     for page in statement.pages:
         for index, line in enumerate(page.lines):
             if statement.config.header_pattern.search(line) is None:
                 continue
             for prior_line in page.lines[max(0, index - 10) : index]:
                 for match in _DETAIL_ACCOUNT_PATTERN.finditer(prior_line):
-                    accounts.add(re.sub(r"[\s-]", "", match.group("account")))
-    if len(accounts) != 1:
-        code = "account_identifier_missing" if not accounts else "account_identifier_ambiguous"
-        raise StatementAdapterError(code, {"identifier_count": len(accounts)})
-    return accounts.pop()
+                    full_accounts.add(re.sub(r"[\s-]", "", match.group("account")))
+                for match in _MASKED_CARD_PATTERN.finditer(prior_line):
+                    masked_last4.add(match.group("last4"))
+    if len(full_accounts) > 1:
+        raise StatementAdapterError(
+            "account_identifier_ambiguous",
+            {"identifier_count": len(full_accounts)},
+        )
+    if len(full_accounts) == 1:
+        return full_accounts.pop()
+    if len(masked_last4) > 1:
+        raise StatementAdapterError(
+            "account_identifier_ambiguous",
+            {"identifier_count": len(masked_last4)},
+        )
+    configured = _configured_last4(expected_account_identifier)
+    if len(masked_last4) == 1:
+        printed = masked_last4.pop()
+        if configured is not None and configured != printed:
+            raise StatementAdapterError("account_mismatch")
+        return _unique_balance_pan(lines, printed) or printed
+    if configured is None:
+        raise StatementAdapterError("account_identifier_missing", {"identifier_count": 0})
+    printed_accounts = _balance_accounts(lines)
+    matching = {account for account in printed_accounts if account.endswith(configured)}
+    if len(matching) > 1:
+        raise StatementAdapterError(
+            "account_identifier_ambiguous",
+            {"identifier_count": len(matching)},
+        )
+    if len(matching) == 1:
+        return matching.pop()
+    if printed_accounts:
+        raise StatementAdapterError("account_mismatch")
+    return configured
+
+
+def _configured_last4(expected_account_identifier: str | None) -> str | None:
+    if expected_account_identifier is None:
+        return None
+    token = expected_account_identifier.strip()
+    if re.fullmatch(r"\d{4}", token) is None:
+        return None
+    return token
+
+
+def _unique_balance_pan(lines: list[str], last4: str) -> str | None:
+    matching = {account for account in _balance_accounts(lines) if account.endswith(last4)}
+    if len(matching) > 1:
+        raise StatementAdapterError(
+            "account_identifier_ambiguous",
+            {"identifier_count": len(matching)},
+        )
+    if len(matching) == 1:
+        return matching.pop()
+    return None
+
+
+def _balance_accounts(lines: list[str]) -> set[str]:
+    return {
+        match.group("account")
+        for line in lines
+        if (match := _ACCOUNT_BALANCE_PATTERN.search(line)) is not None
+    }
 
 
 def _account_balance(lines: list[str], account_number: str) -> str:
-    balances = [
-        _balance_effect(match.group("amount"), match.groupdict().get("polarity"))
-        for line in lines
-        for match in [_ACCOUNT_BALANCE_PATTERN.search(line)]
-        if match is not None and match.group("account") == account_number
-    ]
+    exact = _balance_amounts(
+        lines,
+        lambda match: match.group("account") == account_number,
+    )
+    if len(account_number) == 16:
+        balances = exact
+    else:
+        balances = exact or _balance_amounts(
+            lines,
+            lambda match: match.group("account").endswith(account_number),
+        )
+        if not balances:
+            balances = [
+                _balance_effect(match.group("amount"), match.groupdict().get("polarity"))
+                for line in lines
+                if (match := _MASKED_ACCOUNT_BALANCE_PATTERN.search(line)) is not None
+                and match.group("last4") == account_number
+            ]
     if len(balances) != 1:
         raise StatementAdapterError(
             "statement_metadata_ambiguous",
             {"field": "closing_balance", "match_count": len(balances)},
         )
     return balances[0]
+
+
+def _balance_amounts(
+    lines: list[str],
+    include: Callable[[re.Match[str]], bool],
+) -> list[str]:
+    return [
+        _balance_effect(match.group("amount"), match.groupdict().get("polarity"))
+        for line in lines
+        if (match := _ACCOUNT_BALANCE_PATTERN.search(line)) is not None and include(match)
+    ]
 
 
 def _single_balance(lines: list[str], pattern: re.Pattern[str] | None, field: str) -> str:

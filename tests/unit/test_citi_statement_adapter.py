@@ -61,7 +61,7 @@ def test_citi_adapter_satisfies_credit_card_statement_contract(tmp_path: Path) -
 
 
 def test_citi_adapter_version_includes_monopoly_and_billzebub_versions() -> None:
-    assert citi_credit_card_adapter().version == "monopoly-0.21.6+citi-credit-2"
+    assert citi_credit_card_adapter().version == "monopoly-0.21.6+citi-credit-3"
 
 
 def _write_lines(path: Path, lines: list[str]) -> None:
@@ -170,6 +170,157 @@ def test_citi_filename_month_year_is_cycle_end_when_no_statement_or_due_date(
     assert candidate.period_end == statement_day
     assert candidate.period_start < statement_day
     assert all(row.provider_transaction_date <= statement_day for row in candidate.rows)
+
+
+def _premiermiles_without_header_card(
+    *,
+    preamble: list[str],
+    transactions: list[str],
+    balance_line: str,
+) -> list[str]:
+    return [
+        "CITIBANK",
+        *preamble,
+        "BALANCE PREVIOUS STATEMENT 100.00",
+        "DATE DESCRIPTION AMOUNT",
+        *transactions,
+        balance_line,
+    ]
+
+
+@pytest.mark.parametrize(
+    "balance_line",
+    [
+        "1111222233337045 103.00 10.00",
+        "XXXX XXXX XXXX 7045 103.00 10.00",
+    ],
+)
+def test_citi_premiermiles_uses_configured_last4_when_header_card_is_missing(
+    tmp_path: Path,
+    balance_line: str,
+) -> None:
+    pdf = tmp_path / "eStatement_July.pdf"
+    _write_lines(
+        pdf,
+        _premiermiles_without_header_card(
+            preamble=["Payment Due Date: July 30, 2026"],
+            transactions=[
+                "10 Jul FICTIONAL BOOKSHOP 10.00",
+                "20 Jul CITIBANK BILL PAYMENT 5.00 CR",
+                "25 Jul FICTIONAL MERCHANT REFUND (2.00)",
+            ],
+            balance_line=balance_line,
+        ),
+    )
+
+    with pytest.raises(StatementAdapterError, match="account_identifier_missing"):
+        citi_credit_card_adapter().extract(pdf, ())
+
+    candidate = citi_credit_card_adapter().extract(
+        pdf,
+        (),
+        expected_account_identifier="7045",
+    )
+
+    assert candidate.account_identifier == "7045"
+    assert candidate.statement_date == date(2026, 7, 30)
+    assert candidate.closing_balance_text == "103.00"
+    assert [row.posted_amount_text for row in candidate.rows] == ["-10.00", "5.00", "2.00"]
+
+
+def test_citi_configured_last4_rejects_a_different_printed_card(tmp_path: Path) -> None:
+    pdf = tmp_path / "eStatement_July.pdf"
+    _write_lines(pdf, _premiermiles_lines(["Payment Due Date: July 30, 2026"]))
+
+    with pytest.raises(StatementAdapterError, match="account_mismatch"):
+        citi_credit_card_adapter().extract(
+            pdf,
+            (),
+            expected_account_identifier="7045",
+        )
+
+
+@pytest.mark.parametrize(
+    "preamble",
+    [
+        ["Statement Date 12 Feb 2026 - 11 Mar 2026"],
+        ["Statement Period: 12 Feb 2026 to 11 Mar 2026"],
+        ["Statement Date:", "12 Feb 2026 - 11 Mar 2026"],
+        ["Statement Date:", "11 Mar 2026"],
+        ["Statement Date: 2026-03-11"],
+        [
+            "Statement Date          Payment Due Date",
+            "11 Mar 2026             05 Apr 2026",
+        ],
+    ],
+)
+def test_citi_march_statement_metadata_uses_cycle_end_not_a_due_date(
+    tmp_path: Path,
+    preamble: list[str],
+) -> None:
+    pdf = tmp_path / "eStatement_March.pdf"
+    _write_lines(
+        pdf,
+        _premiermiles_without_header_card(
+            preamble=preamble,
+            transactions=[
+                "15 Feb FICTIONAL BOOKSHOP 10.00",
+                "20 Feb CITIBANK BILL PAYMENT 5.00 CR",
+                "01 Mar FICTIONAL MERCHANT REFUND (2.00)",
+            ],
+            balance_line="1111222233337045 103.00 10.00",
+        ),
+    )
+
+    with pytest.raises(StatementAdapterError, match="account_identifier_missing"):
+        citi_credit_card_adapter().discover_account_identifiers(pdf, ())
+
+    candidate = citi_credit_card_adapter().extract(
+        pdf,
+        (),
+        expected_account_identifier="7045",
+    )
+
+    assert candidate.account_identifier == "7045"
+    assert candidate.statement_date == date(2026, 3, 11)
+    assert candidate.period_start == date(2026, 2, 12)
+    assert candidate.period_end == date(2026, 3, 11)
+    assert [row.provider_transaction_date for row in candidate.rows] == [
+        date(2026, 2, 15),
+        date(2026, 2, 20),
+        date(2026, 3, 1),
+    ]
+    assert [row.posted_amount_text for row in candidate.rows] == ["-10.00", "5.00", "2.00"]
+    assert re.fullmatch(r"citi:2026-03-11:[0-9a-f]{16}", candidate.statement_identity)
+
+
+def test_citi_payment_due_date_accepts_day_month_comma(tmp_path: Path) -> None:
+    pdf = tmp_path / "eStatement_March.pdf"
+    _write_lines(
+        pdf,
+        [
+            "CITIBANK",
+            "Payment Due Date: 30 March, 2026",
+            "BALANCE PREVIOUS STATEMENT 100.00",
+            "1111222233334444",
+            "DATE DESCRIPTION AMOUNT",
+            "10 Mar FICTIONAL BOOKSHOP 10.00",
+            "20 Mar CITIBANK BILL PAYMENT 5.00 CR",
+            "25 Mar FICTIONAL MERCHANT REFUND (2.00)",
+            "1111222233334444 103.00 10.00",
+        ],
+    )
+
+    candidate = citi_credit_card_adapter().extract(pdf, ())
+
+    assert candidate.statement_date == date(2026, 3, 30)
+    assert candidate.period_start == date(2026, 3, 1)
+    assert candidate.account_identifier == "4444"
+    assert [row.provider_transaction_date for row in candidate.rows] == [
+        date(2026, 3, 10),
+        date(2026, 3, 20),
+        date(2026, 3, 25),
+    ]
 
 
 def test_citi_month_only_filename_without_a_date_fails_closed(tmp_path: Path) -> None:
