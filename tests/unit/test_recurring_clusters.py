@@ -83,3 +83,54 @@ def test_detector_clusters_a_repeating_merchant_inside_tolerance() -> None:
 def test_monthly_advance_clamps_short_months() -> None:
     assert advance_expected(date(2026, 1, 31), "monthly", None) == date(2026, 2, 28)
     assert advance_expected(date(2026, 3, 5), "weekly", None) == date(2026, 3, 12)
+
+
+def test_spotify_per_charge_refs_cluster_as_one_monthly_series() -> None:
+    labels = [
+        "Spotify P45AE6BD59 Stockholm SE",
+        "Spotify P449A6A149 Stockholm SE",
+        "Spotify P7C3E91A4B Stockholm SE",
+        "Spotify P8D12F6A03 Stockholm SE",
+        "Spotify P2B90C4E17 Stockholm SE",
+        "Spotify P6A18D3F52 Stockholm SE",
+        "Spotify P9E4B70C21 Stockholm SE",
+        "Spotify P3F81A2D64 Stockholm SE",
+        "Spotify P5C27B9E08 Stockholm SE",
+    ]
+    dates = [
+        date(2025, 12, 15),
+        date(2026, 1, 15),
+        date(2026, 2, 15),
+        date(2026, 3, 15),
+        date(2026, 4, 15),
+        date(2026, 5, 15),
+        date(2026, 6, 15),
+        date(2026, 7, 15),
+        date(2026, 8, 15),
+    ]
+    charges = [
+        _observation(label, "20.98", when) for label, when in zip(labels, dates, strict=True)
+    ]
+
+    assert {charge.normalized_counterparty for charge in charges} == {"spotify stockholm se"}
+    assert normalize_counterparty("Spotify Stockholm SE") == "spotify stockholm se"
+
+    clusters = build_clusters(charges)
+
+    assert len(clusters) == 1
+    cluster = clusters[0]
+    assert cluster.normalized_counterparty == "spotify stockholm se"
+    assert cluster.cadence == "monthly"
+    assert cluster.currency == "SGD"
+    assert cluster.amount == Decimal("20.98")
+    assert cluster.amount_min is None
+    assert cluster.amount_max is None
+    assert cluster.next_expected_date == date(2026, 9, 15)
+    assert len(cluster.observations) == 9
+
+
+def test_normalize_counterparty_keeps_merchant_words_that_contain_digits() -> None:
+    assert normalize_counterparty("7ELEVEN") == "7eleven"
+    assert normalize_counterparty("G4S SECURITY") == "g4s security"
+    assert normalize_counterparty("MP3PLAYER") == "mp3player"
+    assert normalize_counterparty("24HOURFITNESS") == "24hourfitness"

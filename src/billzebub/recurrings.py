@@ -62,6 +62,9 @@ _STATUS_TRANSITIONS: dict[str, frozenset[str]] = {
 _STATUS_RANK = {"active": 0, "paused": 1, "ended": 2, "dismissed": 3, "proposed": 4}
 _CURRENCY_PATTERN = re.compile(r"^[A-Z]{3}$")
 _TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
+# Letter prefix, a digit, then a long tail: ``p45ae6bd59``, not ``7eleven``.
+_OPAQUE_REF_PATTERN = re.compile(r"^[a-z]*\d[a-z0-9]{6,}$")
+_MERCHANT_LETTER_RUN = re.compile(r"[a-z]{4,}")
 _COUNTERPARTY_NOISE = frozenset(
     {
         "card",
@@ -217,13 +220,34 @@ class RecurringUpdate:
     amount_max: Decimal | None = None
 
 
+def _is_opaque_charge_ref(token: str) -> bool:
+    """True for a long mixed per-charge reference such as ``p45ae6bd59``.
+
+    Merchant words that merely contain digits (``7eleven``, ``24hourfitness``)
+    include a four-letter run and stay. A reference has several digits and none.
+    """
+    if _OPAQUE_REF_PATTERN.fullmatch(token) is None:
+        return False
+    if _MERCHANT_LETTER_RUN.search(token) is not None:
+        return False
+    digit_count = sum(1 for character in token if character.isdigit())
+    return any(character.isalpha() for character in token) and digit_count >= 3
+
+
 def normalize_counterparty(value: str) -> str:
-    """Fold a merchant label into the cluster and match key."""
+    """Fold a merchant label into the cluster and match key.
+
+    Digit-only tokens and long mixed per-charge references are dropped so
+    repeated charges that embed a unique ref still share one key.
+    """
     folded = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode().casefold()
     tokens = [
         token
         for token in _TOKEN_PATTERN.findall(folded)
-        if token not in _COUNTERPARTY_NOISE and not token.isdigit() and len(token) > 1
+        if token not in _COUNTERPARTY_NOISE
+        and not token.isdigit()
+        and len(token) > 1
+        and not _is_opaque_charge_ref(token)
     ]
     return " ".join(tokens)[:300]
 
