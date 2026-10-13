@@ -33,6 +33,14 @@ from billzebub.jev_categorizer import enqueue_accepted_claim
 from billzebub.jobs import JobQueue
 from billzebub.persistence.database import Database
 from billzebub.persistence.models import AuditActorKind, FinancialAccountKind
+from billzebub.statement_adapters import configured_statement_adapters
+from billzebub.statement_extraction import StatementAdapterRegistry, StatementExtraction
+from billzebub.statement_reextract import (
+    StatementReextractError,
+    StatementReextractor,
+    StatementReextractReport,
+    format_statement_reextract,
+)
 from billzebub.tokens import TokenManager, TokenScope
 from billzebub.uob_ref_no_backfill import UobRefNoBackfill, UobRefNoBackfillReport
 
@@ -150,6 +158,20 @@ def parser() -> argparse.ArgumentParser:
 
     revoke = token_commands.add_parser("revoke", help="revoke a token immediately")
     revoke.add_argument("token_id", type=UUID)
+
+    statements = commands.add_parser("statements", help="operate excluded statement Extractions")
+    statements_commands = statements.add_subparsers(dest="statements_command", required=True)
+    reextract = statements_commands.add_parser(
+        "reextract",
+        help="re-extract an excluded statement Source Artifact at the current adapter version",
+    )
+    reextract.add_argument(
+        "--artifact-id",
+        action="append",
+        required=True,
+        type=UUID,
+        help="excluded Source Artifact to re-extract; repeat for each artifact",
+    )
 
     uob = commands.add_parser("uob", help="operate UOB statement Counterparty cleanup")
     uob_commands = uob.add_subparsers(dest="uob_command", required=True)
@@ -276,6 +298,18 @@ def main(argv: Sequence[str] | None = None) -> None:
             )
             _print_purge_report(report)
             return
+        if arguments.command == "statements" and arguments.statements_command == "reextract":
+            try:
+                reports = _run_statement_reextract(
+                    database,
+                    settings,
+                    tuple(arguments.artifact_id),
+                )
+            except StatementReextractError as error:
+                raise SystemExit(str(error)) from None
+            for reextract_report in reports:
+                print(format_statement_reextract(reextract_report))
+            return
         if arguments.command == "uob" and arguments.uob_command == "strip-ref-no":
             if arguments.dry_run and arguments.execute:
                 raise SystemExit("specify only one of --dry-run or --execute")
@@ -359,6 +393,23 @@ def main(argv: Sequence[str] | None = None) -> None:
         raise SystemExit("unsupported command")
     finally:
         database.close()
+
+
+def _run_statement_reextract(
+    database: Database,
+    settings: Settings,
+    artifact_ids: tuple[UUID, ...],
+) -> tuple[StatementReextractReport, ...]:
+    registry = StatementAdapterRegistry(configured_statement_adapters())
+    extraction = StatementExtraction(
+        database,
+        ContentAddressedStore(settings.artifact_root, max_bytes=settings.artifact_max_bytes),
+        registry,
+        password_root=settings.statement_password_root,
+    )
+    return StatementReextractor(database, extraction, registry, JobQueue(database)).reextract(
+        artifact_ids
+    )
 
 
 def _print_uob_ref_no_report(report: UobRefNoBackfillReport) -> None:
