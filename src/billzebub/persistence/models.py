@@ -851,7 +851,8 @@ class ReviewEvent(Base):
         UniqueConstraint("review_id", "version", name="uq_review_event_version"),
         CheckConstraint("version > 0", name="version_positive"),
         CheckConstraint(
-            "event_type IN ('created', 'synchronized', 'resolved', 'cancelled')",
+            "event_type IN ('created', 'synchronized', 'resolved', 'cancelled', "
+            "'reextract_requested')",
             name="event_type_known",
         ),
         CheckConstraint(

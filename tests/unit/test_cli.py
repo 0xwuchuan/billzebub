@@ -11,6 +11,10 @@ from billzebub.financial_accounts import (
 )
 from billzebub.imports import FailedImportPurgeReport
 from billzebub.persistence.models import FinancialAccountKind
+from billzebub.statement_reextract import (
+    StatementReextractAction,
+    StatementReextractReport,
+)
 from billzebub.uob_ref_no_backfill import UobRefNoBackfillReport
 
 
@@ -358,3 +362,68 @@ def test_uob_strip_ref_no_execute_applies_corrections(
     assert output.startswith("Rewrote 1 UOB Counterparty value(s).")
     assert "Dry run" not in output
     assert "DIN TAI FUNG" not in output
+
+
+class FakeStatementReextractor:
+    artifact_ids: tuple[UUID, ...] | None = None
+
+    def __init__(
+        self, _database: FakeDatabase, _extraction: object, _adapters: object, _queue: object
+    ) -> None:
+        pass
+
+    def reextract(self, artifact_ids: tuple[UUID, ...]) -> tuple[StatementReextractReport, ...]:
+        type(self).artifact_ids = artifact_ids
+        return tuple(
+            StatementReextractReport(
+                artifact_id=artifact_id,
+                action=StatementReextractAction.VERSION_UNCHANGED,
+                extraction_id=artifact_id,
+                status="failed",
+                claim_count=0,
+                enqueued_reconciliation=False,
+            )
+            for artifact_id in artifact_ids
+        )
+
+
+def test_statements_reextract_requires_an_artifact_id() -> None:
+    with pytest.raises(SystemExit):
+        cli.main(["statements", "reextract"])
+
+
+def test_statements_reextract_repeats_artifact_ids_and_prints_the_version_noop(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    first = uuid4()
+    second = uuid4()
+    monkeypatch.setattr(
+        cli,
+        "Settings",
+        lambda: Settings(
+            artifact_root=tmp_path / "artifacts",
+            statement_password_root=tmp_path / "passwords",
+        ),
+    )
+    monkeypatch.setattr(cli, "Database", FakeDatabase)
+    monkeypatch.setattr(cli, "StatementReextractor", FakeStatementReextractor)
+
+    cli.main(
+        [
+            "statements",
+            "reextract",
+            "--artifact-id",
+            str(first),
+            "--artifact-id",
+            str(second),
+        ]
+    )
+
+    output = capsys.readouterr().out
+    assert FakeStatementReextractor.artifact_ids == (first, second)
+    assert output == (
+        f"artifact_id={first} parser version bump required\n"
+        f"artifact_id={second} parser version bump required\n"
+    )
