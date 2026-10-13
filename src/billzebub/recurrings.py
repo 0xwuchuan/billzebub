@@ -2,8 +2,11 @@
 
 Settled Transactions are clustered into proposed Recurring Series. Nothing is
 activated until the owner confirms it. A dismissed cluster key is not proposed
-again. Active series pick up later settled Transactions that match the
-counterparty, amount tolerance, and next expected date.
+again. A newly settled Transaction links to an active series when the
+counterparty, amount tolerance, and next expected date agree. Detection also
+backfills unlinked history onto an existing active series, including one the
+owner created manually, when the normalized counterparty, amount, and cadence
+agree, then recomputes the latest match and next expected date.
 """
 
 from __future__ import annotations
@@ -279,6 +282,41 @@ def match_window_days(cadence: str, interval_days: int | None) -> int:
     return max(3, interval // 5)
 
 
+def occurs_on_cadence(
+    anchor: date,
+    when: date,
+    cadence: str,
+    interval_days: int | None,
+) -> bool:
+    """True when ``when`` sits in the match window of a cadence slot from ``anchor``.
+
+    Monthly and yearly slots step by calendar months, so a charge on the same
+    day of an earlier month still matches. Weekly and custom cadences use a
+    fixed day count. A date that misses every slot is not the series cadence.
+    """
+    window = match_window_days(cadence, interval_days)
+    if cadence in {"monthly", "yearly"}:
+        step = 1 if cadence == "monthly" else 12
+        months = (when.year - anchor.year) * 12 + (when.month - anchor.month)
+        nearest = _nearest_step(months, step)
+        return any(
+            abs((when - _add_months(anchor, (nearest + offset) * step)).days) <= window
+            for offset in (-1, 0, 1)
+        )
+    if cadence == "weekly":
+        period = 7
+    elif cadence == "custom_days" and interval_days is not None and interval_days > 0:
+        period = interval_days
+    else:
+        return False
+    # Adjacent slots cover the whole timeline when the window is half a period,
+    # so only the anchor slot is a real filter. Wider periods still walk the lattice.
+    if 2 * window >= period - 1:
+        return abs((when - anchor).days) <= window
+    remainder = abs((when - anchor).days) % period
+    return min(remainder, period - remainder) <= window
+
+
 def advance_expected(start: date, cadence: str, interval_days: int | None) -> date:
     if cadence == "weekly":
         return start + timedelta(days=7)
@@ -528,7 +566,11 @@ class Recurrings:
             return self._record(session, series)
 
     def detect(self, *, as_of: date | None = None) -> RecurringDetection:
-        """Propose new series from settled history and attach obvious active matches."""
+        """Propose new series from settled history and backfill existing ones.
+
+        Backfill links unlinked Transactions onto active series, including
+        manual ones, and is safe to repeat: a second pass changes nothing.
+        """
         today = as_of or self._today()
         with self._database.transaction() as session:
             result = self._detect(session, today)
@@ -545,19 +587,7 @@ class Recurrings:
         observations = self._load_observations(session)
         series_rows = list(session.scalars(select(RecurringSeries)).all())
         linked = self._linked_ids(session)
-        matched = 0
-        for observation in sorted(
-            observations,
-            key=lambda item: (item.effective_date, str(item.transaction_id)),
-        ):
-            if observation.transaction_id in linked:
-                continue
-            series = _best_active(series_rows, observation)
-            if series is None:
-                continue
-            self._link(session, series, observation, match_kind="auto", advance=True)
-            linked.add(observation.transaction_id)
-            matched += 1
+        matched = self._backfill_existing_series(session, observations, series_rows, linked)
         proposed = 0
         updated = 0
         for cluster in build_clusters(observations):
@@ -580,6 +610,59 @@ class Recurrings:
             updated += 1
         self._refresh_missed(session, today)
         return RecurringDetection(proposed=proposed, updated=updated, matched=matched)
+
+    def _backfill_existing_series(
+        self,
+        session: Session,
+        observations: list[SpendObservation],
+        series_rows: list[RecurringSeries],
+        linked: set[UUID],
+    ) -> int:
+        """Link unlinked Transactions onto existing active or manual series.
+
+        A match requires the normalized counterparty, currency, amount
+        tolerance, and cadence. Dismissed, paused, ended, and proposed series
+        are left alone. A Transaction already linked to a series is not moved.
+        Schedule fields are recomputed from the latest linked charge. Running
+        this again, once those links exist, changes nothing.
+        """
+        matched = 0
+        touched: set[UUID] = set()
+        for observation in sorted(
+            observations,
+            key=lambda item: (item.effective_date, str(item.transaction_id)),
+        ):
+            if observation.transaction_id in linked:
+                continue
+            series = _best_backfill_series(series_rows, observation)
+            if series is None:
+                continue
+            self._link(session, series, observation, match_kind="auto", advance=False)
+            linked.add(observation.transaction_id)
+            touched.add(series.id)
+            matched += 1
+        if not touched:
+            return 0
+        session.flush()
+        for series in series_rows:
+            if series.id in touched:
+                self._recompute_schedule(session, series)
+        return matched
+
+    def _recompute_schedule(self, session: Session, series: RecurringSeries) -> None:
+        latest = _latest_linked_charge(session, series.id)
+        if latest is None:
+            return
+        transaction_id, effective_date = latest
+        next_expected = advance_expected(effective_date, series.cadence, series.interval_days)
+        if (
+            series.last_matched_tx_id == transaction_id
+            and series.next_expected_date == next_expected
+        ):
+            return
+        series.last_matched_tx_id = transaction_id
+        series.next_expected_date = next_expected
+        series.updated_at = datetime.now(UTC)
 
     def _insert_proposed(
         self,
@@ -1075,6 +1158,69 @@ def _find_existing(
     )
 
 
+def _accepts_history_backfill(series: RecurringSeries) -> bool:
+    """Active series only, including one the owner created manually.
+
+    Manual series are stored as active. Dismissed, paused, ended, and proposed
+    series are not rewritten by the backfill.
+    """
+    return series.status == "active"
+
+
+def _best_backfill_series(
+    rows: list[RecurringSeries],
+    observation: SpendObservation,
+) -> RecurringSeries | None:
+    candidates: list[RecurringSeries] = []
+    for series in rows:
+        if not _accepts_history_backfill(series):
+            continue
+        if series.normalized_counterparty != observation.normalized_counterparty:
+            continue
+        if series.currency != observation.currency:
+            continue
+        if not _amount_near(series, observation.amount):
+            continue
+        if not occurs_on_cadence(
+            series.next_expected_date,
+            observation.effective_date,
+            series.cadence,
+            series.interval_days,
+        ):
+            continue
+        candidates.append(series)
+    if not candidates:
+        return None
+    return min(
+        candidates,
+        key=lambda series: (
+            abs(series.amount - observation.amount),
+            abs((observation.effective_date - series.next_expected_date).days),
+            str(series.id),
+        ),
+    )
+
+
+def _latest_linked_charge(session: Session, series_id: UUID) -> tuple[UUID, date] | None:
+    rows = session.execute(
+        select(FinancialTransaction.id, TransactionVersion.effective_date)
+        .join(
+            RecurringOccurrence,
+            RecurringOccurrence.transaction_id == FinancialTransaction.id,
+        )
+        .join(
+            TransactionVersion,
+            (TransactionVersion.transaction_id == FinancialTransaction.id)
+            & (TransactionVersion.version == FinancialTransaction.current_version),
+        )
+        .where(RecurringOccurrence.series_id == series_id)
+    ).all()
+    if not rows:
+        return None
+    transaction_id, effective_date = max(rows, key=lambda row: (row[1], str(row[0])))
+    return transaction_id, effective_date
+
+
 def _best_active(
     rows: list[RecurringSeries],
     observation: SpendObservation,
@@ -1195,6 +1341,16 @@ def _median_int(values: list[int]) -> int:
     if len(ordered) % 2 == 1:
         return ordered[middle]
     return (ordered[middle - 1] + ordered[middle] + 1) // 2
+
+
+def _nearest_step(value: int, step: int) -> int:
+    """Round ``value / step`` to the nearest integer, half away from zero."""
+    if step <= 0:
+        raise RecurringError("cadence step must be positive")
+    half = step // 2
+    if value >= 0:
+        return (value + half) // step
+    return -((-value + half) // step)
 
 
 def _add_months(value: date, months: int) -> date:

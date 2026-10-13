@@ -9,6 +9,7 @@ from billzebub.recurrings import (
     build_clusters,
     guess_cadence,
     normalize_counterparty,
+    occurs_on_cadence,
 )
 
 
@@ -127,6 +128,22 @@ def test_spotify_per_charge_refs_cluster_as_one_monthly_series() -> None:
     assert cluster.amount_max is None
     assert cluster.next_expected_date == date(2026, 9, 15)
     assert len(cluster.observations) == 9
+
+
+def test_occurs_on_cadence_keeps_monthly_history_and_rejects_off_cycle_dates() -> None:
+    anchor = date(2026, 9, 15)
+    for when in (
+        date(2025, 12, 15),
+        date(2026, 8, 15),
+        date(2026, 8, 20),
+        date(2026, 9, 15),
+    ):
+        assert occurs_on_cadence(anchor, when, "monthly", None)
+    assert not occurs_on_cadence(anchor, date(2026, 4, 2), "monthly", None)
+    assert not occurs_on_cadence(anchor, date(2026, 8, 1), "monthly", None)
+    assert occurs_on_cadence(date(2026, 3, 20), date(2026, 3, 18), "weekly", None)
+    assert not occurs_on_cadence(date(2026, 3, 20), date(2026, 3, 6), "weekly", None)
+    assert occurs_on_cadence(date(2026, 3, 29), date(2026, 3, 1), "custom_days", 14)
 
 
 def test_normalize_counterparty_keeps_merchant_words_that_contain_digits() -> None:
