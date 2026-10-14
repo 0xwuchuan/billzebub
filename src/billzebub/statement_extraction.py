@@ -36,6 +36,12 @@ from billzebub.persistence.models import (
 
 _DECIMAL_PATTERN = re.compile(r"^-?(?:0|[1-9]\d*)\.\d+$")
 _SECRET_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,119}$")
+_UNMASKED_PAN = re.compile(r"\d{13,}")
+_METADATA_FIELDS = frozenset({"statement_date", "closing_balance", "opening_balance"})
+_METADATA_PROBLEMS = frozenset({"missing", "ambiguous"})
+_MAX_METADATA_FIELDS = 8
+_MAX_METADATA_CANDIDATES = 8
+_MAX_METADATA_CANDIDATE_LENGTH = 80
 _KNOWN_KINDS = {
     "expense",
     "income",
@@ -168,6 +174,41 @@ class _ValidationFailure(Exception):  # noqa: N818
         super().__init__(code)
         self.code = code
         self.details = details or {}
+
+
+def _safe_metadata_fields(value: object) -> list[dict[str, Any]]:
+    """Keep a short, masked list of metadata failure fields.
+
+    A candidate that still contains a long digit run is dropped. The field
+    entry stays so a review can see which value was missing or ambiguous.
+    """
+    if not isinstance(value, list) or len(value) > _MAX_METADATA_FIELDS:
+        return []
+    cleaned: list[dict[str, Any]] = []
+    for item in value:
+        if not isinstance(item, dict):
+            return []
+        field = item.get("field")
+        problem = item.get("problem")
+        candidates = item.get("candidates")
+        if (
+            not isinstance(field, str)
+            or field not in _METADATA_FIELDS
+            or not isinstance(problem, str)
+            or problem not in _METADATA_PROBLEMS
+            or not isinstance(candidates, list)
+            or len(candidates) > _MAX_METADATA_CANDIDATES
+        ):
+            return []
+        safe_candidates: list[str] = []
+        for candidate in candidates:
+            if type(candidate) is not str or len(candidate) > _MAX_METADATA_CANDIDATE_LENGTH:
+                return []
+            if _UNMASKED_PAN.search(candidate) is not None:
+                continue
+            safe_candidates.append(candidate)
+        cleaned.append({"field": field, "problem": problem, "candidates": safe_candidates})
+    return cleaned
 
 
 class StatementExtraction:
@@ -926,6 +967,9 @@ class StatementExtraction:
                 "ocr_required",
             } and isinstance(value, bool | int):
                 safe[key] = value
+        fields = _safe_metadata_fields(details.get("fields"))
+        if fields:
+            safe["fields"] = fields
         return safe
 
     @staticmethod
