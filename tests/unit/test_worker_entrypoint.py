@@ -1,5 +1,5 @@
 import importlib
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
@@ -28,7 +28,7 @@ from billzebub.recurrings import (
     MATCH_RECURRING_TRANSACTION_JOB,
 )
 from billzebub.statement_extraction import ExtractionOutcome, ExtractionStatus
-from billzebub.worker import JobHandler, RetryableJobError, TerminalJobError
+from billzebub.worker import JobHandler, RetryableJobError, TerminalJobError, job_attempt
 
 
 class FakeQueue:
@@ -302,8 +302,24 @@ def test_categorize_handler_retries_typesafe_failures() -> None:
     categorizer.error = JevError("typesafe systemone failed")
     handlers = _handlers(FakeQueue(), categorizer=categorizer)
 
-    with pytest.raises(RetryableJobError, match="jev_unavailable"):
+    with pytest.raises(RetryableJobError, match="jev_unavailable") as caught:
         handlers[CATEGORIZE_TRANSACTION_JOB]({"transaction_id": str(uuid4())})
+
+    assert timedelta(seconds=15) <= caught.value.retry_after <= timedelta(seconds=30)
+
+
+def test_categorize_handler_backs_off_from_the_leased_attempt() -> None:
+    categorizer = FakeCategorizer()
+    categorizer.error = JevError("typesafe systemone failed")
+    handlers = _handlers(FakeQueue(), categorizer=categorizer)
+    token = job_attempt.set(6)
+    try:
+        with pytest.raises(RetryableJobError, match="jev_unavailable") as caught:
+            handlers[CATEGORIZE_TRANSACTION_JOB]({"transaction_id": str(uuid4())})
+    finally:
+        job_attempt.reset(token)
+
+    assert timedelta(seconds=480) <= caught.value.retry_after <= timedelta(seconds=960)
 
 
 def test_categorize_handler_terminates_policy_failures() -> None:
@@ -333,8 +349,10 @@ def test_categorize_claim_handler_retries_typesafe_failures() -> None:
     categorizer.error = JevError("typesafe systemone failed")
     handlers = _handlers(FakeQueue(), categorizer=categorizer)
 
-    with pytest.raises(RetryableJobError, match="jev_unavailable"):
+    with pytest.raises(RetryableJobError, match="jev_unavailable") as caught:
         handlers[CATEGORIZE_CLAIM_JOB]({"claim_id": str(uuid4())})
+
+    assert timedelta(seconds=15) <= caught.value.retry_after <= timedelta(seconds=30)
 
 
 def test_catch_up_enqueues_pending_reviews_and_claim_only_provisionals() -> None:

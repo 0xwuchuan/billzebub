@@ -10,6 +10,7 @@ from billzebub.financial_accounts import (
     FinancialAccountBootstrapPlan,
 )
 from billzebub.imports import FailedImportPurgeReport
+from billzebub.jev_categorizer import JevRequeueReport
 from billzebub.persistence.models import FinancialAccountKind
 from billzebub.statement_reextract import (
     StatementReextractAction,
@@ -325,6 +326,70 @@ class FakeUobRefNoBackfill:
             skipped_empty_transaction_ids=(),
             dry_run=dry_run,
         )
+
+
+def test_jev_requeue_failed_defaults_to_dry_run(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    calls: dict[str, bool] = {}
+
+    def fake_requeue(_database: object, _queue: object, *, apply: bool) -> JevRequeueReport:
+        calls["apply"] = apply
+        return JevRequeueReport(
+            failed_before=4,
+            active_before=1,
+            would_requeue=3,
+            failed_after=4,
+            active_after=1,
+            requeued=0,
+            applied=apply,
+        )
+
+    monkeypatch.setattr(cli, "Settings", lambda: Settings(artifact_root=tmp_path / "artifacts"))
+    monkeypatch.setattr(cli, "Database", FakeDatabase)
+    monkeypatch.setattr(cli, "requeue_failed_categorizations", fake_requeue)
+
+    cli.main(["jev", "requeue-failed"])
+
+    output = capsys.readouterr().out
+    assert calls["apply"] is False
+    assert "before failed=4 active=1" in output
+    assert "would_requeue=3" in output
+    assert "after failed=4 active=1 requeued=0" in output
+
+
+def test_jev_requeue_failed_apply_prints_after_counts(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    calls: dict[str, bool] = {}
+
+    def fake_requeue(_database: object, _queue: object, *, apply: bool) -> JevRequeueReport:
+        calls["apply"] = apply
+        return JevRequeueReport(
+            failed_before=4,
+            active_before=1,
+            would_requeue=3,
+            failed_after=4,
+            active_after=4,
+            requeued=3,
+            applied=apply,
+        )
+
+    monkeypatch.setattr(cli, "Settings", lambda: Settings(artifact_root=tmp_path / "artifacts"))
+    monkeypatch.setattr(cli, "Database", FakeDatabase)
+    monkeypatch.setattr(cli, "requeue_failed_categorizations", fake_requeue)
+
+    cli.main(["jev", "requeue-failed", "--apply"])
+
+    output = capsys.readouterr().out
+    assert calls["apply"] is True
+    assert "before failed=4 active=1" in output
+    assert "after failed=4 active=4 requeued=3" in output
+    assert "would_requeue" not in output
 
 
 def test_uob_strip_ref_no_defaults_to_dry_run(

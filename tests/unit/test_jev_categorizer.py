@@ -1,5 +1,5 @@
 import logging
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
@@ -9,10 +9,12 @@ import pytest
 from billzebub.financial_history import CategorySplitRecord, TransactionKind, TransactionSnapshot
 from billzebub.jev import JevCategory, JevSubject, Proposal
 from billzebub.jev_categorizer import (
+    CATEGORIZE_MAX_ATTEMPTS,
     JevCatchupScheduler,
     _log_attempt,
     enqueue_claim_categorization,
     enqueue_transaction_categorization,
+    jev_retry_delay,
     subject_from_snapshot,
 )
 from billzebub.money import Money
@@ -24,6 +26,7 @@ TXN_ID = UUID("22222222-2222-2222-2222-222222222222")
 class FakeQueue:
     def __init__(self) -> None:
         self.enqueued: list[tuple[str, dict[str, object], str | None]] = []
+        self.max_attempts: list[int] = []
 
     def enqueue(
         self,
@@ -34,7 +37,8 @@ class FakeQueue:
         max_attempts: int = 5,
         available_at: object = None,
     ) -> object:
-        del max_attempts, available_at
+        del available_at
+        self.max_attempts.append(max_attempts)
         self.enqueued.append((kind, payload, dedupe_key))
         return object()
 
@@ -80,6 +84,23 @@ def test_enqueue_transaction_categorization_dedupes_on_id() -> None:
     assert queue.enqueued == [
         ("categorize_transaction", {"transaction_id": str(TXN_ID)}, str(TXN_ID))
     ]
+    assert queue.max_attempts == [CATEGORIZE_MAX_ATTEMPTS]
+
+
+def test_jev_retry_delay_is_exponential_with_jitter_and_a_thirty_minute_cap() -> None:
+    assert CATEGORIZE_MAX_ATTEMPTS == 8
+    assert jev_retry_delay(1, random_unit=lambda: 0) == timedelta(seconds=15)
+    assert jev_retry_delay(1, random_unit=lambda: 1) == timedelta(seconds=30)
+    assert jev_retry_delay(1, random_unit=lambda: 0.5) == timedelta(seconds=22.5)
+    assert jev_retry_delay(2, random_unit=lambda: 1) == timedelta(seconds=60)
+    assert jev_retry_delay(3, random_unit=lambda: 1) == timedelta(seconds=120)
+    assert jev_retry_delay(4, random_unit=lambda: 1) == timedelta(seconds=240)
+    assert jev_retry_delay(5, random_unit=lambda: 1) == timedelta(seconds=480)
+    assert jev_retry_delay(6, random_unit=lambda: 0) == timedelta(seconds=480)
+    assert jev_retry_delay(6, random_unit=lambda: 1) == timedelta(seconds=960)
+    assert jev_retry_delay(7, random_unit=lambda: 1) == timedelta(minutes=30)
+    assert jev_retry_delay(8, random_unit=lambda: 1) == timedelta(minutes=30)
+    assert jev_retry_delay(9, random_unit=lambda: 1) == timedelta(minutes=30)
 
 
 def test_enqueue_claim_categorization_uses_the_claim_job() -> None:

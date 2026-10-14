@@ -31,6 +31,7 @@ from billzebub.jev_categorizer import (
     JevCategorizer,
     enqueue_jev_catch_up,
     enqueue_transaction_categorization,
+    jev_retry_delay,
 )
 from billzebub.jobs import EnqueuedJob, JobQueue
 from billzebub.persistence.database import Database
@@ -50,7 +51,7 @@ from billzebub.statement_extraction import (
     StatementExtraction,
 )
 from billzebub.statement_inbox import StatementInbox
-from billzebub.worker import JobHandler, RetryableJobError, TerminalJobError, Worker
+from billzebub.worker import JobHandler, RetryableJobError, TerminalJobError, Worker, job_attempt
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +93,11 @@ class RecurringRuntime(Protocol):
     def match_transaction(self, transaction_id: UUID) -> object: ...
 
     def detect(self) -> object: ...
+
+
+def _jev_unavailable() -> RetryableJobError:
+    """Retry TypeSafe failures and timeouts with jittered exponential backoff."""
+    return RetryableJobError("jev_unavailable", jev_retry_delay(job_attempt.get()))
 
 
 def enqueue_scheduled_catch_up(queue: JobEnqueuer, run_date: str | None) -> None:
@@ -148,7 +154,7 @@ def worker_handlers(
         try:
             categorizer.categorize_transaction(transaction_id)
         except JevError as error:
-            raise RetryableJobError("jev_unavailable", timedelta(seconds=30)) from error
+            raise _jev_unavailable() from error
         except CategorizerError as error:
             raise TerminalJobError("invalid_categorize_job") from error
 
@@ -160,7 +166,7 @@ def worker_handlers(
         try:
             categorizer.categorize_claim(claim_id)
         except JevError as error:
-            raise RetryableJobError("jev_unavailable", timedelta(seconds=30)) from error
+            raise _jev_unavailable() from error
         except CategorizerError as error:
             raise TerminalJobError("invalid_categorize_job") from error
 

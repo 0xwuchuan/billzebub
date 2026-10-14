@@ -143,8 +143,24 @@ class TransactionProposer:
     def propose(self, transaction: Transaction, categories: Sequence[Category]) -> Proposal:
         return self._proposer.propose(
             subject_from_transaction(transaction),
-            tuple(JevCategory(id=category.id, name=category.name) for category in categories),
+            _jev_categories(categories),
         )
+
+
+def _jev_categories(categories: Sequence[Category]) -> tuple[JevCategory, ...]:
+    by_id = {category.id: category for category in categories}
+    converted: list[JevCategory] = []
+    for category in categories:
+        parent = by_id.get(category.parent_id) if category.parent_id is not None else None
+        converted.append(
+            JevCategory(
+                id=category.id,
+                name=category.name,
+                parent_id=category.parent_id,
+                parent_name=parent.name if parent is not None else None,
+            )
+        )
+    return tuple(converted)
 
 
 def subject_from_transaction(transaction: Transaction) -> JevSubject:

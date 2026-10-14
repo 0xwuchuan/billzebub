@@ -16,8 +16,8 @@ There is no in-app Counterparty map, keyword scorer, Codex runner, or forge webh
 1. After `reconcile_financial_account` commits confirmations, enqueue `categorize_transaction` for each new Transaction id (statement-only or matched Real-time Claim).
 2. Load the Transaction and active catalog Categories. Skip Transfers, Income, Refunds, Reimbursements, and rows that already have a non-`Uncategorized` split.
 3. POST `https://api.typesafe.ai/v1/systemone` via `typesafe-sdk` with:
-   - `state`: Counterparty, amount, currency, effective date, Transaction kind (agent-safe fields only)
-   - `questions.category`: Choice over active catalog Category names only (Uncategorized is excluded; there is no skip / `uncategorized` option)
+   - `state`: Counterparty, normalized Counterparty, amount, currency, effective date, Transaction kind (agent-safe fields only). `normalized_counterparty` is `normalize_counterparty(counterparty)` and may be empty.
+   - `questions.category`: Choice over active catalog Categories (Uncategorized is excluded; there is no skip / `uncategorized` option). A leaf name is the option when it is unique. When two leaves share a name, each option is the `Parent > Child` path so the choices stay unique.
 4. Apply a proposal only when fail-closed checks all pass, through `OwnerTransactionActions` with reason `jev_categorization`. Anything else leaves the Review in place.
 5. After every Jev propose (apply or skip, including TypeSafe failures), append a `jev_categorization_attempt` row and emit an info log line. Catch-up uses this same propose/apply path for leftover Transactions (`categorize_transaction`) and claim-only provisionals (`categorize_claim`).
 
@@ -36,9 +36,10 @@ Each row is append-only and uses the same agent-safe snapshot sent to TypeSafe (
 | `attempted_at` | When the worker finished the propose |
 | `model` | Jev model, default `jev-1.13.0` |
 | `counterparty`, `amount`, `currency`, `effective_date`, `kind` | State snapshot sent to TypeSafe |
-| `choice` | Raw Choice, or null when undetermined |
+| `choice` | Raw Choice string, including its original spacing, or null when undetermined |
 | `choice_confidence`, `noul` | Choice confidence is a unit-interval score, or null. `noul` is unused (null / omitted); the evidence Noul question is no longer asked. |
 | `action` | `apply` or `skip` |
+| `skip_reason` | Null on apply. On skip: `low_confidence`, `missing_choice`, `missing_confidence`, `unknown_category`, `ambiguous_category`, `jev_unavailable`, or `empty_catalog` |
 | `category_id`, `category_name` | Set only when `action` is `apply` |
 | `error_class`, `error_message` | Optional TypeSafe/Jev error, already scrubbed of API keys |
 
@@ -46,7 +47,18 @@ The worker info line is `jev attempt action=… confidence=… noul=… category
 
 ## Daily NAS catch-up (Wallet leftovers)
 
-The worker loop, not forge, enqueues `jev_catch_up` once per local calendar day at or after **21:00 Asia/Singapore**. That job lists pending `categorization_needed` Reviews and uncategorized claim-only provisional Apple Wallet rows, then enqueues the same Jev propose/apply path. An empty queue is a quiet success (the catch-up job completes and enqueues nothing).
+The worker loop, not forge, enqueues `jev_catch_up` once per local calendar day at or after **21:00 Asia/Singapore**. That job lists pending `categorization_needed` Reviews and uncategorized claim-only provisional Apple Wallet rows, then enqueues the same Jev propose/apply path. It also requeues failed `categorize_transaction` and `categorize_claim` jobs whose `last_error_code` is `jev_unavailable`. Requeue uses the same dedupe key, so a subject that is already queued or running is not inserted again. An empty queue is a quiet success (the catch-up job completes and enqueues nothing).
+
+TypeSafe errors and timeouts fail the categorize job as `jev_unavailable` and retry with equal-jitter exponential backoff: full delay `min(30 minutes, 30s * 2**(attempt-1))`, jittered to the range from half of that delay through the full delay. Categorize jobs allow 8 attempts.
+
+Owner CLI, dry-run unless `--apply` is passed:
+
+```bash
+billzebub jev requeue-failed
+billzebub jev requeue-failed --apply
+```
+
+The command prints `before failed=… active=…` and `after failed=… active=… requeued=…`. `failed` counts failed categorize jobs with `last_error_code=jev_unavailable`. `active` counts how many of those subjects already have a queued or running job.
 
 Equivalent cron expression (for documentation only; do not put this on forge):
 
@@ -125,6 +137,6 @@ The worker applies a Category only when all of these hold:
 
 - Transaction or Claim kind is `expense` or `cash_withdrawal` (a Claim with no hint is treated as an Expense)
 - Choice `confidence` is at least `BILLZEBUB_JEV_MIN_CONFIDENCE`
-- Jev Choice maps uniquely to one active catalog Category (Uncategorized is never a Choice option)
+- Jev Choice maps to one active catalog Category after trim, whitespace collapse, NFKC, and casefold. `Parent > Child` and `Parent/Child` match a nested Category. A leaf name that belongs to more than one Category is `ambiguous_category` unless the Choice is that Category's full path. Uncategorized is never a Choice option.
 
-Anything else, including a missing TypeSafe key or a TypeSafe failure, leaves the row uncategorized. TypeSafe failures retry the `categorize_transaction` or `categorize_claim` job; missing key completes the job without applying. Claim-only rows are provisional Apple Wallet Real-time Claims that are not yet linked to a Transaction.
+Anything else, including a missing TypeSafe key or a TypeSafe failure, leaves the row uncategorized and stores `skip_reason`. TypeSafe failures and timeouts retry the `categorize_transaction` or `categorize_claim` job; missing key completes the job without applying. Claim-only rows are provisional Apple Wallet Real-time Claims that are not yet linked to a Transaction.
