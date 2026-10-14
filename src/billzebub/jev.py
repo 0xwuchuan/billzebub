@@ -19,6 +19,7 @@ from uuid import UUID
 from typesafe_sdk import Choice, TypeSafeClient, TypeSafeError
 
 from billzebub.agent_mcp import McpRequestError, assert_agent_safe
+from billzebub.jev_hierarchy import catalog_choice_criteria, resolve_catalog_choice
 
 DEFAULT_MODEL = "jev-1.13.0"
 DEFAULT_MIN_CONFIDENCE = Decimal("0.5")
@@ -54,6 +55,7 @@ class JevSubject:
 class JevCategory:
     id: UUID
     name: str
+    parent_id: UUID | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -162,11 +164,8 @@ def jev_state(subject: JevSubject) -> dict[str, str]:
 
 
 def choice_criteria(categories: Sequence[JevCategory]) -> dict[str, str]:
-    criteria: dict[str, str] = {}
-    for category in categories:
-        if _is_uncategorized_name(category.name):
-            continue
-        criteria[category.name] = category.name
+    # Path labels live in jev_hierarchy so Jev v1 can rebase name matching locally.
+    criteria = catalog_choice_criteria(categories)
     if len(criteria) > MAX_CHOICE_OPTIONS:
         raise JevError("category catalog exceeds Jev Choice limit")
     return criteria
@@ -197,12 +196,18 @@ def parse_jev_response(
             choice_answer = answers.get(CHOICE_QUESTION)
     response_model = getattr(response, "model", None)
     resolved_model = response_model if isinstance(response_model, str) and response_model else model
+    probabilities = (
+        getattr(choice_answer, "probabilities", None) if choice_answer is not None else None
+    )
+    if not isinstance(probabilities, Mapping):
+        probabilities = None
     return parse_jev_proposal(
         getattr(choice_answer, "choice", None) if choice_answer is not None else None,
         getattr(choice_answer, "confidence", None) if choice_answer is not None else None,
         categories,
         min_confidence,
         model=resolved_model,
+        probabilities=probabilities,
     )
 
 
@@ -213,6 +218,7 @@ def parse_jev_proposal(
     min_confidence: Decimal,
     *,
     model: str,
+    probabilities: Mapping[str, object] | None = None,
 ) -> Proposal:
     confidence = _unit_interval(confidence_raw)
     choice_text = " ".join(choice.split()) if isinstance(choice, str) and choice.strip() else None
@@ -220,24 +226,20 @@ def parse_jev_proposal(
         return _skip(model, choice=choice_text, confidence=confidence)
     if choice_text is None:
         return _skip(model, confidence=confidence)
-    if confidence < min_confidence:
-        return Proposal(
-            action="skip",
-            category_id=None,
-            category_name=None,
-            confidence=confidence,
-            model=model,
-            choice=choice_text,
-        )
-    catalog = _unique_categories_by_name(categories)
-    chosen = catalog.get(choice_text.casefold())
-    if chosen is None or chosen.name.casefold() != choice_text.casefold():
+    resolved = resolve_catalog_choice(
+        choice_text,
+        confidence,
+        categories,
+        min_confidence,
+        probabilities=probabilities,
+    )
+    if resolved is None:
         return _skip(model, choice=choice_text, confidence=confidence)
     return Proposal(
         action="apply",
-        category_id=chosen.id,
-        category_name=chosen.name,
-        confidence=confidence,
+        category_id=resolved.category_id,
+        category_name=resolved.category_name,
+        confidence=resolved.confidence,
         model=model,
         choice=choice_text,
     )
@@ -313,26 +315,6 @@ def _unit_interval(value: object) -> Decimal | None:
     if parsed < Decimal("0") or parsed > Decimal("1"):
         return None
     return parsed
-
-
-def _is_uncategorized_name(name: str) -> bool:
-    return name.casefold() == UNCATEGORIZED_NAME
-
-
-def _unique_categories_by_name(categories: Sequence[JevCategory]) -> dict[str, JevCategory]:
-    mapping: dict[str, JevCategory] = {}
-    duplicates: set[str] = set()
-    for category in categories:
-        if _is_uncategorized_name(category.name):
-            continue
-        key = category.name.casefold()
-        if key in mapping:
-            duplicates.add(key)
-            continue
-        mapping[key] = category
-    for key in duplicates:
-        mapping.pop(key, None)
-    return mapping
 
 
 def _named_answer(response: object, group: str, name: str) -> object | None:

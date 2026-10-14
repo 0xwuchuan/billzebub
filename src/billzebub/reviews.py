@@ -91,6 +91,7 @@ class ReviewDecision:
     expected_version: int
     choice: str
     actor_id: UUID | None = None
+    category_id: UUID | None = None
 
 
 @dataclass(frozen=True, slots=True)

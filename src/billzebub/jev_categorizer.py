@@ -432,7 +432,10 @@ class JevCategorizer:
                 or_(Category.parent_id.is_not(None), Category.name != _UNCATEGORIZED),
             )
         ).all()
-        return tuple(JevCategory(id=category.id, name=category.name) for category in categories)
+        return tuple(
+            JevCategory(id=category.id, name=category.name, parent_id=category.parent_id)
+            for category in categories
+        )
 
     @staticmethod
     def _system_actor_id(session: Session) -> UUID:

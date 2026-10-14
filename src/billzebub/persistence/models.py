@@ -124,18 +124,24 @@ class Category(Base):
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default=text("1")
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
     __table_args__ = (
         UniqueConstraint("parent_id", "name", name="uq_category_parent_name"),
+        CheckConstraint("version > 0", name="category_version_positive"),
+        CheckConstraint("parent_id IS DISTINCT FROM id", name="category_parent_not_self"),
         Index(
             "uq_category_top_level_name",
             "name",
             unique=True,
             postgresql_where=text("parent_id IS NULL"),
         ),
+        Index("ix_category_parent_id", "parent_id"),
     )
 
 
