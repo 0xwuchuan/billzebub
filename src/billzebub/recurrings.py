@@ -587,7 +587,13 @@ class Recurrings:
         observations = self._load_observations(session)
         series_rows = list(session.scalars(select(RecurringSeries)).all())
         linked = self._linked_ids(session)
-        matched = self._backfill_existing_series(session, observations, series_rows, linked)
+        matched = self._backfill_existing_series(
+            session,
+            observations,
+            series_rows,
+            linked,
+            today,
+        )
         proposed = 0
         updated = 0
         for cluster in build_clusters(observations):
@@ -617,17 +623,18 @@ class Recurrings:
         observations: list[SpendObservation],
         series_rows: list[RecurringSeries],
         linked: set[UUID],
+        today: date,
     ) -> int:
         """Link unlinked Transactions onto existing active or manual series.
 
         A match requires the normalized counterparty, currency, amount
         tolerance, and cadence. Dismissed, paused, ended, and proposed series
         are left alone. A Transaction already linked to a series is not moved.
-        Schedule fields are recomputed from the latest linked charge. Running
-        this again, once those links exist, changes nothing.
+        Schedule fields are recomputed from the latest linked charge, including
+        when this pass links nothing new. Running this again, once the schedule
+        already matches that charge, changes nothing.
         """
         matched = 0
-        touched: set[UUID] = set()
         for observation in sorted(
             observations,
             key=lambda item: (item.effective_date, str(item.transaction_id)),
@@ -639,29 +646,30 @@ class Recurrings:
                 continue
             self._link(session, series, observation, match_kind="auto", advance=False)
             linked.add(observation.transaction_id)
-            touched.add(series.id)
             matched += 1
-        if not touched:
-            return 0
         session.flush()
         for series in series_rows:
-            if series.id in touched:
-                self._recompute_schedule(session, series)
+            if _accepts_history_backfill(series):
+                self._recompute_schedule(session, series, today)
         return matched
 
-    def _recompute_schedule(self, session: Session, series: RecurringSeries) -> None:
+    def _recompute_schedule(self, session: Session, series: RecurringSeries, today: date) -> None:
         latest = _latest_linked_charge(session, series.id)
         if latest is None:
             return
         transaction_id, effective_date = latest
         next_expected = advance_expected(effective_date, series.cadence, series.interval_days)
+        window = match_window_days(series.cadence, series.interval_days)
+        missed = today > next_expected + timedelta(days=window)
         if (
             series.last_matched_tx_id == transaction_id
             and series.next_expected_date == next_expected
+            and series.missed is missed
         ):
             return
         series.last_matched_tx_id = transaction_id
         series.next_expected_date = next_expected
+        series.missed = missed
         series.updated_at = datetime.now(UTC)
 
     def _insert_proposed(

@@ -19,7 +19,13 @@ from billzebub.persistence.models import (
     RecurringSeries,
     TransactionVersion,
 )
-from billzebub.recurrings import RecurringCreate, RecurringDetection, Recurrings, RecurringUpdate
+from billzebub.recurrings import (
+    RecurringCreate,
+    RecurringDetection,
+    Recurrings,
+    RecurringUpdate,
+    advance_expected,
+)
 
 
 def _account(session: Session) -> UUID:
@@ -497,3 +503,78 @@ def test_detect_backfill_does_not_steal_a_linked_transaction(database: Database)
     again = recurrings.detect(as_of=date(2026, 9, 1))
     assert again == RecurringDetection(proposed=0, updated=0, matched=0)
     assert recurrings.list_series()[0].linked_count + recurrings.list_series()[1].linked_count == 9
+
+
+@pytest.mark.integration
+def test_detect_recomputes_stale_next_expected_and_clears_missed_from_latest_link(
+    database: Database,
+) -> None:
+    """A linked manual series keeps a stale schedule until detect recomputes it.
+
+    Production matched nine Spotify charges and set last_matched_tx, then left
+    next_expected_date at 2026-09-15 and missed true. History continues through
+    the latest month, so the next date is one cadence after that charge and
+    the series is not missed. A later detect that matches nothing must do the
+    same recompute, and a third run changes nothing.
+    """
+    recurrings = Recurrings(database)
+    latest = date(2026, 9, 15)
+    as_of = date(2026, 10, 13)
+    dates = (*_SPOTIFY_DATES, latest)
+    labels = (*_SPOTIFY_LABELS, "Spotify P99AE6BD59 Stockholm SE")
+    with database.transaction() as session:
+        account_id = _account(session)
+        charge_ids = [
+            _spend(session, account_id, label, "-20.98", when)
+            for label, when in zip(labels, dates, strict=True)
+        ]
+    created = recurrings.create_series(
+        RecurringCreate(
+            counterparty="Spotify Stockholm SE",
+            amount=Decimal("20.98"),
+            currency="SGD",
+            cadence="monthly",
+            next_expected_date=date(2026, 9, 15),
+        )
+    )
+    with database.transaction() as session:
+        series = session.get(RecurringSeries, created.id)
+        assert series is not None
+        series.missed = True
+
+    detection = recurrings.detect(as_of=as_of)
+    linked = recurrings.list_series()[0]
+    expected_next = advance_expected(latest, "monthly", None)
+
+    assert detection == RecurringDetection(proposed=0, updated=0, matched=len(dates))
+    assert linked.id == created.id
+    assert linked.linked_count == len(dates)
+    assert linked.last_matched_tx_id == charge_ids[-1]
+    assert linked.next_expected_date == expected_next
+    assert linked.next_expected_date == date(2026, 10, 15)
+    assert linked.missed is False
+
+    with database.transaction() as session:
+        stale = session.get(RecurringSeries, created.id)
+        assert stale is not None
+        stale.next_expected_date = date(2026, 9, 15)
+        stale.missed = True
+
+    repaired_detection = recurrings.detect(as_of=as_of)
+    repaired = recurrings.list_series()[0]
+
+    assert repaired_detection == RecurringDetection(proposed=0, updated=0, matched=0)
+    assert repaired.linked_count == len(dates)
+    assert repaired.last_matched_tx_id == charge_ids[-1]
+    assert repaired.next_expected_date == expected_next
+    assert repaired.missed is False
+
+    stamped = _series_updated_at(database, created.id)
+    repeat = recurrings.detect(as_of=as_of)
+    unchanged = recurrings.list_series()[0]
+
+    assert repeat == RecurringDetection(proposed=0, updated=0, matched=0)
+    assert unchanged.next_expected_date == expected_next
+    assert unchanged.missed is False
+    assert unchanged.last_matched_tx_id == charge_ids[-1]
+    assert _series_updated_at(database, created.id) == stamped
