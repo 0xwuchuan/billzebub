@@ -581,9 +581,11 @@ def test_jev_catalog_paths_fall_back_to_the_parent(database: Database) -> None:
 
     assert child.action == "apply"
     assert child.category_id == dining.id
+    assert child.fell_back_to_parent is False
     assert fallback.action == "apply"
     assert fallback.category_id == food.id
     assert fallback.category_name == "Food"
+    assert fallback.fell_back_to_parent is True
     assert skipped.action == "skip"
 
 

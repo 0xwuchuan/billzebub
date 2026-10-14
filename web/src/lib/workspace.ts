@@ -1,4 +1,10 @@
-import type { ImportRecord, Money, Review, Transaction } from "../api";
+import type {
+  Category,
+  ImportRecord,
+  Money,
+  Review,
+  Transaction,
+} from "../api";
 import { dateGroupLabel, isoDate } from "./labels";
 import { amountToCents, centsToMoney } from "./money";
 
@@ -279,6 +285,8 @@ export function filterTransactions(input: {
   query: string;
   accountId: string;
   category: string;
+  categoryIds?: string[];
+  categories?: Category[];
   confirmation: ConfirmationFilter;
 }): Transaction[] {
   const query = input.query.trim().toLowerCase();
@@ -291,7 +299,20 @@ export function filterTransactions(input: {
       return false;
     }
     const category = categoryName(transaction);
-    if (input.category !== "" && category !== input.category) {
+    const categoryIds = input.categoryIds ?? [];
+    if (categoryIds.length > 0) {
+      const names = new Set(
+        (input.categories ?? [])
+          .filter((item) => categoryIds.includes(item.id))
+          .map((item) => item.name),
+      );
+      const matched = transaction.category_splits.some(
+        (split) => categoryIds.includes(split.id) || names.has(split.name),
+      );
+      if (!matched) {
+        return false;
+      }
+    } else if (input.category !== "" && category !== input.category) {
       return false;
     }
     const state = confirmationState(transaction);

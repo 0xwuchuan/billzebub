@@ -1,6 +1,6 @@
 import { useId } from "react";
 
-import type { RecurringSummary, Transaction } from "../api";
+import type { Category, RecurringSummary, Transaction } from "../api";
 import { CategoryRankList } from "../components/CategoryRankList";
 import { MoneyText } from "../components/MoneyText";
 import { UserLabel } from "../components/UserLabel";
@@ -14,6 +14,7 @@ import { CONFIRMATION_SERIES } from "../lib/chartSeries";
 import { categoryColor, categoryPrimary } from "../lib/labels";
 import { centsToMoney, formatUnsigned } from "../lib/money";
 import { recurringAmountLabel, relativeDueLabel } from "../lib/recurrings";
+import { categorySpend, type SpendGroup } from "../lib/categoryTree";
 import {
   categoryTotals,
   monthTotals,
@@ -35,6 +36,8 @@ export function OverviewPage({
   onOpenReview,
   onOpenTransactions,
   onFilterCategory,
+  onOpenFilter,
+  catalog = [],
   summary,
   proposedCount,
   onOpenRecurrings,
@@ -49,6 +52,12 @@ export function OverviewPage({
   onOpenReview: () => void;
   onOpenTransactions: () => void;
   onFilterCategory: (name: string) => void;
+  onOpenFilter?: (filter: {
+    label: string;
+    ids: string[];
+    direct: boolean;
+  }) => void;
+  catalog?: Category[];
   summary: RecurringSummary | null;
   proposedCount: number;
   onOpenRecurrings: () => void;
@@ -61,7 +70,16 @@ export function OverviewPage({
   const recurringId = useId();
   const period = reportingPeriod(transactions, today);
   const totals = monthTotals(transactions, period);
-  const categories = categoryTotals(transactions, period);
+  const groups: SpendGroup[] | undefined =
+    catalog.length > 0
+      ? categorySpend(transactions, period, catalog)
+      : undefined;
+  const categories =
+    groups ??
+    categoryTotals(transactions, period).map((item) => ({
+      name: item.name,
+      cents: item.cents,
+    }));
   const week = weekComparison(transactions, today).map((day) => ({
     label: day.label,
     confirmed: day.confirmedCents,
@@ -243,12 +261,17 @@ export function OverviewPage({
               />
             )}
             <CategoryRankList
-              categories={categories}
+              categories={categories.map((item) => ({
+                name: item.name,
+                cents: item.cents,
+              }))}
+              groups={groups}
               currency={totals.currency}
               limit={5}
               figures="amount"
               showMeter={false}
               onSelect={onFilterCategory}
+              onOpenFilter={onOpenFilter}
             />
           </div>
         </article>
@@ -277,6 +300,7 @@ export function OverviewPage({
           ) : (
             recent.map((transaction) => (
               <TxRow
+                categories={catalog}
                 key={transaction.id}
                 transaction={transaction}
                 density="compact"

@@ -86,6 +86,8 @@ class ReviewActions:
         if condition_code.startswith("agent_proposal:"):
             return self._inbox.decide(command)
         if condition_code == "categorization_needed":
+            if command.choice == "keep":
+                return self._inbox.decide(command)
             if command.category_id is None or command.choice != "categorize":
                 raise ReviewActionError(
                     "categorization reviews are resolved by categorizing the Transaction"

@@ -8,6 +8,13 @@ export type Category = {
   name: string;
   parent_id: string | null;
   active: boolean;
+  version?: number;
+};
+
+export type CategoryPatch = {
+  name?: string;
+  parent_id?: string | null;
+  active?: boolean;
 };
 
 export type OwnerIdentity = {
@@ -284,6 +291,18 @@ export async function dismissFailedImports(): Promise<{
 
 export async function getCategories(): Promise<{ items: Category[] }> {
   return request<{ items: Category[] }>("/api/v1/categories");
+}
+
+export async function updateCategory(
+  category: Category,
+  patch: CategoryPatch,
+): Promise<Category> {
+  const version = category.version ?? 1;
+  return request<Category>(`/api/v1/categories/${category.id}`, {
+    method: "PATCH",
+    headers: mutationHeaders(`"category:${category.id}:v${version}"`),
+    body: JSON.stringify(patch),
+  });
 }
 
 export async function createCategory(

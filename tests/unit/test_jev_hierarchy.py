@@ -162,6 +162,7 @@ def test_parse_jev_proposal_applies_parent_fallback_from_probabilities() -> None
     assert proposal.category_name == "Food"
     assert proposal.confidence == Decimal("0.70")
     assert proposal.choice == "Food > Dining"
+    assert proposal.fell_back_to_parent is True
 
 
 class _Answer:

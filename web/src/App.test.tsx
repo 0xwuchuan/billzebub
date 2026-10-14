@@ -120,12 +120,11 @@ describe("App", () => {
     expect(screen.getByText("−SGD 12.34")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Synthetic Coffee/ }));
-    fireEvent.change(
+    expect(
       await screen.findByLabelText("Category for Synthetic Coffee"),
-      {
-        target: { value: "00000000-0000-0000-0000-000000000099" },
-      },
-    );
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Category for Synthetic Coffee"));
+    fireEvent.click(screen.getByRole("option", { name: "Synthetic Food" }));
     fireEvent.click(screen.getByRole("button", { name: "Categorize" }));
 
     await waitFor(() => {

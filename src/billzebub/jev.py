@@ -106,6 +106,7 @@ class Proposal:
     noul: Decimal | None = None
     error_class: str | None = None
     error_message: str | None = None
+    fell_back_to_parent: bool = False
 
 
 class Proposer(Protocol):
@@ -242,6 +243,7 @@ def parse_jev_proposal(
         confidence=resolved.confidence,
         model=model,
         choice=choice_text,
+        fell_back_to_parent=resolved.fell_back_to_parent,
     )
 
 

@@ -1,4 +1,4 @@
-import type { Transaction } from "../api";
+import type { Category, Transaction } from "../api";
 import { CategoryRankList } from "../components/CategoryRankList";
 import {
   DitherBarChart,
@@ -10,6 +10,7 @@ import { CONFIRMATION_SERIES } from "../lib/chartSeries";
 import { categoryColor, categoryPrimary } from "../lib/labels";
 import { MoneyText } from "../components/MoneyText";
 import { centsToMoney, formatUnsigned } from "../lib/money";
+import { categorySpend } from "../lib/categoryTree";
 import {
   categoryTotals,
   monthTotals,
@@ -20,17 +21,29 @@ import {
 export function SpendingPage({
   transactions,
   today,
+  catalog = [],
   onOpenTransactions,
+  onOpenFilter,
 }: {
   transactions: Transaction[];
   today: Date;
+  catalog?: Category[];
   onOpenTransactions: () => void;
+  onOpenFilter?: (filter: {
+    label: string;
+    ids: string[];
+    direct: boolean;
+  }) => void;
 }) {
   const fresh = useEntrance("spending");
   const period = reportingPeriod(transactions, today);
   const month = monthTotals(transactions, period);
   const months = monthlySpending(transactions, today, 6);
-  const categories = categoryTotals(transactions, period);
+  const groups =
+    catalog.length > 0
+      ? categorySpend(transactions, period, catalog)
+      : undefined;
+  const categories = groups ?? categoryTotals(transactions, period);
   const confirmedCents = months.reduce(
     (sum, item) => sum + item.confirmedCents,
     0,
@@ -78,7 +91,15 @@ export function SpendingPage({
           )}
         </div>
         <div className="spend-cats">
-          <CategoryRankList categories={categories} currency={month.currency} />
+          <CategoryRankList
+            categories={categories.map((item) => ({
+              name: item.name,
+              cents: item.cents,
+            }))}
+            groups={groups}
+            currency={month.currency}
+            onOpenFilter={onOpenFilter}
+          />
         </div>
       </section>
 

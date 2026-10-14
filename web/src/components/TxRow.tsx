@@ -1,5 +1,6 @@
-import type { Transaction } from "../api";
-import { categoryLabel, dayMonthLabel } from "../lib/labels";
+import type { Category, Transaction } from "../api";
+import { chipParts } from "../lib/categoryTree";
+import { dayMonthLabel } from "../lib/labels";
 import { formatMoney, formatUnsigned } from "../lib/money";
 import {
   activityAmount,
@@ -21,10 +22,12 @@ export function TxRow({
   selectable = false,
   provisionalMark = "badge",
   density = "regular",
+  categories = [],
   onOpen,
   onToggle,
 }: {
   transaction: Transaction;
+  categories?: Category[];
   selected?: boolean;
   checked?: boolean;
   selectable?: boolean;
@@ -33,6 +36,19 @@ export function TxRow({
   onOpen: (id: string) => void;
   onToggle?: (id: string) => void;
 }) {
+  const split = transaction.category_splits[0];
+  const chip =
+    split === undefined
+      ? { name: "Uncategorized", parentName: null, archived: false }
+      : chipParts(categories, split.id, split.name);
+  const unsure =
+    chip.parentName === null &&
+    categories.some(
+      (category) => category.active && category.parent_id === split?.id,
+    ) &&
+    transaction.reviews.some(
+      (review) => review.condition_code === "categorization_needed",
+    );
   const provisional = confirmationState(transaction) === "provisional";
   const transfer = !isExpense(transaction) && transaction.kind === "transfer";
   const amount = transfer
@@ -60,7 +76,12 @@ export function TxRow({
       </span>
       <span className="tx-row-trailing">
         <span className="tx-row-status">
-          <CategoryChip name={categoryLabel(transaction)} />
+          <CategoryChip
+            name={chip.name}
+            parentName={chip.parentName}
+            archived={chip.archived}
+            unsure={unsure}
+          />
           {provisional && provisionalMark === "badge" ? (
             <ProvisionalBadge />
           ) : null}
