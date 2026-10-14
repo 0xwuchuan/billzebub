@@ -317,6 +317,29 @@ def occurs_on_cadence(
     return min(remainder, period - remainder) <= window
 
 
+def _schedule_after_latest(
+    effective_date: date,
+    cadence: str,
+    interval_days: int | None,
+    today: date,
+) -> tuple[date, bool]:
+    """Next slot after the latest charge, stepped into a window that has opened.
+
+    The first candidate is one cadence after the latest linked charge. While
+    that date is past its match window and the following date's window has
+    already opened, step forward. A miss that is still in the gap before the
+    next window stays on the overdue date, so ``missed`` remains true.
+    """
+    window = timedelta(days=match_window_days(cadence, interval_days))
+    next_expected = advance_expected(effective_date, cadence, interval_days)
+    while today > next_expected + window:
+        following = advance_expected(next_expected, cadence, interval_days)
+        if following <= next_expected or today < following - window:
+            break
+        next_expected = following
+    return next_expected, today > next_expected + window
+
+
 def advance_expected(start: date, cadence: str, interval_days: int | None) -> date:
     if cadence == "weekly":
         return start + timedelta(days=7)
@@ -631,8 +654,9 @@ class Recurrings:
         tolerance, and cadence. Dismissed, paused, ended, and proposed series
         are left alone. A Transaction already linked to a series is not moved.
         Schedule fields are recomputed from the latest linked charge, including
-        when this pass links nothing new. Running this again, once the schedule
-        already matches that charge, changes nothing.
+        when this pass links nothing new. A slot that is past its match window
+        steps forward once the next period's window has opened. Running this
+        again, once the schedule already matches that charge, changes nothing.
         """
         matched = 0
         for observation in sorted(
@@ -658,13 +682,16 @@ class Recurrings:
         if latest is None:
             return
         transaction_id, effective_date = latest
-        next_expected = advance_expected(effective_date, series.cadence, series.interval_days)
-        window = match_window_days(series.cadence, series.interval_days)
-        missed = today > next_expected + timedelta(days=window)
+        next_expected, missed = _schedule_after_latest(
+            effective_date,
+            series.cadence,
+            series.interval_days,
+            today,
+        )
         if (
             series.last_matched_tx_id == transaction_id
             and series.next_expected_date == next_expected
-            and series.missed is missed
+            and series.missed == missed
         ):
             return
         series.last_matched_tx_id = transaction_id
