@@ -1,7 +1,8 @@
 """TypeSafe Jev Category proposals with fail-closed confidence gating.
 
 Shared by the NAS worker (primary) and the optional host-side CLI. State is
-limited to agent-safe fields: Counterparty, amount, currency, date, and kind.
+limited to agent-safe fields: Counterparty, normalized Counterparty, amount,
+currency, date, and kind.
 """
 
 from __future__ import annotations
@@ -9,6 +10,8 @@ from __future__ import annotations
 import os
 import re
 import stat
+import unicodedata
+from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
@@ -19,6 +22,7 @@ from uuid import UUID
 from typesafe_sdk import Choice, TypeSafeClient, TypeSafeError
 
 from billzebub.agent_mcp import McpRequestError, assert_agent_safe
+from billzebub.recurrings import normalize_counterparty
 
 DEFAULT_MODEL = "jev-1.13.0"
 DEFAULT_MIN_CONFIDENCE = Decimal("0.5")
@@ -26,6 +30,25 @@ DEFAULT_TIMEOUT_SECONDS = 30.0
 CHOICE_QUESTION = "category"
 UNCATEGORIZED_NAME = "uncategorized"
 MAX_CHOICE_OPTIONS = 255
+SKIP_LOW_CONFIDENCE = "low_confidence"
+SKIP_MISSING_CHOICE = "missing_choice"
+SKIP_MISSING_CONFIDENCE = "missing_confidence"
+SKIP_UNKNOWN_CATEGORY = "unknown_category"
+SKIP_AMBIGUOUS_CATEGORY = "ambiguous_category"
+SKIP_JEV_UNAVAILABLE = "jev_unavailable"
+SKIP_EMPTY_CATALOG = "empty_catalog"
+SKIP_REASONS = frozenset(
+    {
+        SKIP_LOW_CONFIDENCE,
+        SKIP_MISSING_CHOICE,
+        SKIP_MISSING_CONFIDENCE,
+        SKIP_UNKNOWN_CATEGORY,
+        SKIP_AMBIGUOUS_CATEGORY,
+        SKIP_JEV_UNAVAILABLE,
+        SKIP_EMPTY_CATALOG,
+    }
+)
+_PATH_SPLIT = re.compile(r"\s*(?:>|/)\s*")
 TYPESAFE_BASE_URL = "https://api.typesafe.ai"
 TYPESAFE_ENDPOINT = f"{TYPESAFE_BASE_URL}/v1/systemone"
 _SECRETISH = re.compile(r"(?i)(?:api[_-]?key|bearer|token|secret)\s*[:=]\s*\S+")
@@ -54,6 +77,8 @@ class JevSubject:
 class JevCategory:
     id: UUID
     name: str
+    parent_id: UUID | None = None
+    parent_name: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,6 +129,7 @@ class Proposal:
     noul: Decimal | None = None
     error_class: str | None = None
     error_message: str | None = None
+    skip_reason: str | None = None
 
 
 class Proposer(Protocol):
@@ -154,6 +180,7 @@ def jev_state(subject: JevSubject) -> dict[str, str]:
     """Agent-safe fields only; never include ids, artifacts, or raw descriptions."""
     return {
         "counterparty": subject.counterparty,
+        "normalized_counterparty": normalize_counterparty(subject.counterparty),
         "amount": subject.amount,
         "currency": subject.currency,
         "effective_date": subject.effective_date,
@@ -162,11 +189,13 @@ def jev_state(subject: JevSubject) -> dict[str, str]:
 
 
 def choice_criteria(categories: Sequence[JevCategory]) -> dict[str, str]:
-    criteria: dict[str, str] = {}
-    for category in categories:
-        if _is_uncategorized_name(category.name):
-            continue
-        criteria[category.name] = category.name
+    """One option per category. Colliding leaf names use ``Parent > Child``.
+
+    A repeated leaf used to be removed from matching and overwritten in this
+    dict, so Jev could return that name at high confidence and the worker
+    still skipped it.
+    """
+    criteria = {label: label for label in _unique_option_labels(categories)}
     if len(criteria) > MAX_CHOICE_OPTIONS:
         raise JevError("category catalog exceeds Jev Choice limit")
     return criteria
@@ -215,24 +244,26 @@ def parse_jev_proposal(
     model: str,
 ) -> Proposal:
     confidence = _unit_interval(confidence_raw)
-    choice_text = " ".join(choice.split()) if isinstance(choice, str) and choice.strip() else None
+    choice_text = choice if isinstance(choice, str) and choice.strip() else None
     if confidence is None:
-        return _skip(model, choice=choice_text, confidence=confidence)
-    if choice_text is None:
-        return _skip(model, confidence=confidence)
-    if confidence < min_confidence:
-        return Proposal(
-            action="skip",
-            category_id=None,
-            category_name=None,
-            confidence=confidence,
-            model=model,
+        return _skip(
+            model,
             choice=choice_text,
+            confidence=confidence,
+            skip_reason=SKIP_MISSING_CONFIDENCE,
         )
-    catalog = _unique_categories_by_name(categories)
-    chosen = catalog.get(choice_text.casefold())
-    if chosen is None or chosen.name.casefold() != choice_text.casefold():
-        return _skip(model, choice=choice_text, confidence=confidence)
+    if choice_text is None:
+        return _skip(model, confidence=confidence, skip_reason=SKIP_MISSING_CHOICE)
+    if confidence < min_confidence:
+        return _skip(
+            model,
+            choice=choice_text,
+            confidence=confidence,
+            skip_reason=SKIP_LOW_CONFIDENCE,
+        )
+    chosen = _match_choice(choice_text, categories)
+    if isinstance(chosen, str):
+        return _skip(model, choice=choice_text, confidence=confidence, skip_reason=chosen)
     return Proposal(
         action="apply",
         category_id=chosen.id,
@@ -315,24 +346,106 @@ def _unit_interval(value: object) -> Decimal | None:
     return parsed
 
 
+def normalize_category_label(value: str) -> str:
+    """Trim, collapse whitespace, apply NFKC, then casefold."""
+    return " ".join(unicodedata.normalize("NFKC", value).split()).casefold()
+
+
 def _is_uncategorized_name(name: str) -> bool:
-    return name.casefold() == UNCATEGORIZED_NAME
+    return normalize_category_label(name) == UNCATEGORIZED_NAME
 
 
-def _unique_categories_by_name(categories: Sequence[JevCategory]) -> dict[str, JevCategory]:
-    mapping: dict[str, JevCategory] = {}
-    duplicates: set[str] = set()
-    for category in categories:
-        if _is_uncategorized_name(category.name):
-            continue
-        key = category.name.casefold()
-        if key in mapping:
-            duplicates.add(key)
-            continue
-        mapping[key] = category
-    for key in duplicates:
-        mapping.pop(key, None)
-    return mapping
+def _usable_categories(categories: Sequence[JevCategory]) -> tuple[JevCategory, ...]:
+    return tuple(category for category in categories if not _is_uncategorized_name(category.name))
+
+
+def _lineage(category: JevCategory) -> tuple[str, ...]:
+    if category.parent_name:
+        return (category.parent_name, category.name)
+    return (category.name,)
+
+
+def _option_label(category: JevCategory, leaf_counts: Mapping[str, int]) -> str:
+    leaf = normalize_category_label(category.name)
+    if leaf_counts[leaf] > 1 and category.parent_name:
+        return f"{category.parent_name} > {category.name}"
+    return category.name
+
+
+def _unique_option_labels(categories: Sequence[JevCategory]) -> dict[str, JevCategory]:
+    usable = _usable_categories(categories)
+    leaf_counts: dict[str, int] = defaultdict(int)
+    for category in usable:
+        leaf_counts[normalize_category_label(category.name)] += 1
+    grouped: dict[str, list[tuple[str, JevCategory]]] = defaultdict(list)
+    for category in usable:
+        label = _option_label(category, leaf_counts)
+        grouped[normalize_category_label(label)].append((label, category))
+    return {
+        label: category
+        for matches in grouped.values()
+        if len(matches) == 1
+        for label, category in matches
+    }
+
+
+def _path_keys(category: JevCategory) -> frozenset[str]:
+    parts = tuple(normalize_category_label(part) for part in _lineage(category))
+    if len(parts) < 2:
+        return frozenset()
+    return frozenset({" > ".join(parts), "/".join(parts), " / ".join(parts)})
+
+
+def _path_lookup_keys(folded: str) -> frozenset[str]:
+    keys = {folded}
+    if ">" not in folded and "/" not in folded:
+        return frozenset(keys)
+    parts = tuple(part for part in _PATH_SPLIT.split(folded) if part)
+    if len(parts) < 2:
+        return frozenset(keys)
+    keys.update({" > ".join(parts), "/".join(parts), " / ".join(parts)})
+    return frozenset(keys)
+
+
+def _match_choice(choice: str, categories: Sequence[JevCategory]) -> JevCategory | str:
+    """Resolve a raw Choice to one category, or a skip reason.
+
+    An exact leaf or option label wins before ``>`` / ``/`` are treated as a
+    path, so a category whose name contains a slash still matches itself.
+    """
+    usable = _usable_categories(categories)
+    folded = normalize_category_label(choice)
+    options = _unique_option_labels(usable)
+    chosen = options.get(choice if choice in options else folded)
+    if chosen is None:
+        for label, category in options.items():
+            if normalize_category_label(label) == folded:
+                chosen = category
+                break
+    if chosen is not None:
+        return chosen
+
+    leaves: dict[str, list[JevCategory]] = defaultdict(list)
+    paths: dict[str, list[JevCategory]] = defaultdict(list)
+    for category in usable:
+        leaves[normalize_category_label(category.name)].append(category)
+        for key in _path_keys(category):
+            paths[key].append(category)
+    leaf_matches = leaves.get(folded, [])
+    if len(leaf_matches) == 1:
+        return leaf_matches[0]
+    if len(leaf_matches) > 1:
+        return SKIP_AMBIGUOUS_CATEGORY
+
+    seen: dict[UUID, JevCategory] = {}
+    for key in _path_lookup_keys(folded):
+        for category in paths.get(key, []):
+            seen.setdefault(category.id, category)
+    if len(seen) == 1:
+        return next(iter(seen.values()))
+    if len(seen) > 1:
+        return SKIP_AMBIGUOUS_CATEGORY
+    return SKIP_UNKNOWN_CATEGORY
 
 
 def _named_answer(response: object, group: str, name: str) -> object | None:
@@ -345,6 +458,7 @@ def _named_answer(response: object, group: str, name: str) -> object | None:
 def _skip(
     model: str,
     *,
+    skip_reason: str,
     choice: str | None = None,
     confidence: Decimal | None = None,
 ) -> Proposal:
@@ -355,6 +469,7 @@ def _skip(
         confidence=confidence if confidence is not None else Decimal("0"),
         model=model,
         choice=choice,
+        skip_reason=skip_reason,
     )
 
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Mapping
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import timedelta
 from threading import Event
@@ -15,6 +16,7 @@ from billzebub.persistence.models import JobStatus
 
 logger = logging.getLogger(__name__)
 JobHandler = Callable[[dict[str, Any]], None]
+job_attempt: ContextVar[int] = ContextVar("billzebub_job_attempt", default=1)
 
 
 class JobRuntime(Protocol):
@@ -74,6 +76,13 @@ class Worker:
                 stop.wait(self._poll_seconds)
 
     def _execute(self, leased: LeasedJob) -> None:
+        attempt_token = job_attempt.set(leased.attempt)
+        try:
+            self._execute_leased(leased)
+        finally:
+            job_attempt.reset(attempt_token)
+
+    def _execute_leased(self, leased: LeasedJob) -> None:
         handler = self._handlers.get(leased.kind)
         if handler is None:
             self._queue.fail(

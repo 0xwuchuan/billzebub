@@ -4,7 +4,7 @@ from uuid import UUID, uuid4
 
 from billzebub.jobs import LeasedJob
 from billzebub.persistence.models import JobStatus
-from billzebub.worker import RetryableJobError, Worker
+from billzebub.worker import RetryableJobError, Worker, job_attempt
 
 
 class FakeQueue:
@@ -41,6 +41,26 @@ def leased_job(kind: str = "extract") -> LeasedJob:
         attempt=1,
         lease_expires_at=datetime.now(UTC) + timedelta(minutes=1),
     )
+
+
+def test_worker_publishes_the_leased_attempt() -> None:
+    job = leased_job()
+    job = type(job)(
+        id=job.id,
+        kind=job.kind,
+        payload=job.payload,
+        attempt=6,
+        lease_expires_at=job.lease_expires_at,
+    )
+    seen: list[int] = []
+
+    def remember(_payload: dict[str, Any]) -> None:
+        seen.append(job_attempt.get())
+
+    Worker(FakeQueue(job), {"extract": remember}, worker_id="worker-a", poll_seconds=1).run_once()
+
+    assert seen == [6]
+    assert job_attempt.get() == 1
 
 
 def test_worker_completes_successful_handler() -> None:

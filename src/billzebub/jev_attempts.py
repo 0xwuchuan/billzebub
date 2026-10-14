@@ -12,7 +12,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from uuid6 import uuid7
 
-from billzebub.jev import JevError, JevSubject, Proposal, safe_error_message
+from billzebub.jev import (
+    SKIP_JEV_UNAVAILABLE,
+    SKIP_REASONS,
+    JevError,
+    JevSubject,
+    Proposal,
+    safe_error_message,
+)
 from billzebub.persistence.models import JevCategorizationAttempt
 
 _CONTEXT_KEY = "jev_attempt"
@@ -40,7 +47,7 @@ def record_jev_attempt(
         currency=_required_text(subject.currency, maximum=3).upper(),
         effective_date=_iso_date(subject.effective_date),
         kind=_required_text(subject.kind, maximum=30),
-        choice=_optional_text(proposal.choice, maximum=120),
+        choice=_raw_choice(proposal.choice, maximum=500),
         choice_confidence=proposal.confidence,
         noul=proposal.noul,
         action="apply" if apply else "skip",
@@ -48,6 +55,7 @@ def record_jev_attempt(
         category_name=_optional_text(proposal.category_name, maximum=120) if apply else None,
         error_class=_optional_text(proposal.error_class, maximum=120),
         error_message=_optional_text(proposal.error_message, maximum=500),
+        skip_reason=None if apply else _skip_reason(proposal.skip_reason),
     )
     session.add(row)
     session.flush()
@@ -106,6 +114,7 @@ def attempt_owner_context(row: JevCategorizationAttempt) -> dict[str, Any]:
         "category_name": row.category_name,
         "error_class": row.error_class,
         "error_message": row.error_message,
+        "skip_reason": row.skip_reason,
         "counterparty": row.counterparty,
         "amount": format(row.amount, "f"),
         "currency": row.currency,
@@ -134,6 +143,7 @@ def proposal_from_jev_error(error: JevError, *, model: str) -> Proposal:
         model=model,
         error_class=type(cause).__name__[:120],
         error_message=safe_error_message(cause),
+        skip_reason=SKIP_JEV_UNAVAILABLE,
     )
 
 
@@ -144,6 +154,19 @@ def _required_text(value: str, *, maximum: int, fallback: str | None = None) -> 
     if not trimmed:
         raise ValueError("Jev attempt field is required")
     return trimmed[:maximum]
+
+
+def _raw_choice(value: str | None, *, maximum: int) -> str | None:
+    """Keep the returned Choice text, including spacing, capped to the column."""
+    if value is None or not value.strip():
+        return None
+    return value[:maximum]
+
+
+def _skip_reason(value: str | None) -> str:
+    if value not in SKIP_REASONS:
+        raise ValueError("Jev attempt skip reason is required")
+    return value
 
 
 def _optional_text(value: str | None, *, maximum: int) -> str | None:

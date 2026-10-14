@@ -29,7 +29,11 @@ from billzebub.imports import (
     ImportNotDismissableError,
     ImportNotFoundError,
 )
-from billzebub.jev_categorizer import enqueue_accepted_claim
+from billzebub.jev_categorizer import (
+    enqueue_accepted_claim,
+    format_jev_requeue,
+    requeue_failed_categorizations,
+)
 from billzebub.jobs import JobQueue
 from billzebub.persistence.database import Database
 from billzebub.persistence.models import AuditActorKind, FinancialAccountKind
@@ -173,6 +177,18 @@ def parser() -> argparse.ArgumentParser:
         help="excluded Source Artifact to re-extract; repeat for each artifact",
     )
 
+    jev = commands.add_parser("jev", help="operate Jev categorization jobs")
+    jev_commands = jev.add_subparsers(dest="jev_command", required=True)
+    requeue_failed = jev_commands.add_parser(
+        "requeue-failed",
+        help="requeue failed categorize jobs whose last error is jev_unavailable",
+    )
+    requeue_failed.add_argument(
+        "--apply",
+        action="store_true",
+        help="requeue the jobs; omit to print before and after counts only",
+    )
+
     uob = commands.add_parser("uob", help="operate UOB statement Counterparty cleanup")
     uob_commands = uob.add_subparsers(dest="uob_command", required=True)
     strip_ref_no = uob_commands.add_parser(
@@ -309,6 +325,14 @@ def main(argv: Sequence[str] | None = None) -> None:
                 raise SystemExit(str(error)) from None
             for reextract_report in reports:
                 print(format_statement_reextract(reextract_report))
+            return
+        if arguments.command == "jev" and arguments.jev_command == "requeue-failed":
+            requeue_report = requeue_failed_categorizations(
+                database,
+                JobQueue(database),
+                apply=arguments.apply,
+            )
+            print(format_jev_requeue(requeue_report))
             return
         if arguments.command == "uob" and arguments.uob_command == "strip-ref-no":
             if arguments.dry_run and arguments.execute:
