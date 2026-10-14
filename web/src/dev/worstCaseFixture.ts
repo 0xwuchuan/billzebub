@@ -545,7 +545,8 @@ function worstTransactions(today: Date): Transaction[] {
       id: "example-tx-long-child",
       account: jo,
       counterparty: "Example Narrow Chip",
-      amount: "9.00",
+      amount: "0.00",
+      authorized: "9.00",
       kind: "expense",
       date: iso(today),
       splits: [

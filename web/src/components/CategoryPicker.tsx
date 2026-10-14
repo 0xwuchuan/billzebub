@@ -126,7 +126,7 @@ export function CategoryPicker({
                 <li key={row.key}>
                   <button
                     id={optionId(row.key)}
-                    className={`cat-picker-option${index === activeIndex ? " is-active" : ""}${row.pinned ? " is-pinned" : ""}${row.disabled ? " is-disabled" : ""}`}
+                    className={`cat-picker-option${index === activeIndex ? " is-active" : ""}${row.pinned ? " is-pinned" : ""}${row.disabled ? " is-disabled" : ""}${row.kind === "back" ? " is-back" : ""}${row.kind === "just" ? " is-just" : ""}`}
                     type="button"
                     role="option"
                     aria-selected={row.selected || index === activeIndex}
@@ -141,15 +141,7 @@ export function CategoryPicker({
                       onActivate(row);
                     }}
                   >
-                    {row.selected ? (
-                      <span className="cat-picker-check" aria-hidden="true">
-                        ✓
-                      </span>
-                    ) : row.childSelected ? (
-                      <i className="cat-picker-dot" aria-hidden="true" />
-                    ) : (
-                      <span className="cat-picker-check" aria-hidden="true" />
-                    )}
+                    <RowMark row={row} />
                     <span className="cat-picker-copy">
                       {highlightParts(rowText(row, query), query).map(
                         (part, partIndex) =>
@@ -187,6 +179,23 @@ export function CategoryPicker({
 
 function optionId(key: string): string {
   return `review-cat-option-${key}`;
+}
+
+function RowMark({ row }: { row: PickerRow }) {
+  if (row.kind === "back") {
+    return null;
+  }
+  if (row.selected) {
+    return (
+      <span className="cat-picker-check" aria-hidden="true">
+        ✓
+      </span>
+    );
+  }
+  if (row.childSelected) {
+    return <i className="cat-picker-dot" aria-hidden="true" />;
+  }
+  return <span className="cat-picker-check" aria-hidden="true" />;
 }
 
 function rowText(row: PickerRow, query: string): string {

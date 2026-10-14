@@ -208,6 +208,53 @@ describe("category picker", () => {
     expect(back.state.parentId).toBeNull();
   });
 
+  it("orders children by usage, then a numeric name", () => {
+    const household: Category = {
+      id: "household",
+      name: "Household",
+      parent_id: null,
+      active: true,
+    };
+    const room1: Category = {
+      id: "room-1",
+      name: "Room 1",
+      parent_id: "household",
+      active: true,
+    };
+    const room2: Category = {
+      id: "room-2",
+      name: "Room 2",
+      parent_id: "household",
+      active: true,
+    };
+    const room10: Category = {
+      id: "room-10",
+      name: "Room 10",
+      parent_id: "household",
+      active: true,
+    };
+    const rows = buildPickerRows({
+      categories: [household, room10, room2, room1],
+      query: "",
+      parentId: "household",
+      placing: false,
+      selectedId: null,
+      recentIds: [],
+      usage: new Map([
+        ["room-1", 3],
+        ["room-10", 0],
+        ["room-2", 0],
+      ]),
+    });
+    expect(rows[0]?.name).toBe("← Household");
+    expect(rows[1]?.name).toBe("Just Household");
+    expect(rows.slice(2).map((row) => row.label)).toEqual([
+      "Room 1",
+      "Room 2",
+      "Room 10",
+    ]);
+  });
+
   it("disables moving a parent that has subcategories", () => {
     const rows = buildPickerRows({
       categories: catalog,

@@ -67,10 +67,14 @@ export function activeCatalog(categories: Category[]): Category[] {
   );
 }
 
+export function compareCategoryNames(left: string, right: string): number {
+  return left.localeCompare(right, undefined, { numeric: true });
+}
+
 export function parentCategories(categories: Category[]): Category[] {
   return activeCatalog(categories)
     .filter((category) => category.parent_id === null)
-    .sort((left, right) => left.name.localeCompare(right.name));
+    .sort((left, right) => compareCategoryNames(left.name, right.name));
 }
 
 export function childCategories(
@@ -79,7 +83,7 @@ export function childCategories(
 ): Category[] {
   return activeCatalog(categories)
     .filter((category) => category.parent_id === parentId)
-    .sort((left, right) => left.name.localeCompare(right.name));
+    .sort((left, right) => compareCategoryNames(left.name, right.name));
 }
 
 export function categoryById(
@@ -313,10 +317,10 @@ export function buildPickerRows(input: {
     return [
       {
         key: `back-${parent.id}`,
-        name: "Back",
+        name: `← ${parent.name}`,
         kind: "back",
         categoryId: null,
-        label: "Back",
+        label: `← ${parent.name}`,
         parentLabel: null,
         hint: null,
         hasChildren: false,
@@ -584,7 +588,8 @@ export function categorySpend(
       .filter((child) => child.cents > 0)
       .sort(
         (left, right) =>
-          right.cents - left.cents || left.name.localeCompare(right.name),
+          right.cents - left.cents ||
+          compareCategoryNames(left.name, right.name),
       )
       .map((child) => ({
         id: child.categoryId,
@@ -624,7 +629,7 @@ export function categorySpend(
   }
   return groups.sort(
     (left, right) =>
-      right.cents - left.cents || left.name.localeCompare(right.name),
+      right.cents - left.cents || compareCategoryNames(left.name, right.name),
   );
 }
 
@@ -700,7 +705,7 @@ function sortByUsage(
 ): Category[] {
   return [...categories].sort(
     (left, right) =>
-      score(right) - score(left) || left.name.localeCompare(right.name),
+      score(right) - score(left) || compareCategoryNames(left.name, right.name),
   );
 }
 

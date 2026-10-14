@@ -14,6 +14,7 @@ import {
   buildPickerRows,
   categoryUsage,
   childCategories,
+  compareCategoryNames,
   closedPicker,
   draftFromCategory,
   recentLeafIds,
@@ -1077,7 +1078,7 @@ function parentFallback(
     .sort(
       (left, right) =>
         (usage.get(right.id) ?? 0) - (usage.get(left.id) ?? 0) ||
-        left.name.localeCompare(right.name),
+        compareCategoryNames(left.name, right.name),
     )
     .slice(0, 3);
   if (children.length === 0) {
