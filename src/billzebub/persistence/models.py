@@ -122,6 +122,7 @@ class Category(Base):
         PostgresUUID(as_uuid=True), ForeignKey("category.id", ondelete="RESTRICT")
     )
     name: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     created_at: Mapped[datetime] = mapped_column(
@@ -1222,4 +1223,58 @@ class RecurringOccurrence(Base):
         UniqueConstraint("transaction_id", name="uq_recurring_occurrence_transaction_id"),
         CheckConstraint("match_kind IN ('auto', 'manual')", name="match_kind_known"),
         Index("ix_recurring_occurrence_series_matched", "series_id", "matched_at"),
+    )
+
+
+class MerchantCategoryMemory(Base):
+    """Unambiguous merchant to Category rule used before a Jev call.
+
+    The key is ``normalize_counterparty``. Owner evidence wins over a Jev seed.
+    Ambiguous merchants have no row and fall through to Jev.
+    """
+
+    __tablename__ = "merchant_category_memory"
+
+    id: Mapped[UUID] = mapped_column(PostgresUUID(as_uuid=True), primary_key=True, default=uuid7)
+    normalized_key: Mapped[str] = mapped_column(String(300), nullable=False)
+    category_id: Mapped[UUID] = mapped_column(
+        PostgresUUID(as_uuid=True),
+        ForeignKey("category.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    source: Mapped[str] = mapped_column(String(20), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("normalized_key", name="uq_merchant_category_memory_normalized_key"),
+        CheckConstraint("length(btrim(normalized_key)) > 0", name="normalized_key_present"),
+        CheckConstraint("source IN ('owner', 'jev')", name="source_known"),
+    )
+
+
+class MerchantMemoryExclusion(Base):
+    """A pending Transaction the owner left out of apply-to-all.
+
+    Merchant memory does not auto-apply to it. An owner categorization clears the row.
+    """
+
+    __tablename__ = "merchant_memory_exclusion"
+
+    transaction_id: Mapped[UUID] = mapped_column(
+        PostgresUUID(as_uuid=True),
+        ForeignKey("financial_transaction.id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    normalized_key: Mapped[str] = mapped_column(String(300), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint("length(btrim(normalized_key)) > 0", name="normalized_key_present"),
     )

@@ -3,6 +3,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import type {
   Category,
   CreateFinancialAccountInput,
+  MerchantRule,
   FinancialAccount,
   IssuedToken,
   IntegrationToken,
@@ -12,6 +13,7 @@ import type {
 } from "../api";
 import { StatementCoveragePanel } from "../components/StatementCoveragePanel";
 import { ThemeToggle } from "../components/ThemeToggle";
+import { MerchantRulesList } from "../components/MerchantRulesList";
 import { AccountsPanel } from "../components/settings/AccountsPanel";
 import { CategoriesPanel } from "../components/settings/CategoriesPanel";
 import { SourcesPanel } from "../components/settings/SourcesPanel";
@@ -41,6 +43,7 @@ export function SettingsPage({
   onOpenAccountImports,
   theme,
   onToggleTheme,
+  merchantRules = [],
 }: {
   identity: OwnerIdentity | null;
   accounts: FinancialAccount[];
@@ -60,6 +63,7 @@ export function SettingsPage({
   onOpenAccountImports: (accountId: string) => void;
   theme: Theme;
   onToggleTheme: () => void;
+  merchantRules?: MerchantRule[];
 }) {
   const fresh = useEntrance("settings");
   const [modal, setModal] = useState<SettingsModal | null>(null);
@@ -169,6 +173,19 @@ export function SettingsPage({
             mode="list"
           />
         </SettingsSection>
+
+        <section className="card settings-section" aria-label="Merchant rules">
+          <div className="settings-section-head">
+            <div>
+              <h2>Merchant rules</h2>
+              <span className="muted">
+                {merchantRules.length}{" "}
+                {merchantRules.length === 1 ? "rule" : "rules"}
+              </span>
+            </div>
+          </div>
+          <MerchantRulesList rules={merchantRules} />
+        </section>
 
         <SettingsSection
           title="Shortcut tokens"

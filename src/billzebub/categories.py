@@ -26,6 +26,7 @@ class CategoryRecord:
     name: str
     parent_id: UUID | None
     active: bool
+    description: str | None = None
 
 
 class CategoryCatalog:
@@ -34,7 +35,13 @@ class CategoryCatalog:
     def __init__(self, database: Database) -> None:
         self._database = database
 
-    def create(self, name: str, *, parent_id: UUID | None = None) -> CategoryRecord:
+    def create(
+        self,
+        name: str,
+        *,
+        parent_id: UUID | None = None,
+        description: str | None = None,
+    ) -> CategoryRecord:
         normalized_name = " ".join(name.split())
         if not normalized_name:
             raise CategoryError("a Category name is required")
@@ -53,6 +60,7 @@ class CategoryCatalog:
                     id=uuid7(),
                     parent_id=parent_id,
                     name=normalized_name,
+                    description=_clean_description(description),
                     active=True,
                     sort_order=0,
                 )
@@ -85,4 +93,12 @@ class CategoryCatalog:
             name=category.name,
             parent_id=category.parent_id,
             active=category.active,
+            description=category.description,
         )
+
+
+def _clean_description(description: str | None) -> str | None:
+    if description is None:
+        return None
+    cleaned = " ".join(description.split())
+    return cleaned or None

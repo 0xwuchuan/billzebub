@@ -451,6 +451,67 @@ describe("ReviewPage", () => {
     expect(screen.queryByText(/blocking first/)).not.toBeInTheDocument();
   });
 
+  it("groups repeated merchants and lets a charge be excluded from apply-all", () => {
+    const second = {
+      ...coffee,
+      id: "00000000-0000-0000-0000-000000000030",
+      counterparty: "Synthetic Coffee SG",
+    };
+    const secondReview = {
+      ...coffeeReview,
+      id: "00000000-0000-0000-0000-000000000031",
+      subject_id: second.id,
+    };
+    const onApply = vi.fn();
+    renderPage({
+      reviews: [coffeeReview, secondReview],
+      transactions: [coffee, second],
+      onApplyMerchantGroup: onApply,
+    });
+
+    expect(
+      screen.getByRole("button", { name: "Apply to all 2 + future" }),
+    ).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Category for Synthetic Coffee"), {
+      target: { value: categories[0]?.id },
+    });
+    expect(
+      screen.getByRole("button", { name: "Apply to all 2 + future" }),
+    ).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Exclude" }));
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: /Synthetic Coffee SG/ }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Apply to all 1 + future" }),
+    );
+
+    expect(onApply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        normalizedKey: "synthetic coffee",
+        categoryId: categories[0]?.id,
+        excludedIds: [second.id],
+      }),
+    );
+  });
+
+  it("keeps an applied merchant charge out of the individual queue", () => {
+    renderPage({
+      reviews: [coffeeReview, grocerReview],
+      transactions: [coffee, grocer],
+      merchantGroups: [],
+      suppressedReviewIds: [coffeeReview.id],
+    });
+
+    const queue = screen.getByRole("region", { name: "Pending Review queue" });
+    expect(
+      within(queue).queryByRole("button", { name: /Synthetic Coffee/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(queue).getByRole("button", { name: /Synthetic Grocer/ }),
+    ).toBeInTheDocument();
+  });
+
   it("does not stretch the empty decision card, and keeps a filled card compact-capable", () => {
     const { unmount } = renderPage({ reviews: [], transactions: [] });
     expect(screen.getByRole("region", { name: "Review decision" })).toHaveClass(
@@ -489,6 +550,9 @@ function pageElement({
   onSelect = () => undefined,
   onDraft = () => undefined,
   onDecide = () => undefined,
+  onApplyMerchantGroup,
+  merchantGroups,
+  suppressedReviewIds,
 }: PageProps) {
   return (
     <ReviewPage
@@ -509,6 +573,9 @@ function pageElement({
       onOpenTransaction={() => undefined}
       onOpenImport={() => undefined}
       onOpenSettings={() => undefined}
+      {...(onApplyMerchantGroup === undefined ? {} : { onApplyMerchantGroup })}
+      {...(merchantGroups === undefined ? {} : { merchantGroups })}
+      {...(suppressedReviewIds === undefined ? {} : { suppressedReviewIds })}
     />
   );
 }
@@ -523,4 +590,11 @@ type PageProps = {
   onSelect?: (id: string) => void;
   onDraft?: (transactionId: string, categoryId: string) => void;
   onDecide?: (review: Review, choice: string) => void;
+  onApplyMerchantGroup?: (request: {
+    normalizedKey: string;
+    excludedIds: string[];
+    categoryId: string;
+  }) => void;
+  merchantGroups?: [];
+  suppressedReviewIds?: string[];
 };

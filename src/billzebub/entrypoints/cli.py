@@ -34,7 +34,9 @@ from billzebub.jev_categorizer import (
     format_jev_requeue,
     requeue_failed_categorizations,
 )
+from billzebub.jev_eval import eval_threshold_report
 from billzebub.jobs import JobQueue
+from billzebub.merchant_memory import backfill_merchant_memory, format_memory_backfill
 from billzebub.persistence.database import Database
 from billzebub.persistence.models import AuditActorKind, FinancialAccountKind
 from billzebub.statement_adapters import configured_statement_adapters
@@ -188,6 +190,21 @@ def parser() -> argparse.ArgumentParser:
         action="store_true",
         help="requeue the jobs; omit to print before and after counts only",
     )
+    backfill_memory = jev_commands.add_parser(
+        "backfill-memory",
+        help=(
+            "rebuild merchant category memory from owner decisions and high-confidence Jev applies"
+        ),
+    )
+    backfill_memory.add_argument(
+        "--apply",
+        action="store_true",
+        help="write the rebuilt rules; omit to print before and after counts only",
+    )
+    jev_commands.add_parser(
+        "eval-threshold",
+        help="print read-only precision and coverage of historical Jev choices",
+    )
 
     uob = commands.add_parser("uob", help="operate UOB statement Counterparty cleanup")
     uob_commands = uob.add_subparsers(dest="uob_command", required=True)
@@ -333,6 +350,12 @@ def main(argv: Sequence[str] | None = None) -> None:
                 apply=arguments.apply,
             )
             print(format_jev_requeue(requeue_report))
+            return
+        if arguments.command == "jev" and arguments.jev_command == "backfill-memory":
+            print(format_memory_backfill(backfill_merchant_memory(database, apply=arguments.apply)))
+            return
+        if arguments.command == "jev" and arguments.jev_command == "eval-threshold":
+            print(eval_threshold_report(database))
             return
         if arguments.command == "uob" and arguments.uob_command == "strip-ref-no":
             if arguments.dry_run and arguments.execute:

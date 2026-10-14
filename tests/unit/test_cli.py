@@ -11,6 +11,7 @@ from billzebub.financial_accounts import (
 )
 from billzebub.imports import FailedImportPurgeReport
 from billzebub.jev_categorizer import JevRequeueReport
+from billzebub.merchant_memory import MemoryBackfillReport
 from billzebub.persistence.models import FinancialAccountKind
 from billzebub.statement_reextract import (
     StatementReextractAction,
@@ -492,3 +493,55 @@ def test_statements_reextract_repeats_artifact_ids_and_prints_the_version_noop(
         f"artifact_id={first} parser version bump required\n"
         f"artifact_id={second} parser version bump required\n"
     )
+
+
+def test_jev_backfill_memory_defaults_to_dry_run(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    calls: dict[str, bool] = {}
+
+    def fake_backfill(_database: object, *, apply: bool) -> MemoryBackfillReport:
+        calls["apply"] = apply
+        return MemoryBackfillReport(
+            rules_before=2,
+            would_write=1,
+            would_clear=0,
+            rules_after=2,
+            written=0,
+            cleared=0,
+            applied=apply,
+        )
+
+    monkeypatch.setattr(cli, "Settings", lambda: Settings(artifact_root=tmp_path / "artifacts"))
+    monkeypatch.setattr(cli, "Database", FakeDatabase)
+    monkeypatch.setattr(cli, "backfill_merchant_memory", fake_backfill)
+
+    cli.main(["jev", "backfill-memory"])
+
+    output = capsys.readouterr().out
+    assert calls["apply"] is False
+    assert "before rules=2" in output
+    assert "would_write=1 would_clear=0" in output
+    assert "after rules=2" in output
+    assert "written=" not in output
+
+
+def test_jev_eval_threshold_is_read_only(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def fake_report(_database: object) -> str:
+        return "threshold=0.50 coverage=1.000 precision=1.000 covered=1 total=1"
+
+    monkeypatch.setattr(cli, "Settings", lambda: Settings(artifact_root=tmp_path / "artifacts"))
+    monkeypatch.setattr(cli, "Database", FakeDatabase)
+    monkeypatch.setattr(cli, "eval_threshold_report", fake_report)
+
+    cli.main(["jev", "eval-threshold"])
+
+    output = capsys.readouterr().out
+    assert "precision=1.000" in output
+    assert "coverage=1.000" in output

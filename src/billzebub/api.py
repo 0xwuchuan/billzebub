@@ -78,6 +78,7 @@ from billzebub.review_actions import (
     ReviewActions,
     ReviewConfigurationRequiredError,
 )
+from billzebub.review_groups import MerchantReviewGroups, ReviewGroupError
 from billzebub.reviews import PendingReviewStatus, ReviewDecision, ReviewError
 from billzebub.statement_adapters import configured_statement_adapters
 from billzebub.statement_coverage import (
@@ -117,7 +118,13 @@ class ImportCatalogRuntime(Protocol):
 class CategoryCatalogRuntime(Protocol):
     def list(self) -> tuple[CategoryRecord, ...]: ...
 
-    def create(self, name: str, *, parent_id: UUID | None = None) -> CategoryRecord: ...
+    def create(
+        self,
+        name: str,
+        *,
+        parent_id: UUID | None = None,
+        description: str | None = None,
+    ) -> CategoryRecord: ...
 
 
 class OwnerTransactionActionsRuntime(Protocol):
@@ -268,6 +275,7 @@ class OwnerCategoryPayload(BaseModel):
 
     name: str = Field(min_length=1, max_length=120)
     parent_id: UUID | None = None
+    description: str | None = Field(default=None, max_length=500)
 
 
 class OwnerFinancialAccountPayload(BaseModel):
@@ -302,6 +310,30 @@ class OwnerReviewDecisionPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     choice: str = Field(min_length=1, max_length=120)
+
+
+class MerchantGroupApplyPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    normalized_key: str = Field(min_length=1, max_length=300)
+    category_id: UUID
+    exclude_transaction_ids: list[UUID] = Field(default_factory=list)
+
+
+class MerchantGroupUndoTransaction(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    transaction_id: UUID
+    version: int = Field(ge=1)
+
+
+class MerchantGroupUndoPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    normalized_key: str = Field(min_length=1, max_length=300)
+    category_id: UUID
+    transactions: list[MerchantGroupUndoTransaction] = Field(min_length=1)
+    excluded_transaction_ids: list[UUID] = Field(default_factory=list)
 
 
 class ProposalPayload(BaseModel):
@@ -397,6 +429,7 @@ class OwnerCategoryWire(BaseModel):
     name: str
     parent_id: UUID | None
     active: bool
+    description: str | None = None
 
 
 class OwnerCategoryPageWire(BaseModel):
@@ -947,6 +980,15 @@ def create_app(
             )
         return runtime.account_aliases
 
+    def merchant_groups_resource() -> MerchantReviewGroups:
+        if not isinstance(runtime.database, Database):
+            raise ProblemError(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "merchant_groups_unavailable",
+                "Merchant groups unavailable",
+            )
+        return MerchantReviewGroups(runtime.database)
+
     def recurrings_resource() -> RecurringCatalogRuntime:
         if runtime.recurrings is None:
             raise ProblemError(
@@ -977,6 +1019,7 @@ def create_app(
     account_aliases_dependency = Depends(account_aliases_resource)
     owner_tokens_dependency = Depends(owner_tokens_resource)
     recurrings_dependency = Depends(recurrings_resource)
+    merchant_groups_dependency = Depends(merchant_groups_resource)
     agent_dependency = Depends(agent)
     agent_reader_dependency = Depends(agent_reader)
     agent_categorizer_dependency = Depends(agent_categorizer)
@@ -1132,7 +1175,13 @@ def create_app(
         catalog: CategoryCatalogRuntime = categories_dependency,
     ) -> OwnerCategoryWire:
         try:
-            return _owner_category(catalog.create(payload.name, parent_id=payload.parent_id))
+            return _owner_category(
+                catalog.create(
+                    payload.name,
+                    parent_id=payload.parent_id,
+                    description=payload.description,
+                )
+            )
         except CategoryError as error:
             raise ProblemError(
                 status.HTTP_400_BAD_REQUEST,
@@ -1543,6 +1592,79 @@ def create_app(
             }
         )
 
+    @app.get("/api/v1/reviews/merchant-groups", tags=["owner"])
+    def list_merchant_groups(
+        _identity: OwnerIdentity = owner_dependency,
+        groups: MerchantReviewGroups = merchant_groups_dependency,
+    ) -> JSONResponse:
+        return _owner_response(_merchant_groups_body(groups.list_groups()))
+
+    @app.post("/api/v1/reviews/merchant-groups/apply", tags=["owner"])
+    def apply_merchant_group(
+        payload: MerchantGroupApplyPayload,
+        identity: OwnerIdentity = browser_mutation_dependency,
+        groups: MerchantReviewGroups = merchant_groups_dependency,
+        actors: OwnerActorRuntime = owner_actors_dependency,
+        if_match: str | None = Header(default=None, alias="If-Match"),
+    ) -> JSONResponse:
+        if if_match is None:
+            raise ProblemError(
+                status.HTTP_428_PRECONDITION_REQUIRED,
+                "merchant_group_etag_required",
+                "Merchant group ETag required",
+            )
+        try:
+            applied = groups.apply(
+                normalized_key=payload.normalized_key,
+                category_id=payload.category_id,
+                exclude_transaction_ids=tuple(payload.exclude_transaction_ids),
+                actor_id=actors.resolve(identity),
+                if_match=if_match,
+            )
+        except ReviewGroupError as error:
+            raise _review_group_problem(error) from error
+        return _owner_response(_applied_group_body(applied), etag=applied.undo_etag)
+
+    @app.post("/api/v1/reviews/merchant-groups/undo", tags=["owner"])
+    def undo_merchant_group(
+        payload: MerchantGroupUndoPayload,
+        identity: OwnerIdentity = browser_mutation_dependency,
+        groups: MerchantReviewGroups = merchant_groups_dependency,
+        actors: OwnerActorRuntime = owner_actors_dependency,
+        if_match: str | None = Header(default=None, alias="If-Match"),
+    ) -> JSONResponse:
+        if if_match is None:
+            raise ProblemError(
+                status.HTTP_428_PRECONDITION_REQUIRED,
+                "merchant_group_etag_required",
+                "Merchant group ETag required",
+            )
+        try:
+            undone = groups.undo(
+                normalized_key=payload.normalized_key,
+                category_id=payload.category_id,
+                transactions=tuple(
+                    (item.transaction_id, item.version) for item in payload.transactions
+                ),
+                excluded_transaction_ids=tuple(payload.excluded_transaction_ids),
+                actor_id=actors.resolve(identity),
+                if_match=if_match,
+            )
+        except ReviewGroupError as error:
+            raise _review_group_problem(error) from error
+        return _owner_response(_undone_group_body(undone))
+
+    @app.get("/api/v1/merchant-memory", tags=["owner"])
+    def list_merchant_memory(
+        _identity: OwnerIdentity = owner_dependency,
+        groups: MerchantReviewGroups = merchant_groups_dependency,
+    ) -> JSONResponse:
+        return _owner_response(
+            {
+                "items": [_memory_rule_body(rule) for rule in groups.list_rules()],
+            }
+        )
+
     @app.get("/api/v1/reviews/{review_id}", tags=["owner"], response_model=OwnerReviewWire)
     def get_owner_review(
         review_id: UUID,
@@ -1849,7 +1971,78 @@ def _owner_category(category: CategoryRecord) -> OwnerCategoryWire:
         name=category.name,
         parent_id=category.parent_id,
         active=category.active,
+        description=category.description,
     )
+
+
+def _merchant_groups_body(groups: tuple[Any, ...]) -> dict[str, Any]:
+    return {"items": [_merchant_group_body(group) for group in groups]}
+
+
+def _merchant_group_body(group: Any) -> dict[str, Any]:
+    return {
+        "normalized_key": group.normalized_key,
+        "label": group.label,
+        "count": group.count,
+        "etag": group.etag,
+        "transactions": [
+            {
+                "transaction_id": str(member.transaction_id),
+                "review_id": str(member.review_id),
+                "version": member.version,
+                "counterparty": member.counterparty,
+                "amount": member.amount,
+                "currency": member.currency,
+                "effective_date": member.effective_date,
+                "kind": member.kind,
+            }
+            for member in group.members
+        ],
+    }
+
+
+def _applied_group_body(applied: Any) -> dict[str, Any]:
+    return {
+        "normalized_key": applied.normalized_key,
+        "label": applied.label,
+        "category_id": str(applied.category_id),
+        "applied": [
+            {"transaction_id": str(transaction_id), "version": version}
+            for transaction_id, version in applied.applied
+        ],
+        "excluded_transaction_ids": [
+            str(transaction_id) for transaction_id in applied.excluded_transaction_ids
+        ],
+        "memory": None if applied.memory is None else _memory_rule_body(applied.memory),
+        "undo_etag": applied.undo_etag,
+    }
+
+
+def _undone_group_body(undone: Any) -> dict[str, Any]:
+    return {
+        "normalized_key": undone.normalized_key,
+        "restored_transaction_ids": [
+            str(transaction_id) for transaction_id in undone.restored_transaction_ids
+        ],
+        "memory": None if undone.memory is None else _memory_rule_body(undone.memory),
+    }
+
+
+def _memory_rule_body(rule: Any) -> dict[str, Any]:
+    return {
+        "normalized_key": rule.normalized_key,
+        "category_id": str(rule.category_id),
+        "category_name": rule.category_name,
+        "source": rule.source,
+    }
+
+
+def _review_group_problem(error: ReviewGroupError) -> ProblemError:
+    if error.code == "stale":
+        return ProblemError(status.HTTP_412_PRECONDITION_FAILED, "merchant_group_stale", str(error))
+    if error.code == "missing":
+        return ProblemError(status.HTTP_404_NOT_FOUND, "merchant_group_not_found", str(error))
+    return ProblemError(status.HTTP_400_BAD_REQUEST, "merchant_group_invalid", str(error))
 
 
 def _statement_coverage(report: StatementCoverageReport) -> StatementCoverageWire:

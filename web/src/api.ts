@@ -8,6 +8,44 @@ export type Category = {
   name: string;
   parent_id: string | null;
   active: boolean;
+  description?: string | null;
+};
+
+export type MerchantRule = {
+  normalized_key: string;
+  category_id: string;
+  category_name: string;
+  source: "owner" | "jev";
+  label?: string;
+};
+
+export type MerchantGroupTransaction = {
+  transaction_id: string;
+  review_id: string;
+  version: number;
+  counterparty: string;
+  amount: string;
+  currency: string;
+  effective_date: string;
+  kind: string;
+};
+
+export type MerchantGroup = {
+  normalized_key: string;
+  label: string;
+  count: number;
+  etag: string;
+  transactions: MerchantGroupTransaction[];
+};
+
+export type MerchantApplyResult = {
+  normalized_key: string;
+  label: string;
+  category_id: string;
+  applied: { transaction_id: string; version: number }[];
+  excluded_transaction_ids: string[];
+  memory: MerchantRule | null;
+  undo_etag: string;
 };
 
 export type OwnerIdentity = {
@@ -445,6 +483,55 @@ export async function categorizeTransaction(
       body: JSON.stringify({ category_id: categoryId }),
     },
   );
+}
+
+export async function listMerchantGroups(): Promise<{
+  items: MerchantGroup[];
+}> {
+  return request<{ items: MerchantGroup[] }>("/api/v1/reviews/merchant-groups");
+}
+
+export async function listMerchantRules(): Promise<{ items: MerchantRule[] }> {
+  return request<{ items: MerchantRule[] }>("/api/v1/merchant-memory");
+}
+
+export async function applyMerchantGroup(input: {
+  normalizedKey: string;
+  categoryId: string;
+  excludeTransactionIds: string[];
+  etag: string;
+}): Promise<MerchantApplyResult> {
+  return request<MerchantApplyResult>("/api/v1/reviews/merchant-groups/apply", {
+    method: "POST",
+    headers: mutationHeaders(input.etag),
+    body: JSON.stringify({
+      normalized_key: input.normalizedKey,
+      category_id: input.categoryId,
+      exclude_transaction_ids: input.excludeTransactionIds,
+    }),
+  });
+}
+
+export async function undoMerchantGroup(input: {
+  normalizedKey: string;
+  categoryId: string;
+  transactions: { transaction_id: string; version: number }[];
+  excludedTransactionIds: string[];
+  etag: string;
+}): Promise<{
+  restored_transaction_ids: string[];
+  memory: MerchantRule | null;
+}> {
+  return request("/api/v1/reviews/merchant-groups/undo", {
+    method: "POST",
+    headers: mutationHeaders(input.etag),
+    body: JSON.stringify({
+      normalized_key: input.normalizedKey,
+      category_id: input.categoryId,
+      transactions: input.transactions,
+      excluded_transaction_ids: input.excludedTransactionIds,
+    }),
+  });
 }
 
 export async function decideReview(

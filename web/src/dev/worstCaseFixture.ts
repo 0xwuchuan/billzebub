@@ -445,7 +445,31 @@ function worstTransactions(today: Date): Transaction[] {
       splits: [split(longCategory, "250.00")],
     },
   ];
-  return rows.map((row) => tx(row));
+  return [...rows.map((row) => tx(row)), ...merchantCharges(jo, today)];
+}
+
+function merchantCharges(
+  account: FinancialAccount,
+  today: Date,
+): Transaction[] {
+  const charges: Array<[string, string, string, number]> = [
+    ["example-tx-spotify-1", "Example Spotify", "11.98", 0],
+    ["example-tx-spotify-2", "Example Spotify SG", "11.98", 1],
+    ["example-tx-spotify-3", "Example Spotify 1234", "12.50", 2],
+    ["example-tx-grocer-1", "Example Grocer Market", "42.10", 0],
+    ["example-tx-grocer-2", "Example Grocer Market Pte Ltd", "18.40", 3],
+  ];
+  return charges.map(([id, counterparty, amount, days]) =>
+    tx({
+      id,
+      account,
+      counterparty,
+      amount,
+      kind: "expense",
+      date: iso(shift(today, -days)),
+      splits: [],
+    }),
+  );
 }
 
 function thousandTransactions(today: Date): Transaction[] {
@@ -500,6 +524,7 @@ function worstReviews(
     120,
   );
   return [
+    ...merchantReviews(transactions),
     review({
       id: "example-review-blocking",
       severity: "blocking",
@@ -881,6 +906,33 @@ function tx(input: {
         ]
       : [],
   };
+}
+
+function merchantReviews(transactions: Transaction[]): Review[] {
+  return transactions
+    .filter(
+      (item) =>
+        item.id.startsWith("example-tx-spotify") ||
+        item.id.startsWith("example-tx-grocer"),
+    )
+    .map((item) =>
+      review({
+        id: `${item.id}-group`,
+        severity: "attention",
+        condition: "categorization_needed",
+        decisions: ["assign"],
+        created: item.effective_date,
+        subjectId: item.id,
+        context: {
+          transaction_id: item.id,
+          counterparty: item.counterparty,
+          amount: item.posted_amount.amount,
+          currency: "SGD",
+          effective_date: item.effective_date,
+          kind: "expense",
+        },
+      }),
+    );
 }
 
 function review(input: {

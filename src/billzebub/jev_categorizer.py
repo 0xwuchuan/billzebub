@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 import random
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, Protocol
@@ -40,6 +40,13 @@ from billzebub.jev import (
     Proposer,
 )
 from billzebub.jev_attempts import proposal_from_jev_error, record_jev_attempt
+from billzebub.jev_context import similar_confirmed
+from billzebub.merchant_memory import (
+    MEMORY_REASON,
+    is_memory_excluded,
+    refresh_merchant_memory,
+    rule_for_counterparty,
+)
 from billzebub.owner_transaction_actions import (
     OwnerCategorizationCommand,
     OwnerTransactionActionError,
@@ -390,9 +397,20 @@ class JevCategorizer:
                 snapshot = self._history.current_in_session(session, transaction_id)
                 if snapshot.kind not in _SPENDING_KINDS or not self._needs_category(snapshot):
                     return None
+                remembered = self._apply_merchant_memory(session, snapshot)
+                if remembered is not None:
+                    return remembered
                 if self._proposer is None:
                     return None
                 subject = subject_from_snapshot(snapshot)
+                subject = replace(
+                    subject,
+                    similar_confirmed_transactions=similar_confirmed(
+                        session,
+                        subject,
+                        exclude_transaction_id=snapshot.id,
+                    ),
+                )
                 try:
                     proposal = self._propose_for_subject(session, subject)
                 except JevError as error:
@@ -440,9 +458,29 @@ class JevCategorizer:
             claim = session.scalar(select(Claim).where(Claim.id == claim_id).with_for_update())
             if claim is None:
                 raise CategorizerError("Claim was not found")
-            if self._proposer is None or not self._claim_is_eligible(session, claim):
+            if not self._claim_is_eligible(session, claim):
                 return None
             subject = subject_from_claim(claim, timezone=self._reporting_timezone)
+            remembered = rule_for_counterparty(session, subject.counterparty)
+            if remembered is not None:
+                self._apply_claim_category(
+                    session,
+                    claim,
+                    Proposal(
+                        action="apply",
+                        category_id=remembered.category_id,
+                        category_name=remembered.category_name,
+                        confidence=Decimal("1"),
+                        model=self._proposer_model(),
+                    ),
+                )
+                return remembered.category_id
+            if self._proposer is None:
+                return None
+            subject = replace(
+                subject,
+                similar_confirmed_transactions=similar_confirmed(session, subject),
+            )
             try:
                 proposal = self._propose_for_subject(session, subject)
             except JevError as error:
@@ -458,11 +496,37 @@ class JevCategorizer:
             if retry is None and proposal.action == "apply" and proposal.category_id is not None:
                 self._apply_claim_category(session, claim, proposal)
                 applied = proposal.category_id
+                if proposal.confidence >= Decimal("0.9"):
+                    refresh_merchant_memory(session, subject.counterparty)
         if logged is not None:
             _log_attempt(None, logged[1], claim_id=logged[0])
         if retry is not None:
             raise retry
         return applied
+
+    def _apply_merchant_memory(
+        self,
+        session: Session,
+        snapshot: TransactionSnapshot,
+    ) -> TransactionSnapshot | None:
+        if is_memory_excluded(session, snapshot.id):
+            return None
+        rule = rule_for_counterparty(session, snapshot.counterparty)
+        if rule is None:
+            return None
+        try:
+            return self._actions.categorize_in_session(
+                session,
+                OwnerCategorizationCommand(
+                    transaction_id=snapshot.id,
+                    expected_version=snapshot.version,
+                    category_id=rule.category_id,
+                    actor_id=self._system_actor_id(session),
+                    reason=MEMORY_REASON,
+                ),
+            )
+        except OwnerTransactionActionError as error:
+            raise CategorizerError(str(error)) from error
 
     def _propose_for_subject(self, session: Session, subject: JevSubject) -> Proposal:
         if self._proposer is None:
@@ -630,6 +694,7 @@ class JevCategorizer:
                     name=category.name,
                     parent_id=category.parent_id,
                     parent_name=parent.name if parent is not None else None,
+                    description=category.description,
                 )
             )
         return tuple(loaded)

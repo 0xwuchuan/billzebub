@@ -16,7 +16,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 from uuid import UUID
 
 from typesafe_sdk import Choice, TypeSafeClient, TypeSafeError
@@ -63,6 +63,18 @@ class JevConfigurationError(ValueError):
 
 
 @dataclass(frozen=True, slots=True)
+class SimilarConfirmed:
+    """One confirmed spend Jev may imitate. No ids, accounts, or raw descriptions."""
+
+    counterparty: str
+    normalized_counterparty: str
+    amount: str
+    currency: str
+    kind: str
+    category: str
+
+
+@dataclass(frozen=True, slots=True)
 class JevSubject:
     """Agent-safe Transaction fields sent to Jev. Never include ids or artifacts."""
 
@@ -71,6 +83,7 @@ class JevSubject:
     currency: str
     effective_date: str
     kind: str
+    similar_confirmed_transactions: tuple[SimilarConfirmed, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,6 +92,7 @@ class JevCategory:
     name: str
     parent_id: UUID | None = None
     parent_name: str | None = None
+    description: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -176,9 +190,13 @@ class JevProposer:
         )
 
 
-def jev_state(subject: JevSubject) -> dict[str, str]:
-    """Agent-safe fields only; never include ids, artifacts, or raw descriptions."""
-    return {
+def jev_state(subject: JevSubject) -> dict[str, Any]:
+    """Agent-safe fields only; never include ids, artifacts, or raw descriptions.
+
+    Similar confirmed spends sit on the state object the way the TypeSafe
+    basic_memory cookbook puts earlier examples under one named key.
+    """
+    state: dict[str, Any] = {
         "counterparty": subject.counterparty,
         "normalized_counterparty": normalize_counterparty(subject.counterparty),
         "amount": subject.amount,
@@ -186,19 +204,42 @@ def jev_state(subject: JevSubject) -> dict[str, str]:
         "effective_date": subject.effective_date,
         "kind": subject.kind,
     }
+    similar = subject.similar_confirmed_transactions[:10]
+    if similar:
+        state["similar_confirmed_transactions"] = [
+            {
+                "counterparty": item.counterparty,
+                "normalized_counterparty": item.normalized_counterparty,
+                "amount": item.amount,
+                "currency": item.currency,
+                "kind": item.kind,
+                "category": item.category,
+            }
+            for item in similar
+        ]
+    return state
 
 
 def choice_criteria(categories: Sequence[JevCategory]) -> dict[str, str]:
     """One option per category. Colliding leaf names use ``Parent > Child``.
 
+    The Choice key is the label Jev returns. The value is the Category
+    description when one is stored, otherwise the label itself.
+
     A repeated leaf used to be removed from matching and overwritten in this
     dict, so Jev could return that name at high confidence and the worker
     still skipped it.
     """
-    criteria = {label: label for label in _unique_option_labels(categories)}
+    labeled = _unique_option_labels(categories)
+    criteria = {label: _choice_description(category, label) for label, category in labeled.items()}
     if len(criteria) > MAX_CHOICE_OPTIONS:
         raise JevError("category catalog exceeds Jev Choice limit")
     return criteria
+
+
+def _choice_description(category: JevCategory, label: str) -> str:
+    description = " ".join((category.description or "").split())
+    return description or label
 
 
 def jev_questions(categories: Sequence[JevCategory]) -> dict[str, Choice]:

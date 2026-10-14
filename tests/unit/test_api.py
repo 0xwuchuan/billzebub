@@ -19,8 +19,20 @@ class FakeCategories:
     def list(self) -> tuple[CategoryRecord, ...]:
         return tuple(self.records)
 
-    def create(self, name: str, *, parent_id: UUID | None = None) -> CategoryRecord:
-        record = CategoryRecord(id=uuid4(), name=name, parent_id=parent_id, active=True)
+    def create(
+        self,
+        name: str,
+        *,
+        parent_id: UUID | None = None,
+        description: str | None = None,
+    ) -> CategoryRecord:
+        record = CategoryRecord(
+            id=uuid4(),
+            name=name,
+            parent_id=parent_id,
+            active=True,
+            description=description,
+        )
         self.records.append(record)
         return record
 

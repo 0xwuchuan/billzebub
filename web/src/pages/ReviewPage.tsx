@@ -2,6 +2,15 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 
 import type { Category, ImportRecord, Review, Transaction } from "../api";
 import { CategoryPicker } from "../components/CategoryPicker";
+import {
+  MerchantGroupList,
+  type MerchantApplyRequest,
+  type MerchantUndo,
+} from "../components/MerchantGroupList";
+import {
+  merchantGroupsFromReviews,
+  type MerchantGroupView,
+} from "../lib/merchantGroups";
 import { MoneyText } from "../components/MoneyText";
 import { UserLabel } from "../components/UserLabel";
 import { Badge } from "../components/ui/Badge";
@@ -55,6 +64,12 @@ export function ReviewPage({
   onOpenTransaction,
   onOpenImport,
   onOpenSettings,
+  merchantGroups,
+  suppressedReviewIds = [],
+  merchantUndo = null,
+  merchantSaving = false,
+  onApplyMerchantGroup,
+  onUndoMerchantGroup,
 }: {
   reviews: Review[];
   transactions: Transaction[];
@@ -73,13 +88,24 @@ export function ReviewPage({
   onOpenTransaction: (id: string) => void;
   onOpenImport: (id: string) => void;
   onOpenSettings: () => void;
+  merchantGroups?: MerchantGroupView[];
+  suppressedReviewIds?: string[];
+  merchantUndo?: MerchantUndo | null;
+  merchantSaving?: boolean;
+  onApplyMerchantGroup?: (request: MerchantApplyRequest) => void;
+  onUndoMerchantGroup?: () => void;
 }) {
   const fresh = useEntrance("review");
   const desk = useDeskMedia();
   const [hiddenIds, setHiddenIds] = useState<string[]>([]);
-  const hidden = new Set(hiddenIds);
+  const hidden = new Set([...hiddenIds, ...suppressedReviewIds]);
+  const groups =
+    merchantGroups ?? merchantGroupsFromReviews(reviews, transactions);
+  const groupedReviewIds = new Set(
+    groups.flatMap((group) => group.members.map((member) => member.reviewId)),
+  );
   const items = filterReviews(reviews, filter).filter(
-    (item) => !hidden.has(item.id),
+    (item) => !hidden.has(item.id) && !groupedReviewIds.has(item.id),
   );
   const selected =
     items.find((item) => item.id === selectedId) ?? items[0] ?? null;
@@ -312,6 +338,18 @@ export function ReviewPage({
           </button>
         ))}
       </div>
+      <MerchantGroupList
+        groups={groups}
+        categories={categories}
+        undo={merchantUndo}
+        saving={merchantSaving}
+        onApply={(request) => {
+          onApplyMerchantGroup?.(request);
+        }}
+        onUndo={() => {
+          onUndoMerchantGroup?.();
+        }}
+      />
       <div className={`desk review-desk${desk ? "" : " is-card-flow"}`}>
         {desk ? (
           <section
