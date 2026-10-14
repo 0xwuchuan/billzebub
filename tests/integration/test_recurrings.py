@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 from uuid import UUID
@@ -494,7 +494,8 @@ def test_detect_backfill_does_not_steal_a_linked_transaction(database: Database)
     assert rows[spotify.id].next_expected_date == date(2026, 9, 15)
     assert _occurrence_series_id(database, stolen_id) == other.id
     assert rows[other.id].linked_count == 1
-    assert rows[other.id].next_expected_date == claimed.next_expected_date
+    assert rows[other.id].next_expected_date == date(2026, 8, 15)
+    assert rows[other.id].missed is True
     for charge_id in charge_ids:
         if charge_id == stolen_id:
             continue
@@ -577,4 +578,74 @@ def test_detect_recomputes_stale_next_expected_and_clears_missed_from_latest_lin
     assert unchanged.next_expected_date == expected_next
     assert unchanged.missed is False
     assert unchanged.last_matched_tx_id == charge_ids[-1]
+    assert _series_updated_at(database, created.id) == stamped
+
+
+@pytest.mark.integration
+def test_detect_fixes_already_linked_spotify_schedule_with_nothing_new_to_match(
+    database: Database,
+) -> None:
+    """Nine Spotify charges are already linked and detect has nothing new to match.
+
+    Production series 01a113e0 kept next_expected_date at 2026-09-15 and
+    missed true after a detect that returned proposed=0 updated=0 matched=0.
+    The latest charge is 2026-08-15, so one cadence later is 2026-09-15, and
+    on 2026-10-14 that slot is overdue while October's match window is open.
+    One detect must move the next date to 2026-10-15 and clear missed.
+    """
+    as_of = date(2026, 10, 14)
+    recurrings = Recurrings(database)
+    with database.transaction() as session:
+        account_id = _account(session)
+        charge_ids = [
+            _spend(session, account_id, label, "-20.98", when)
+            for label, when in zip(_SPOTIFY_LABELS, _SPOTIFY_DATES, strict=True)
+        ]
+    created = recurrings.create_series(
+        RecurringCreate(
+            counterparty="Spotify Stockholm SE",
+            amount=Decimal("20.98"),
+            currency="SGD",
+            cadence="monthly",
+            next_expected_date=date(2026, 9, 15),
+        )
+    )
+    matched_at = datetime.now(UTC)
+    with database.transaction() as session:
+        series = session.get(RecurringSeries, created.id)
+        assert series is not None
+        series.missed = True
+        series.last_matched_tx_id = charge_ids[-1]
+        session.add_all(
+            RecurringOccurrence(
+                id=uuid7(),
+                series_id=created.id,
+                transaction_id=charge_id,
+                matched_at=matched_at,
+                match_kind="auto",
+            )
+            for charge_id in charge_ids
+        )
+
+    detection = recurrings.detect(as_of=as_of)
+    linked = recurrings.list_series()[0]
+
+    assert detection == RecurringDetection(proposed=0, updated=0, matched=0)
+    assert linked.id == created.id
+    assert linked.status == "active"
+    assert linked.source == "manual"
+    assert linked.linked_count == 9
+    assert linked.last_matched_tx_id == charge_ids[-1]
+    assert linked.next_expected_date == date(2026, 10, 15)
+    assert linked.missed is False
+
+    stamped = _series_updated_at(database, created.id)
+    repeat = recurrings.detect(as_of=as_of)
+    unchanged = recurrings.list_series()[0]
+
+    assert repeat == RecurringDetection(proposed=0, updated=0, matched=0)
+    assert unchanged.next_expected_date == date(2026, 10, 15)
+    assert unchanged.missed is False
+    assert unchanged.last_matched_tx_id == charge_ids[-1]
+    assert unchanged.linked_count == 9
     assert _series_updated_at(database, created.id) == stamped
