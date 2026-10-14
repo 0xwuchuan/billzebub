@@ -63,6 +63,19 @@ _PAYMENT_DUE_DATE_PATTERN = re.compile(
     rf"Payment\s+Due\s+Date\s*:?\s*(?P<due>{_DATE_TEXT})",
     re.IGNORECASE,
 )
+_BLANK_DUE_TOKEN = r"-{2,}|\u2014|\u2013|\u2015"
+_BLANK_DUE_PATTERN = re.compile(
+    rf"Payment\s+Due\s+Date\s*:?\s*(?P<blank>{_BLANK_DUE_TOKEN})\s*$",
+    re.IGNORECASE,
+)
+_BLANK_ONLY_PATTERN = re.compile(rf"^\s*(?P<blank>{_BLANK_DUE_TOKEN})\s*$")
+_GRAND_TOTAL_PATTERN = re.compile(
+    rf"^\s*GRAND\s+TOTAL\s*(?:\|+|:)?\s*(?:S\$|\$)?\s*{_AMOUNT}\s*$",
+    re.IGNORECASE,
+)
+_TRANSACTION_DAY_PATTERN = re.compile(r"^\s*(?P<day>\d{1,2})\s+(?P<month>[A-Za-z]{3})\b")
+_YEAR_PATTERN = re.compile(r"\b(20\d{2})\b")
+_CYCLE_SPAN_DAYS = 35
 _PAYMENT_DUE_LABEL_PATTERN = re.compile(r"Payment\s+Due\s+Date\s*:?\s*$", re.IGNORECASE)
 _DATE_ONLY_PATTERN = re.compile(rf"^\s*(?P<due>{_DATE_TEXT})\s*$", re.IGNORECASE)
 _STATEMENT_DATE_PATTERN = re.compile(
@@ -116,6 +129,12 @@ _MONTH_WORDS: tuple[tuple[str, int], ...] = (
     ("dec", 12),
 )
 _MONTH_NUMBERS = dict(_MONTH_WORDS)
+_MONTH_YEAR_PATTERN = re.compile(
+    r"(?<![\d])(?<![\d]\s)\b(?P<month>"
+    + "|".join(sorted((word for word, _month in _MONTH_WORDS), key=len, reverse=True))
+    + r")\s+(?P<year>20\d{2})\b",
+    re.IGNORECASE,
+)
 _FILENAME_STATEMENT_MONTH = re.compile(
     r"(?:^|_)(?P<month>"
     + "|".join(sorted((word for word, _month in _MONTH_WORDS), key=len, reverse=True))
@@ -139,7 +158,7 @@ def citi_credit_card_adapter(*, bank: type[Any] = _CitiCreditBank) -> MonopolySt
     """Build the versioned Citi adapter used by the worker registry."""
     return MonopolyStatementAdapter(
         key="citi-credit-card",
-        adapter_version="citi-credit-3",
+        adapter_version="citi-credit-4",
         institution="citi",
         definition=MonopolyAdapterDefinition(
             bank=bank,
@@ -201,9 +220,10 @@ def _statement_date(statement: Any, lines: list[str]) -> date:
             raise
         resolved = _fallback_statement_date(statement, lines)
         if resolved is None:
-            raise StatementAdapterError(
-                "statement_metadata_missing",
-                {"field": "statement_date"},
+            raise _metadata_failure(
+                "statement_date",
+                "missing",
+                _blank_due_tokens(lines),
             ) from error
         # Prime Monopoly's cached date so later reads use the same cycle end.
         statement.__dict__["statement_date"] = datetime(
@@ -214,7 +234,7 @@ def _statement_date(statement: Any, lines: list[str]) -> date:
         )
         return resolved
     if not isinstance(raw_statement_date, datetime):
-        raise StatementAdapterError("statement_metadata_missing", {"field": "statement_date"})
+        raise _metadata_failure("statement_date", "missing", [])
     return raw_statement_date.date()
 
 
@@ -225,35 +245,40 @@ def _fallback_statement_date(statement: Any, lines: list[str]) -> date | None:
     two-column header whose dates sit on the following line. A statement-period
     range is next: dateparser rejects ``12 Feb 2026 - 11 Mar 2026``, which is
     the March PremierMiles shape, and the range end is the cycle end.
-    Payment Due Date remains the anchor when those are absent. A filename month
-    and year is last, using the last day of that month. ``eStatement_July.pdf``
-    has no year, so it cannot stand alone.
+    Payment Due Date remains the anchor when those are absent. ``---`` is a
+    blank due date, not a parsed date and not an ambiguous candidate. A filename
+    month and year uses the last day of that month. Transaction dates are used
+    only when one printed year places every transaction inside a 35-day cycle.
+    A zero-total statement with no transactions then uses one printed
+    ``Month YYYY`` as that month's last day.
     """
-    statement_dates = _labeled_statement_dates(lines)
-    if len(statement_dates) > 1:
-        raise StatementAdapterError(
-            "statement_metadata_ambiguous",
-            {"field": "statement_date", "match_count": len(statement_dates)},
+    for found in (
+        _labeled_statement_dates(lines),
+        _statement_period_ends(lines),
+        _payment_due_dates(lines),
+    ):
+        resolved = _one_date(found)
+        if resolved is not None:
+            return resolved
+    filename_date = _filename_statement_date(getattr(statement, "file_path", None))
+    if filename_date is not None:
+        return filename_date
+    from_transactions = _statement_date_from_transactions(lines)
+    if from_transactions is not None:
+        return from_transactions
+    return _zero_balance_statement_date(lines)
+
+
+def _one_date(found: tuple[date, ...]) -> date | None:
+    if len(found) > 1:
+        raise _metadata_failure(
+            "statement_date",
+            "ambiguous",
+            [item.isoformat() for item in found],
         )
-    if len(statement_dates) == 1:
-        return statement_dates[0]
-    period_ends = _statement_period_ends(lines)
-    if len(period_ends) > 1:
-        raise StatementAdapterError(
-            "statement_metadata_ambiguous",
-            {"field": "statement_date", "match_count": len(period_ends)},
-        )
-    if len(period_ends) == 1:
-        return period_ends[0]
-    due_dates = _payment_due_dates(lines)
-    if len(due_dates) > 1:
-        raise StatementAdapterError(
-            "statement_metadata_ambiguous",
-            {"field": "statement_date", "match_count": len(due_dates)},
-        )
-    if len(due_dates) == 1:
-        return due_dates[0]
-    return _filename_statement_date(getattr(statement, "file_path", None))
+    if len(found) == 1:
+        return found[0]
+    return None
 
 
 def _labeled_statement_dates(lines: list[str]) -> tuple[date, ...]:
@@ -482,12 +507,18 @@ def _account_balance(lines: list[str], account_number: str) -> str:
                 if (match := _MASKED_ACCOUNT_BALANCE_PATTERN.search(line)) is not None
                 and match.group("last4") == account_number
             ]
-    if len(balances) != 1:
-        raise StatementAdapterError(
-            "statement_metadata_ambiguous",
-            {"field": "closing_balance", "match_count": len(balances)},
-        )
-    return balances[0]
+    distinct = _distinct(balances)
+    if len(distinct) > 1:
+        raise _metadata_failure("closing_balance", "ambiguous", distinct)
+    if len(distinct) == 1:
+        return distinct[0]
+    # PremierMiles prints GRAND TOTAL and never a card-number amount line.
+    totals = _grand_total_amounts(lines)
+    if len(totals) > 1:
+        raise _metadata_failure("closing_balance", "ambiguous", totals)
+    if len(totals) == 1:
+        return totals[0]
+    raise _metadata_failure("closing_balance", "missing", [])
 
 
 def _balance_amounts(
@@ -503,15 +534,185 @@ def _balance_amounts(
 
 def _single_balance(lines: list[str], pattern: re.Pattern[str] | None, field: str) -> str:
     if pattern is None:
-        raise StatementAdapterError("statement_metadata_missing", {"field": field})
-    matches = [match for line in lines if (match := pattern.search(line))]
-    if len(matches) != 1:
-        raise StatementAdapterError(
-            "statement_metadata_ambiguous",
-            {"field": field, "match_count": len(matches)},
+        raise _metadata_failure(field, "missing", [])
+    amounts = [
+        _balance_effect(match.group("amount"), match.groupdict().get("polarity"))
+        for line in lines
+        if (match := pattern.search(line)) is not None
+    ]
+    distinct = _distinct(amounts)
+    if len(distinct) > 1:
+        raise _metadata_failure(field, "ambiguous", distinct)
+    if len(distinct) == 1:
+        return distinct[0]
+    raise _metadata_failure(field, "missing", [])
+
+
+def _grand_total_amounts(lines: list[str]) -> list[str]:
+    return _distinct(
+        [
+            _balance_effect(match.group("amount"), match.groupdict().get("polarity"))
+            for line in lines
+            if (match := _GRAND_TOTAL_PATTERN.search(line)) is not None
+        ]
+    )
+
+
+def _distinct(values: list[str]) -> list[str]:
+    return list(dict.fromkeys(values))
+
+
+def _metadata_failure(field: str, problem: str, candidates: list[str]) -> StatementAdapterError:
+    return StatementAdapterError(
+        f"statement_metadata_{problem}",
+        {
+            "fields": [
+                {
+                    "field": field,
+                    "problem": problem,
+                    "candidates": [_mask_candidate(candidate) for candidate in candidates],
+                }
+            ]
+        },
+    )
+
+
+def _mask_candidate(text: str) -> str:
+    collapsed = " ".join(text.split())
+
+    def last4(digits: str) -> str:
+        return f"••••{digits[-4:]}"
+
+    collapsed = _DETAIL_ACCOUNT_PATTERN.sub(
+        lambda match: last4(re.sub(r"[\s-]", "", match.group("account"))),
+        collapsed,
+    )
+    collapsed = _MASKED_CARD_PATTERN.sub(
+        lambda match: last4(match.group("last4")),
+        collapsed,
+    )
+    collapsed = re.sub(r"\d{13,}", lambda match: last4(match.group(0)), collapsed)
+    return collapsed[:80]
+
+
+def _blank_due_tokens(lines: list[str]) -> list[str]:
+    found: list[str] = []
+    for index, line in enumerate(lines):
+        match = _BLANK_DUE_PATTERN.search(line)
+        token = match.group("blank") if match is not None else None
+        if (
+            token is None
+            and _PAYMENT_DUE_LABEL_PATTERN.search(line) is not None
+            and index + 1 < len(lines)
+        ):
+            blank = _BLANK_ONLY_PATTERN.search(lines[index + 1])
+            token = blank.group("blank") if blank is not None else None
+        if token is not None and token not in found:
+            found.append(token)
+    return found
+
+
+def _statement_date_from_transactions(lines: list[str]) -> date | None:
+    """Latest transaction date when every posted line fits one cycle.
+
+    Transaction lines are ``DD MMM`` without a year. The year is the single
+    ``20xx`` printed anywhere in the document. A span wider than 35 days shifts
+    November and December back one year for a December/January cycle. A wider
+    span after that shift is not one cycle, so it is not a statement date.
+    """
+    day_months = _transaction_day_months(lines)
+    if not day_months:
+        return None
+    years = {int(year) for line in lines for year in _YEAR_PATTERN.findall(line)}
+    if len(years) != 1:
+        return None
+    year = next(iter(years))
+    placed = _placed_dates(year, day_months, shift_late_months=False)
+    if placed is None:
+        return None
+    if _span_days(placed) > _CYCLE_SPAN_DAYS:
+        placed = _placed_dates(year, day_months, shift_late_months=True)
+        if placed is None or _span_days(placed) > _CYCLE_SPAN_DAYS:
+            return None
+    return max(placed)
+
+
+def _transaction_day_months(lines: list[str]) -> list[tuple[int, int]] | None:
+    found: list[tuple[int, int]] = []
+    for line in lines:
+        if _CANDIDATE_LINE_PATTERN.search(line) is None:
+            continue
+        match = _TRANSACTION_DAY_PATTERN.search(line)
+        if match is None:
+            return None
+        month = _MONTH_NUMBERS.get(match.group("month").casefold())
+        if month is None:
+            return None
+        found.append((int(match.group("day")), month))
+    return found
+
+
+def _placed_dates(
+    year: int,
+    day_months: list[tuple[int, int]],
+    *,
+    shift_late_months: bool,
+) -> list[date] | None:
+    placed: list[date] = []
+    for day, month in day_months:
+        used_year = year - 1 if shift_late_months and month >= 11 else year
+        parsed = _calendar_date(used_year, month, day)
+        if parsed is None:
+            return None
+        placed.append(parsed)
+    return placed
+
+
+def _span_days(dates: list[date]) -> int:
+    return (max(dates) - min(dates)).days
+
+
+def _zero_balance_statement_date(lines: list[str]) -> date | None:
+    """Month-end for an empty zero-total statement with a blank due date.
+
+    This runs only when no transaction date can be read. Inventing a day would
+    forge ``citi:{date}:{digest}``. One printed ``Month YYYY`` that is not
+    itself a day-month date supplies the cycle end. Several of those months
+    conflict. Anything else stays missing.
+    """
+    day_months = _transaction_day_months(lines)
+    if day_months is None or day_months:
+        return None
+    if not _blank_due_tokens(lines):
+        return None
+    if _grand_total_amounts(lines) != ["0.00"]:
+        return None
+    month_ends = _printed_month_ends(lines)
+    if len(month_ends) > 1:
+        raise _metadata_failure(
+            "statement_date",
+            "ambiguous",
+            [item.isoformat() for item in month_ends],
         )
-    fields = matches[0].groupdict()
-    return _balance_effect(fields["amount"], fields.get("polarity"))
+    if len(month_ends) == 1:
+        return month_ends[0]
+    return None
+
+
+def _printed_month_ends(lines: list[str]) -> list[date]:
+    found: list[date] = []
+    for line in lines:
+        if _CANDIDATE_LINE_PATTERN.search(line) is not None:
+            continue
+        for match in _MONTH_YEAR_PATTERN.finditer(line):
+            month = _MONTH_NUMBERS.get(match.group("month").casefold())
+            if month is None:
+                continue
+            year = int(match.group("year"))
+            month_end = date(year, month, calendar.monthrange(year, month)[1])
+            if month_end not in found:
+                found.append(month_end)
+    return found
 
 
 def _balance_effect(amount_text: str, polarity: str | None) -> str:
