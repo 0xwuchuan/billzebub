@@ -6,18 +6,19 @@ The **NAS worker** is the production auto-categorizer. After statement confirmat
 
 ## Cascade
 
-1. **Owner** — explicit categorization in the owner workspace. Does not teach an in-app map.
-2. **Worker Jev** — inline after Reconciliation confirmations and after a new claim-only provisional Apple Wallet Real-time Claim, then a daily NAS catch-up for leftovers (including those Claims and Wallet-originated Transactions).
+1. **Owner** — explicit categorization in the owner workspace. That decision is evidence for merchant memory.
+2. **Merchant memory** — before Jev, an unambiguous `merchant_category_memory` row for `normalize_counterparty(counterparty)` is applied with reason `merchant_memory` and Jev is not called. One owner Category wins over any Jev seed. Several owner Categories, or several Jev Categories with no owner decision, leave no row.
+3. **Worker Jev** — inline after Reconciliation confirmations and after a new claim-only provisional Apple Wallet Real-time Claim, then a daily NAS catch-up for leftovers (including those Claims and Wallet-originated Transactions).
 
-There is no in-app Counterparty map, keyword scorer, Codex runner, or forge webhook.
+Jev seeds memory only from applies whose confidence is at least 0.9 and whose Category is still the current one. A later owner correction replaces that seed. There is no keyword scorer, Codex runner, or forge webhook.
 
 ## What the worker does
 
 1. After `reconcile_financial_account` commits confirmations, enqueue `categorize_transaction` for each new Transaction id (statement-only or matched Real-time Claim).
 2. Load the Transaction and active catalog Categories. Skip Transfers, Income, Refunds, Reimbursements, and rows that already have a non-`Uncategorized` split.
 3. POST `https://api.typesafe.ai/v1/systemone` via `typesafe-sdk` with:
-   - `state`: Counterparty, normalized Counterparty, amount, currency, effective date, Transaction kind (agent-safe fields only). `normalized_counterparty` is `normalize_counterparty(counterparty)` and may be empty.
-   - `questions.category`: Choice over active catalog Categories (Uncategorized is excluded; there is no skip / `uncategorized` option). A top-level Category is offered under its name. A child whose parent is in the catalog is offered as `Parent > Child`; grandchildren are omitted. When the parent row is absent, a unique leaf stays the leaf name and colliding leaves use `Parent > Child`.
+   - `state`: Counterparty, normalized Counterparty, amount, currency, effective date, Transaction kind (agent-safe fields only). `normalized_counterparty` is `normalize_counterparty(counterparty)` and may be empty. When confirmed spends exist, `similar_confirmed_transactions` is a list of up to 8 agent-safe examples (counterparty, normalized counterparty, amount, currency, kind, category). Same normalized merchant ranks first, then token overlap, kind, and amount. No ids.
+   - `questions.category`: Choice over active catalog Categories (Uncategorized is excluded; there is no skip / `uncategorized` option). A top-level Category is offered under its name. A child whose parent is in the catalog is offered as `Parent > Child`; grandchildren are omitted. When the parent row is absent, a unique leaf stays the leaf name and colliding leaves use `Parent > Child`. The Choice criteria value is `category.description` when that text is set, otherwise the option label.
 4. Apply a proposal only when fail-closed checks all pass, through `OwnerTransactionActions` with reason `jev_categorization`. Anything else leaves the Review in place.
 5. After every Jev propose (apply or skip, including TypeSafe failures), append a `jev_categorization_attempt` row and emit an info log line. Catch-up uses this same propose/apply path for leftover Transactions (`categorize_transaction`) and claim-only provisionals (`categorize_claim`).
 
@@ -59,6 +60,31 @@ billzebub jev requeue-failed --apply
 ```
 
 The command prints `before failed=… active=…` and `after failed=… active=… requeued=…`. `failed` counts failed categorize jobs with `last_error_code=jev_unavailable`. `active` counts how many of those subjects already have a queued or running job.
+
+Rebuild merchant memory from current Transactions (and claim-only Jev applies). Dry-run unless `--apply` is passed:
+
+```bash
+billzebub jev backfill-memory
+billzebub jev backfill-memory --apply
+```
+
+Dry-run prints `before rules=…`, `would_write=… would_clear=…`, and `after rules=…` equal to the before count. `--apply` prints `written` and `cleared`.
+
+Compare stored Jev choices with the Category now on each Transaction. Read-only. Does not change the 0.5 floor. Coverage is the share of attempts with a confidence and a final Category whose confidence is at least the threshold and that returned a Choice. Precision is the share of those Choices that name the final Category.
+
+```bash
+billzebub jev eval-threshold
+```
+
+Pending `categorization_needed` Reviews are also grouped by normalized merchant:
+
+- `GET /api/v1/reviews/merchant-groups`
+- `POST /api/v1/reviews/merchant-groups/apply` with `If-Match` set to the group `etag`, body `{normalized_key, category_id, exclude_transaction_ids, remember}`. `remember` defaults to true. When it is false the included charges are categorized and the future rule is not kept.
+- `POST /api/v1/merchant-memory/forget` with `{normalized_key}` removes one rule.
+- `POST /api/v1/reviews/merchant-groups/undo` with `If-Match` set to the apply response `undo_etag`
+- `GET /api/v1/merchant-memory`
+
+Apply categorizes the included pending Transactions as the owner (`owner_categorization`), writes exclusions for the ones left out, and refreshes the future rule when the merchant is unambiguous. Both mutations require `X-Billzebub-CSRF: bzb-spa`.
 
 Equivalent cron expression (for documentation only; do not put this on forge):
 

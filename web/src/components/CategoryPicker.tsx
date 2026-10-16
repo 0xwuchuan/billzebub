@@ -13,6 +13,7 @@ export function CategoryPicker({
   listId,
   searchRef,
   sheet,
+  labelledBy,
   onOpen,
   onDismiss,
   onQuery,
@@ -28,6 +29,7 @@ export function CategoryPicker({
   listId: string;
   searchRef: RefObject<HTMLInputElement | null>;
   sheet: boolean;
+  labelledBy?: string;
   onOpen: () => void;
   onDismiss: () => void;
   onQuery: (query: string) => void;
@@ -82,6 +84,7 @@ export function CategoryPicker({
             data-cat-search="true"
             aria-expanded="true"
             aria-controls={listId}
+            aria-labelledby={labelledBy}
             aria-autocomplete="list"
             aria-activedescendant={
               active === null ? undefined : optionId(active.key)
@@ -99,6 +102,7 @@ export function CategoryPicker({
             type="button"
             aria-expanded="false"
             aria-controls={listId}
+            aria-labelledby={labelledBy}
             onClick={onOpen}
           >
             {draft === null ? (

@@ -16,13 +16,13 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 from uuid import UUID
 
 from typesafe_sdk import Choice, TypeSafeClient, TypeSafeError
 
 from billzebub.agent_mcp import McpRequestError, assert_agent_safe
-from billzebub.jev_hierarchy import catalog_choice_criteria, resolve_catalog_choice
+from billzebub.jev_hierarchy import catalog_choices, resolve_catalog_choice
 from billzebub.recurrings import normalize_counterparty
 
 DEFAULT_MODEL = "jev-1.13.0"
@@ -64,6 +64,18 @@ class JevConfigurationError(ValueError):
 
 
 @dataclass(frozen=True, slots=True)
+class SimilarConfirmed:
+    """One confirmed spend Jev may imitate. No ids, accounts, or raw descriptions."""
+
+    counterparty: str
+    normalized_counterparty: str
+    amount: str
+    currency: str
+    kind: str
+    category: str
+
+
+@dataclass(frozen=True, slots=True)
 class JevSubject:
     """Agent-safe Transaction fields sent to Jev. Never include ids or artifacts."""
 
@@ -72,6 +84,7 @@ class JevSubject:
     currency: str
     effective_date: str
     kind: str
+    similar_confirmed_transactions: tuple[SimilarConfirmed, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +93,7 @@ class JevCategory:
     name: str
     parent_id: UUID | None = None
     parent_name: str | None = None
+    description: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -178,9 +192,13 @@ class JevProposer:
         )
 
 
-def jev_state(subject: JevSubject) -> dict[str, str]:
-    """Agent-safe fields only; never include ids, artifacts, or raw descriptions."""
-    return {
+def jev_state(subject: JevSubject) -> dict[str, Any]:
+    """Agent-safe fields only; never include ids, artifacts, or raw descriptions.
+
+    Similar confirmed spends sit on the state object the way the TypeSafe
+    basic_memory cookbook puts earlier examples under one named key.
+    """
+    state: dict[str, Any] = {
         "counterparty": subject.counterparty,
         "normalized_counterparty": normalize_counterparty(subject.counterparty),
         "amount": subject.amount,
@@ -188,25 +206,50 @@ def jev_state(subject: JevSubject) -> dict[str, str]:
         "effective_date": subject.effective_date,
         "kind": subject.kind,
     }
+    similar = subject.similar_confirmed_transactions[:10]
+    if similar:
+        state["similar_confirmed_transactions"] = [
+            {
+                "counterparty": item.counterparty,
+                "normalized_counterparty": item.normalized_counterparty,
+                "amount": item.amount,
+                "currency": item.currency,
+                "kind": item.kind,
+                "category": item.category,
+            }
+            for item in similar
+        ]
+    return state
 
 
 def choice_criteria(categories: Sequence[JevCategory]) -> dict[str, str]:
-    """One option per Category, with hierarchy paths and v1 collision labels.
+    """One option per Category. The key is the label Jev returns.
 
     A child whose parent row is in the catalog is offered as ``Parent > Child``.
     When the catalog only carries ``parent_name`` (the parent row is absent),
     a unique leaf stays the leaf name and colliding leaves use ``Parent > Child``.
     Duplicate labels are omitted. Grandchildren and Uncategorized are not offered.
+    The value is the Category description when one is stored, otherwise the label.
     """
-    criteria = dict(catalog_choice_criteria(categories))
     by_id = {category.id: category for category in categories}
+    criteria: dict[str, str] = {}
+    for choice in catalog_choices(categories):
+        category = by_id.get(choice.category_id)
+        criteria[choice.label] = (
+            _choice_description(category, choice.label) if category is not None else choice.label
+        )
     for label, category in _unique_option_labels(categories).items():
         if category.parent_id is not None and category.parent_id in by_id:
             continue
-        criteria.setdefault(label, label)
+        criteria.setdefault(label, _choice_description(category, label))
     if len(criteria) > MAX_CHOICE_OPTIONS:
         raise JevError("category catalog exceeds Jev Choice limit")
     return criteria
+
+
+def _choice_description(category: JevCategory, label: str) -> str:
+    description = " ".join((category.description or "").split())
+    return description or label
 
 
 def jev_questions(categories: Sequence[JevCategory]) -> dict[str, Choice]:

@@ -25,6 +25,7 @@ from billzebub.jev import (
     JevError,
     JevProposer,
     JevSubject,
+    SimilarConfirmed,
     choice_criteria,
     jev_questions,
     jev_state,
@@ -377,6 +378,40 @@ def test_missing_key_can_fail_open_for_worker() -> None:
 
 def test_endpoint_is_typesafe_system_one() -> None:
     assert TYPESAFE_ENDPOINT == "https://api.typesafe.ai/v1/systemone"
+
+
+def test_choice_criteria_uses_category_descriptions() -> None:
+    described = JevCategory(
+        id=FOOD_ID,
+        name="Synthetic Food",
+        description="  Meals   eaten out  ",
+    )
+    blank = JevCategory(id=uuid4(), name="Synthetic Transit", description="   ")
+    criteria = choice_criteria((described, blank))
+    assert criteria["Synthetic Food"] == "Meals eaten out"
+    assert criteria["Synthetic Transit"] == "Synthetic Transit"
+
+
+def test_similar_confirmed_transactions_stay_agent_safe_and_capped() -> None:
+    examples = tuple(
+        SimilarConfirmed(
+            counterparty=f"Synthetic Cafe {index}",
+            normalized_counterparty="synthetic cafe",
+            amount="-4.00",
+            currency="SGD",
+            kind="expense",
+            category="Synthetic Food",
+        )
+        for index in range(12)
+    )
+    state = jev_state(_subject(similar_confirmed_transactions=examples))
+    similar = state["similar_confirmed_transactions"]
+    assert isinstance(similar, list)
+    assert len(similar) == 10
+    assert similar[0]["category"] == "Synthetic Food"
+    assert "transaction_id" not in similar[0]
+    assert_agent_safe(state)
+    assert DEFAULT_MIN_CONFIDENCE == Decimal("0.5")
 
 
 def test_safe_error_message_redacts_keys() -> None:

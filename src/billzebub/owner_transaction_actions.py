@@ -16,6 +16,10 @@ from billzebub.financial_history import (
     TransactionKind,
     TransactionSnapshot,
 )
+from billzebub.merchant_memory import (
+    clear_exclusion,
+    refresh_merchant_memory,
+)
 from billzebub.money import Money
 from billzebub.persistence.models import Category
 
@@ -80,6 +84,9 @@ class OwnerTransactionActions:
             )
         except FinancialHistoryError as error:
             raise OwnerTransactionActionError(str(error)) from error
+        if command.reason == "owner_categorization":
+            clear_exclusion(session, command.transaction_id)
+        refresh_merchant_memory(session, updated.counterparty)
         return updated
 
     @staticmethod

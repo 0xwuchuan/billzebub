@@ -35,6 +35,7 @@ class CategoryRecord:
     parent_id: UUID | None
     active: bool
     version: int = 1
+    description: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,7 +53,13 @@ class CategoryCatalog:
     def __init__(self, database: Database) -> None:
         self._database = database
 
-    def create(self, name: str, *, parent_id: UUID | None = None) -> CategoryRecord:
+    def create(
+        self,
+        name: str,
+        *,
+        parent_id: UUID | None = None,
+        description: str | None = None,
+    ) -> CategoryRecord:
         normalized_name = _normalize_name(name)
         try:
             with self._database.transaction() as session:
@@ -63,6 +70,7 @@ class CategoryCatalog:
                     id=uuid7(),
                     parent_id=parent_id,
                     name=normalized_name,
+                    description=_clean_description(description),
                     active=True,
                     sort_order=0,
                     version=1,
@@ -151,7 +159,15 @@ class CategoryCatalog:
             parent_id=category.parent_id,
             active=category.active,
             version=category.version,
+            description=category.description,
         )
+
+
+def _clean_description(description: str | None) -> str | None:
+    if description is None:
+        return None
+    cleaned = " ".join(description.split())
+    return cleaned or None
 
 
 def _normalize_name(name: str) -> str:

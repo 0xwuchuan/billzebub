@@ -451,6 +451,130 @@ describe("ReviewPage", () => {
     expect(screen.queryByText(/blocking first/)).not.toBeInTheDocument();
   });
 
+  it("groups repeated merchants and lets a charge be excluded from apply-all", () => {
+    const second = {
+      ...coffee,
+      id: "00000000-0000-0000-0000-000000000030",
+      counterparty: "Synthetic Coffee SG",
+    };
+    const secondReview = {
+      ...coffeeReview,
+      id: "00000000-0000-0000-0000-000000000031",
+      subject_id: second.id,
+    };
+    const onApply = vi.fn();
+    renderPage({
+      reviews: [coffeeReview, secondReview],
+      transactions: [coffee, second],
+      onApplyMerchantGroup: onApply,
+    });
+
+    const apply = screen.getByRole("button", { name: "Apply to all 2" });
+    expect(apply).toBeDisabled();
+    expect(apply).toHaveClass("btn-ghost");
+    expect(apply).not.toHaveClass("btn-primary");
+    const skip = screen.getByRole("button", { name: "Skip merchant" });
+    expect(skip).toHaveClass("btn-ghost");
+    expect(skip).not.toHaveClass("btn-primary");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Category for Synthetic Coffee" }),
+    );
+    fireEvent.click(screen.getByRole("option", { name: "Synthetic Food" }));
+    expect(
+      screen.getByRole("switch", {
+        name: "Always categorize Synthetic Coffee as Synthetic Food",
+      }),
+    ).not.toBeChecked();
+    const ready = screen.getByRole("button", { name: "Apply to all 2" });
+    expect(ready).toBeEnabled();
+    expect(ready).toHaveClass("btn-primary");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show Synthetic Coffee charges" }),
+    );
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: /Synthetic Coffee SG/ }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Apply to 1" }));
+
+    expect(onApply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        normalizedKey: "synthetic coffee",
+        categoryId: categories[0]?.id,
+        excludedIds: [second.id],
+        remember: false,
+      }),
+    );
+  });
+
+  it("skips a merchant group without categorizing it", () => {
+    const second = {
+      ...coffee,
+      id: "00000000-0000-0000-0000-000000000030",
+      counterparty: "Synthetic Coffee SG",
+    };
+    const secondReview = {
+      ...coffeeReview,
+      id: "00000000-0000-0000-0000-000000000031",
+      subject_id: second.id,
+    };
+    const onApply = vi.fn();
+    renderPage({
+      reviews: [coffeeReview, secondReview],
+      transactions: [coffee, second],
+      onApplyMerchantGroup: onApply,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Skip merchant" }));
+
+    expect(
+      screen.queryByRole("heading", { name: "Synthetic Coffee" }),
+    ).not.toBeInTheDocument();
+    expect(onApply).not.toHaveBeenCalled();
+    const queue = screen.getByRole("region", { name: "Pending Review queue" });
+    expect(
+      within(queue).queryByRole("button", { name: /Synthetic Coffee/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("undoes a merchant apply from Z and command Z", () => {
+    const onUndo = vi.fn();
+    renderPage({
+      reviews: [],
+      transactions: [],
+      merchantUndo: {
+        label: "Example Spotify",
+        categoryName: "Groceries",
+        count: 3,
+        remember: true,
+      },
+      onUndoMerchantGroup: onUndo,
+    });
+
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Categorized 3 · Rule saved · Undo",
+    );
+    fireEvent.keyDown(document.body, { key: "z" });
+    fireEvent.keyDown(document.body, { key: "z", metaKey: true });
+    expect(onUndo).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps an applied merchant charge out of the individual queue", () => {
+    renderPage({
+      reviews: [coffeeReview, grocerReview],
+      transactions: [coffee, grocer],
+      merchantGroups: [],
+      suppressedReviewIds: [coffeeReview.id],
+    });
+
+    const queue = screen.getByRole("region", { name: "Pending Review queue" });
+    expect(
+      within(queue).queryByRole("button", { name: /Synthetic Coffee/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(queue).getByRole("button", { name: /Synthetic Grocer/ }),
+    ).toBeInTheDocument();
+  });
+
   it("does not stretch the empty decision card, and keeps a filled card compact-capable", () => {
     const { unmount } = renderPage({ reviews: [], transactions: [] });
     expect(screen.getByRole("region", { name: "Review decision" })).toHaveClass(
@@ -489,6 +613,11 @@ function pageElement({
   onSelect = () => undefined,
   onDraft = () => undefined,
   onDecide = () => undefined,
+  onApplyMerchantGroup,
+  merchantGroups,
+  suppressedReviewIds,
+  merchantUndo,
+  onUndoMerchantGroup,
 }: PageProps) {
   return (
     <ReviewPage
@@ -509,6 +638,11 @@ function pageElement({
       onOpenTransaction={() => undefined}
       onOpenImport={() => undefined}
       onOpenSettings={() => undefined}
+      {...(onApplyMerchantGroup === undefined ? {} : { onApplyMerchantGroup })}
+      {...(merchantGroups === undefined ? {} : { merchantGroups })}
+      {...(suppressedReviewIds === undefined ? {} : { suppressedReviewIds })}
+      {...(merchantUndo === undefined ? {} : { merchantUndo })}
+      {...(onUndoMerchantGroup === undefined ? {} : { onUndoMerchantGroup })}
     />
   );
 }
@@ -523,4 +657,18 @@ type PageProps = {
   onSelect?: (id: string) => void;
   onDraft?: (transactionId: string, categoryId: string) => void;
   onDecide?: (review: Review, choice: string) => void;
+  onApplyMerchantGroup?: (request: {
+    normalizedKey: string;
+    excludedIds: string[];
+    categoryId: string;
+  }) => void;
+  merchantGroups?: [];
+  suppressedReviewIds?: string[];
+  merchantUndo?: {
+    label: string;
+    categoryName: string;
+    count: number;
+    remember: boolean;
+  };
+  onUndoMerchantGroup?: () => void;
 };

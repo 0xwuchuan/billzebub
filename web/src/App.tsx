@@ -9,6 +9,7 @@ import { useRecurrings } from "./hooks/useRecurrings";
 import { useRoute } from "./hooks/useRoute";
 import { useSetup } from "./hooks/useSetup";
 import { useTheme } from "./hooks/useTheme";
+import { useMerchantReview } from "./hooks/useMerchantReview";
 import { useWorkspace } from "./hooks/useWorkspace";
 import { isoDate, monthYearLabel } from "./lib/labels";
 import {
@@ -30,6 +31,13 @@ import { TransactionsPage } from "./pages/TransactionsPage";
 export function App() {
   const workspace = useWorkspace();
   const fixtureMode = useFixtureMode();
+  const merchant = useMerchantReview({
+    reviews: workspace.workspace.reviews,
+    transactions: workspace.workspace.transactions.items,
+    categories: workspace.workspace.categories,
+    fixtureMode,
+    reload: workspace.loadWorkspace,
+  });
   const ownerCategories = workspace.workspace.categories.filter(
     (category) => category.active && category.name !== "Uncategorized",
   );
@@ -379,6 +387,16 @@ export function App() {
             onOpenSettings={() => {
               navigate("settings");
             }}
+            merchantGroups={merchant.groups}
+            suppressedReviewIds={merchant.suppressedReviewIds}
+            merchantUndo={merchant.undo}
+            merchantSaving={merchant.saving}
+            onApplyMerchantGroup={(request) => {
+              void merchant.applyGroup(request);
+            }}
+            onUndoMerchantGroup={() => {
+              void merchant.undoApply();
+            }}
           />
         ) : null}
         {route.page === "imports" ? (
@@ -535,6 +553,10 @@ export function App() {
             onOpenAccountImports={openAccountImports}
             theme={theme}
             onToggleTheme={toggleTheme}
+            merchantRules={merchant.rules}
+            onRemoveMerchantRule={(normalizedKey) => {
+              void merchant.removeRule(normalizedKey);
+            }}
           />
         ) : null}
       </AppShell>
