@@ -14,7 +14,7 @@ from typing import Any, Literal, Protocol, cast
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
-from fastapi import Depends, FastAPI, Header, Query, Request, status
+from fastapi import Depends, FastAPI, Header, Query, Request, Response, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -30,7 +30,8 @@ from billzebub.agent_facade import (
 from billzebub.apple_wallet import AppleWalletCaptureOutcome, AppleWalletIngestion
 from billzebub.artifact_capture import ArtifactCapture
 from billzebub.artifacts import ArtifactStoreError, ContentAddressedStore
-from billzebub.categories import CategoryCatalog, CategoryError, CategoryRecord
+from billzebub.categories import CategoryCatalog, CategoryError, CategoryRecord, CategoryUpdate
+from billzebub.category_spend import CategorySpendError, CategorySpendReport
 from billzebub.config import Settings
 from billzebub.financial_account_aliases import (
     FinancialAccountAliasError,
@@ -117,7 +118,15 @@ class ImportCatalogRuntime(Protocol):
 class CategoryCatalogRuntime(Protocol):
     def list(self) -> tuple[CategoryRecord, ...]: ...
 
+    def get(self, category_id: UUID) -> CategoryRecord: ...
+
     def create(self, name: str, *, parent_id: UUID | None = None) -> CategoryRecord: ...
+
+    def update(self, category_id: UUID, command: CategoryUpdate) -> CategoryRecord: ...
+
+    def delete(self, category_id: UUID, *, expected_version: int) -> None: ...
+
+    def spending(self, month: str) -> CategorySpendReport: ...
 
 
 class OwnerTransactionActionsRuntime(Protocol):
@@ -270,6 +279,14 @@ class OwnerCategoryPayload(BaseModel):
     parent_id: UUID | None = None
 
 
+class OwnerCategoryUpdatePayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    parent_id: UUID | None = None
+    active: bool | None = None
+
+
 class OwnerFinancialAccountPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -302,6 +319,7 @@ class OwnerReviewDecisionPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     choice: str = Field(min_length=1, max_length=120)
+    category_id: UUID | None = None
 
 
 class ProposalPayload(BaseModel):
@@ -397,6 +415,29 @@ class OwnerCategoryWire(BaseModel):
     name: str
     parent_id: UUID | None
     active: bool
+    version: int
+
+
+class CategorySpendChildWire(BaseModel):
+    id: UUID
+    name: str
+    parent_id: UUID
+    direct: MoneyWire
+    total: MoneyWire
+
+
+class CategorySpendGroupWire(BaseModel):
+    id: UUID
+    name: str
+    parent_id: UUID | None
+    direct: MoneyWire
+    total: MoneyWire
+    children: list[CategorySpendChildWire]
+
+
+class CategorySpendWire(BaseModel):
+    month: str
+    items: list[CategorySpendGroupWire]
 
 
 class OwnerCategoryPageWire(BaseModel):
@@ -1128,17 +1169,103 @@ def create_app(
     )
     def create_owner_category(
         payload: OwnerCategoryPayload,
+        response: Response,
         _identity: OwnerIdentity = browser_mutation_dependency,
         catalog: CategoryCatalogRuntime = categories_dependency,
     ) -> OwnerCategoryWire:
         try:
-            return _owner_category(catalog.create(payload.name, parent_id=payload.parent_id))
+            category = catalog.create(payload.name, parent_id=payload.parent_id)
         except CategoryError as error:
+            raise _category_problem(error) from error
+        _stamp_category(response, category)
+        return _owner_category(category)
+
+    @app.get(
+        "/api/v1/categories/spending",
+        tags=["owner"],
+        response_model=CategorySpendWire,
+    )
+    def owner_category_spending(
+        month: str = Query(pattern=r"^\d{4}-(0[1-9]|1[0-2])$"),
+        _identity: OwnerIdentity = owner_dependency,
+        catalog: CategoryCatalogRuntime = categories_dependency,
+    ) -> CategorySpendWire:
+        try:
+            report = catalog.spending(month)
+        except CategorySpendError as error:
             raise ProblemError(
                 status.HTTP_400_BAD_REQUEST,
-                "category_request_invalid",
-                "Category request invalid",
+                "category_spend_invalid",
+                "Category spend request invalid",
             ) from error
+        return _category_spend(report)
+
+    @app.get(
+        "/api/v1/categories/{category_id}",
+        tags=["owner"],
+        response_model=OwnerCategoryWire,
+    )
+    def get_owner_category(
+        category_id: UUID,
+        response: Response,
+        _identity: OwnerIdentity = owner_dependency,
+        catalog: CategoryCatalogRuntime = categories_dependency,
+    ) -> OwnerCategoryWire:
+        try:
+            category = catalog.get(category_id)
+        except CategoryError as error:
+            raise _category_problem(error) from error
+        _stamp_category(response, category)
+        return _owner_category(category)
+
+    @app.patch(
+        "/api/v1/categories/{category_id}",
+        tags=["owner"],
+        response_model=OwnerCategoryWire,
+    )
+    def update_owner_category(
+        category_id: UUID,
+        payload: OwnerCategoryUpdatePayload,
+        response: Response,
+        _identity: OwnerIdentity = browser_mutation_dependency,
+        catalog: CategoryCatalogRuntime = categories_dependency,
+        if_match: str | None = Header(default=None, alias="If-Match"),
+    ) -> OwnerCategoryWire:
+        expected_version = _expected_category_version(if_match, category_id)
+        try:
+            category = catalog.update(
+                category_id,
+                CategoryUpdate(
+                    expected_version=expected_version,
+                    name=payload.name,
+                    parent_id=payload.parent_id,
+                    parent_id_set="parent_id" in payload.model_fields_set,
+                    active=payload.active,
+                ),
+            )
+        except CategoryError as error:
+            raise _category_problem(error) from error
+        _stamp_category(response, category)
+        return _owner_category(category)
+
+    @app.delete(
+        "/api/v1/categories/{category_id}",
+        tags=["owner"],
+        status_code=status.HTTP_204_NO_CONTENT,
+        response_model=None,
+    )
+    def delete_owner_category(
+        category_id: UUID,
+        _identity: OwnerIdentity = browser_mutation_dependency,
+        catalog: CategoryCatalogRuntime = categories_dependency,
+        if_match: str | None = Header(default=None, alias="If-Match"),
+    ) -> Response:
+        expected_version = _expected_category_version(if_match, category_id)
+        try:
+            catalog.delete(category_id, expected_version=expected_version)
+        except CategoryError as error:
+            raise _category_problem(error) from error
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     @app.get(
         "/api/v1/statement-adapters",
@@ -1576,6 +1703,7 @@ def create_app(
                     expected_version=expected_version,
                     choice=payload.choice,
                     actor_id=actors.resolve(identity),
+                    category_id=payload.category_id,
                 )
             )
         except (ReviewActionError, ReviewError) as error:
@@ -1849,7 +1977,101 @@ def _owner_category(category: CategoryRecord) -> OwnerCategoryWire:
         name=category.name,
         parent_id=category.parent_id,
         active=category.active,
+        version=category.version,
     )
+
+
+def _category_spend(report: CategorySpendReport) -> CategorySpendWire:
+    return CategorySpendWire(
+        month=report.month,
+        items=[
+            CategorySpendGroupWire(
+                id=item.id,
+                name=item.name,
+                parent_id=item.parent_id,
+                direct=MoneyWire(**item.direct.to_wire()),
+                total=MoneyWire(**item.total.to_wire()),
+                children=[
+                    CategorySpendChildWire(
+                        id=child.id,
+                        name=child.name,
+                        parent_id=child.parent_id if child.parent_id is not None else item.id,
+                        direct=MoneyWire(**child.direct.to_wire()),
+                        total=MoneyWire(**child.total.to_wire()),
+                    )
+                    for child in item.children
+                ],
+            )
+            for item in report.items
+        ],
+    )
+
+
+def _stamp_category(response: Response, category: CategoryRecord) -> None:
+    response.headers["ETag"] = _category_etag(category)
+    response.headers["Cache-Control"] = "no-store"
+
+
+def _category_problem(error: CategoryError) -> ProblemError:
+    message = str(error)
+    if message == "Category was not found":
+        return ProblemError(
+            status.HTTP_404_NOT_FOUND,
+            "category_not_found",
+            "Category not found",
+        )
+    if "stale" in message:
+        return ProblemError(
+            status.HTTP_412_PRECONDITION_FAILED,
+            "resource_version_stale",
+            "Resource version is stale",
+        )
+    if "in use" in message or "subcategories" in message:
+        return ProblemError(
+            status.HTTP_409_CONFLICT,
+            "category_in_use",
+            "Category is in use",
+        )
+    return ProblemError(
+        status.HTTP_400_BAD_REQUEST,
+        "category_request_invalid",
+        "Category request invalid",
+    )
+
+
+def _category_etag(category: CategoryRecord) -> str:
+    return f'"category:{category.id}:v{category.version}"'
+
+
+def _expected_category_version(if_match: str | None, category_id: UUID) -> int:
+    if if_match is None:
+        raise ProblemError(
+            status.HTTP_428_PRECONDITION_REQUIRED,
+            "resource_version_required",
+            "Resource version required",
+        )
+    expected_prefix = f'"category:{category_id}:v'
+    if not if_match.startswith(expected_prefix) or not if_match.endswith('"'):
+        raise ProblemError(
+            status.HTTP_412_PRECONDITION_FAILED,
+            "resource_version_stale",
+            "Resource version is stale",
+        )
+    try:
+        version = int(if_match.removeprefix(expected_prefix).removesuffix('"'))
+    except ValueError as error:
+        raise ProblemError(
+            status.HTTP_412_PRECONDITION_FAILED,
+            "resource_version_stale",
+            "Resource version is stale",
+        ) from error
+    if version <= 0:
+        raise ProblemError(
+            status.HTTP_412_PRECONDITION_FAILED,
+            "resource_version_stale",
+            "Resource version is stale",
+        )
+    return version
 
 
 def _statement_coverage(report: StatementCoverageReport) -> StatementCoverageWire:

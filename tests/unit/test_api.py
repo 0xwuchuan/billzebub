@@ -6,7 +6,8 @@ from uuid import UUID, uuid4
 from fastapi.testclient import TestClient
 
 from billzebub.api import create_app
-from billzebub.categories import CategoryRecord
+from billzebub.categories import CategoryRecord, CategoryUpdate
+from billzebub.category_spend import CategorySpendReport
 from billzebub.config import Settings
 from billzebub.imports import ImportNotDismissableError, ImportNotFoundError, ImportRecord
 from billzebub.statement_coverage import StatementCoverageReport
@@ -23,6 +24,18 @@ class FakeCategories:
         record = CategoryRecord(id=uuid4(), name=name, parent_id=parent_id, active=True)
         self.records.append(record)
         return record
+
+    def get(self, category_id: UUID) -> CategoryRecord:
+        raise AssertionError(category_id)
+
+    def update(self, category_id: UUID, command: CategoryUpdate) -> CategoryRecord:
+        raise AssertionError((category_id, command))
+
+    def delete(self, category_id: UUID, *, expected_version: int) -> None:
+        raise AssertionError((category_id, expected_version))
+
+    def spending(self, month: str) -> CategorySpendReport:
+        raise AssertionError(month)
 
 
 class FakeDatabase:

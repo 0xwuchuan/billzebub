@@ -22,6 +22,7 @@ from uuid import UUID
 from typesafe_sdk import Choice, TypeSafeClient, TypeSafeError
 
 from billzebub.agent_mcp import McpRequestError, assert_agent_safe
+from billzebub.jev_hierarchy import catalog_choice_criteria, resolve_catalog_choice
 from billzebub.recurrings import normalize_counterparty
 
 DEFAULT_MODEL = "jev-1.13.0"
@@ -129,6 +130,7 @@ class Proposal:
     noul: Decimal | None = None
     error_class: str | None = None
     error_message: str | None = None
+    fell_back_to_parent: bool = False
     skip_reason: str | None = None
 
 
@@ -189,13 +191,19 @@ def jev_state(subject: JevSubject) -> dict[str, str]:
 
 
 def choice_criteria(categories: Sequence[JevCategory]) -> dict[str, str]:
-    """One option per category. Colliding leaf names use ``Parent > Child``.
+    """One option per Category, with hierarchy paths and v1 collision labels.
 
-    A repeated leaf used to be removed from matching and overwritten in this
-    dict, so Jev could return that name at high confidence and the worker
-    still skipped it.
+    A child whose parent row is in the catalog is offered as ``Parent > Child``.
+    When the catalog only carries ``parent_name`` (the parent row is absent),
+    a unique leaf stays the leaf name and colliding leaves use ``Parent > Child``.
+    Duplicate labels are omitted. Grandchildren and Uncategorized are not offered.
     """
-    criteria = {label: label for label in _unique_option_labels(categories)}
+    criteria = dict(catalog_choice_criteria(categories))
+    by_id = {category.id: category for category in categories}
+    for label, category in _unique_option_labels(categories).items():
+        if category.parent_id is not None and category.parent_id in by_id:
+            continue
+        criteria.setdefault(label, label)
     if len(criteria) > MAX_CHOICE_OPTIONS:
         raise JevError("category catalog exceeds Jev Choice limit")
     return criteria
@@ -226,12 +234,18 @@ def parse_jev_response(
             choice_answer = answers.get(CHOICE_QUESTION)
     response_model = getattr(response, "model", None)
     resolved_model = response_model if isinstance(response_model, str) and response_model else model
+    probabilities = (
+        getattr(choice_answer, "probabilities", None) if choice_answer is not None else None
+    )
+    if not isinstance(probabilities, Mapping):
+        probabilities = None
     return parse_jev_proposal(
         getattr(choice_answer, "choice", None) if choice_answer is not None else None,
         getattr(choice_answer, "confidence", None) if choice_answer is not None else None,
         categories,
         min_confidence,
         model=resolved_model,
+        probabilities=probabilities,
     )
 
 
@@ -242,6 +256,7 @@ def parse_jev_proposal(
     min_confidence: Decimal,
     *,
     model: str,
+    probabilities: Mapping[str, object] | None = None,
 ) -> Proposal:
     confidence = _unit_interval(confidence_raw)
     choice_text = choice if isinstance(choice, str) and choice.strip() else None
@@ -254,6 +269,23 @@ def parse_jev_proposal(
         )
     if choice_text is None:
         return _skip(model, confidence=confidence, skip_reason=SKIP_MISSING_CHOICE)
+    resolved = resolve_catalog_choice(
+        choice_text,
+        confidence,
+        categories,
+        min_confidence,
+        probabilities=probabilities,
+    )
+    if resolved is not None:
+        return Proposal(
+            action="apply",
+            category_id=resolved.category_id,
+            category_name=resolved.category_name,
+            confidence=resolved.confidence,
+            model=model,
+            choice=choice_text,
+            fell_back_to_parent=resolved.fell_back_to_parent,
+        )
     if confidence < min_confidence:
         return _skip(
             model,

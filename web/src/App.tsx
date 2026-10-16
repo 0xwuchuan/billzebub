@@ -50,6 +50,8 @@ export function App() {
     {},
   );
   const [listCategory, setListCategory] = useState("");
+  const [categoryFamily, setCategoryFamily] = useState<string[]>([]);
+  const [categoryDirect, setCategoryDirect] = useState(false);
   const [listAccount, setListAccount] = useState("");
   const [reviewSelection, setReviewSelection] = useState("");
   const [toast, setToast] = useState("");
@@ -100,6 +102,8 @@ export function App() {
     accountId = "",
   ) {
     setListCategory(category);
+    setCategoryFamily([]);
+    setCategoryDirect(false);
     setListAccount(accountId);
     go({
       page: "transactions",
@@ -286,8 +290,24 @@ export function App() {
             onOpenTransactions={() => {
               openTransactions("");
             }}
+            catalog={workspace.workspace.categories}
             onFilterCategory={(name) => {
               openTransactions("confirmed", name);
+            }}
+            onOpenFilter={(filter) => {
+              setListCategory(filter.label);
+              setCategoryFamily(filter.ids);
+              setCategoryDirect(filter.direct);
+              setListAccount("");
+              go({
+                page: "transactions",
+                reviewFilter: "",
+                confirmation: "",
+                drawerId: null,
+                importId: null,
+                accountId: null,
+                recurringTab: "",
+              });
             }}
             summary={recurrings.summary}
             proposedCount={recurrings.proposed.length}
@@ -302,8 +322,24 @@ export function App() {
           <SpendingPage
             transactions={workspace.workspace.transactions.items}
             today={today}
+            catalog={workspace.workspace.categories}
             onOpenTransactions={() => {
               openTransactions("");
+            }}
+            onOpenFilter={(filter) => {
+              setListCategory(filter.label);
+              setCategoryFamily(filter.ids);
+              setCategoryDirect(filter.direct);
+              setListAccount("");
+              go({
+                page: "transactions",
+                reviewFilter: "",
+                confirmation: "",
+                drawerId: null,
+                importId: null,
+                accountId: null,
+                recurringTab: "",
+              });
             }}
           />
         ) : null}
@@ -312,7 +348,7 @@ export function App() {
             reviews={workspace.workspace.reviews}
             transactions={workspace.workspace.transactions.items}
             imports={workspace.workspace.imports}
-            categories={ownerCategories}
+            categories={workspace.workspace.categories}
             filter={route.reviewFilter}
             selectedId={reviewSelection}
             drafts={categoryDraft}
@@ -327,6 +363,9 @@ export function App() {
               }));
             }}
             onAssign={assignCategory}
+            onApply={(transaction, categoryId) =>
+              workspace.saveCategory(transaction, categoryId)
+            }
             onDecide={(review, choice) =>
               workspace.resolveReview(review, choice).then((ok) => {
                 if (ok) {
@@ -407,13 +446,17 @@ export function App() {
         {route.page === "transactions" ? (
           <TransactionsPage
             transactions={workspace.workspace.transactions.items}
-            categories={ownerCategories}
+            categories={workspace.workspace.categories}
             accounts={workspace.workspace.accounts.map((account) => ({
               id: account.id,
               name: account.display_name,
             }))}
             confirmation={route.confirmation}
             category={listCategory}
+            categoryIds={
+              categoryDirect ? categoryFamily.slice(0, 1) : categoryFamily
+            }
+            directOnly={categoryDirect}
             accountId={listAccount}
             selectedId={route.drawerId}
             today={today}
@@ -431,7 +474,14 @@ export function App() {
                 recurringTab: "",
               });
             }}
-            onCategory={setListCategory}
+            onCategory={(value) => {
+              setListCategory(value);
+              setCategoryFamily([]);
+              setCategoryDirect(false);
+            }}
+            onDirectOnly={() => {
+              setCategoryDirect((current) => !current);
+            }}
             onAccount={setListAccount}
             onOpen={openDrawer}
             onLoadMore={() => {
@@ -442,7 +492,7 @@ export function App() {
               drawerTransaction === null ? null : (
                 <TransactionDrawer
                   transaction={drawerTransaction}
-                  categories={ownerCategories}
+                  categories={workspace.workspace.categories}
                   draft={categoryDraft[drawerTransaction.id] ?? ""}
                   saving={workspace.saving === drawerTransaction.id}
                   onDraft={(categoryId) => {
@@ -474,7 +524,10 @@ export function App() {
             saving={workspace.saving}
             onCreateAccount={workspace.addAccount}
             onAddAlias={workspace.addWalletAlias}
+            transactions={workspace.workspace.transactions.items}
+            month={today.toISOString().slice(0, 7)}
             onCreateCategory={workspace.addCategory}
+            onUpdateCategory={workspace.reviseCategory}
             onIssueToken={workspace.addToken}
             onRotateToken={workspace.replaceToken}
             onRevokeToken={workspace.removeToken}

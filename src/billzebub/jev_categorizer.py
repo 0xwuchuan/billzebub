@@ -58,7 +58,12 @@ from billzebub.persistence.models import (
     PendingReview,
     TransactionClaim,
 )
-from billzebub.reviews import PendingReviewStatus
+from billzebub.reviews import (
+    PendingReviewStatus,
+    ReviewCondition,
+    ReviewInbox,
+    ReviewSeverity,
+)
 
 if TYPE_CHECKING:
     from billzebub.persistence.database import Database
@@ -423,6 +428,8 @@ class JevCategorizer:
                         )
                     except OwnerTransactionActionError as error:
                         raise CategorizerError(str(error)) from error
+                    if proposal.fell_back_to_parent and proposal.category_id is not None:
+                        self._hold_parent_fallback(session, snapshot.id, proposal)
         except FinancialHistoryError as error:
             raise CategorizerError(str(error)) from error
         if logged is not None:
@@ -602,6 +609,28 @@ class JevCategorizer:
                 amount=amount,
                 currency=authorized_currency,
             )
+        )
+
+    @staticmethod
+    def _hold_parent_fallback(session: Session, transaction_id: UUID, proposal: Proposal) -> None:
+        """Keep a Review open so the owner can refine a parent-level Jev apply."""
+        context = FinancialHistory._categorization_review_context(session, transaction_id)
+        context["jev_parent_fallback"] = True
+        if proposal.category_id is not None:
+            context["suggested_category_id"] = str(proposal.category_id)
+        if proposal.category_name is not None:
+            context["suggested_category_name"] = proposal.category_name
+        ReviewInbox.synchronize_in_session(
+            session,
+            ReviewCondition(
+                subject_type="transaction",
+                subject_id=transaction_id,
+                condition_code="categorization_needed",
+                severity=ReviewSeverity.ATTENTION,
+                allowed_decisions=("keep", "categorize"),
+                context=context,
+            ),
+            active=True,
         )
 
     @staticmethod
