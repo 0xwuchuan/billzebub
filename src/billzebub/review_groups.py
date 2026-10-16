@@ -21,6 +21,7 @@ from billzebub.financial_history import (
 from billzebub.merchant_memory import (
     MemoryRule,
     clear_exclusions,
+    forget_normalized_key,
     list_memory_rules,
     refresh_normalized_key,
     remember_exclusion,
@@ -103,6 +104,10 @@ class MerchantReviewGroups:
         with self._database.transaction() as session:
             return self._list_groups(session)
 
+    def forget_rule(self, normalized_key: str) -> bool:
+        with self._database.transaction() as session:
+            return forget_normalized_key(session, normalized_key)
+
     def list_rules(self) -> tuple[MemoryRule, ...]:
         with self._database.transaction() as session:
             return list_memory_rules(session)
@@ -115,6 +120,7 @@ class MerchantReviewGroups:
         exclude_transaction_ids: tuple[UUID, ...],
         actor_id: UUID,
         if_match: str,
+        remember: bool = True,
     ) -> AppliedMerchantGroup:
         key = normalized_key.strip()
         with self._database.transaction() as session:
@@ -161,9 +167,13 @@ class MerchantReviewGroups:
                     applied.append((updated.id, updated.version))
             except (OwnerTransactionActionError, FinancialHistoryError) as error:
                 raise ReviewGroupError(str(error), code="invalid") from error
-            for transaction_id in excluded:
-                remember_exclusion(session, transaction_id, key)
-            rule = refresh_normalized_key(session, key)
+            if remember:
+                for transaction_id in excluded:
+                    remember_exclusion(session, transaction_id, key)
+                rule = refresh_normalized_key(session, key)
+            else:
+                forget_normalized_key(session, key)
+                rule = None
             return AppliedMerchantGroup(
                 normalized_key=key,
                 label=group.label,

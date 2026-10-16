@@ -1,6 +1,13 @@
 import type { MerchantRule } from "../api";
+import { CategoryChip } from "./ui/CategoryChip";
 
-export function MerchantRulesList({ rules }: { rules: MerchantRule[] }) {
+export function MerchantRulesList({
+  rules,
+  onRemove,
+}: {
+  rules: MerchantRule[];
+  onRemove?: (normalizedKey: string) => void;
+}) {
   if (rules.length === 0) {
     return (
       <p className="empty">
@@ -11,17 +18,37 @@ export function MerchantRulesList({ rules }: { rules: MerchantRule[] }) {
   }
   return (
     <ul className="merchant-rules">
-      {rules.map((rule) => (
-        <li key={`${rule.source}:${rule.normalized_key}`}>
-          <span className="merchant-rule-name">
-            {rule.label ?? titleCase(rule.normalized_key)}
-          </span>
-          <span>{rule.category_name}</span>
-          <span className="muted">
-            {rule.source === "owner" ? "Owner" : "Jev"}
-          </span>
-        </li>
-      ))}
+      {rules.map((rule) => {
+        const name = rule.label ?? titleCase(rule.normalized_key);
+        return (
+          <li
+            key={`${rule.source}:${rule.normalized_key}`}
+            tabIndex={0}
+            onKeyDown={(event) => {
+              if (event.key === "Delete" || event.key === "Backspace") {
+                event.preventDefault();
+                onRemove?.(rule.normalized_key);
+              }
+            }}
+          >
+            <span className="merchant-rule-name">{name}</span>
+            <CategoryChip name={rule.category_name} />
+            <span className="merchant-rule-source">
+              {rule.source === "owner" ? "Owner" : "Jev"}
+            </span>
+            <button
+              className="merchant-rule-remove"
+              type="button"
+              aria-label={`Remove ${name}`}
+              onClick={() => {
+                onRemove?.(rule.normalized_key);
+              }}
+            >
+              Remove
+            </button>
+          </li>
+        );
+      })}
     </ul>
   );
 }

@@ -218,6 +218,16 @@ function worstAccounts(): FinancialAccount[] {
 function worstCategories(): Category[] {
   return [
     categoryRow("example-cat-groceries", "Groceries"),
+    categoryRow(
+      "example-cat-groceries-market",
+      "Market",
+      "example-cat-groceries",
+    ),
+    categoryRow(
+      "example-cat-groceries-produce",
+      "Produce",
+      "example-cat-groceries",
+    ),
     categoryRow("example-cat-dining", "Dining"),
     categoryRow("example-cat-transport", "Transport"),
     categoryRow(
@@ -930,6 +940,22 @@ function merchantReviews(transactions: Transaction[]): Review[] {
           currency: "SGD",
           effective_date: item.effective_date,
           kind: "expense",
+          ...(item.id.startsWith("example-tx-spotify")
+            ? {
+                jev_attempt: {
+                  attempted_at: item.effective_date,
+                  model: "example-model",
+                  action: "skip",
+                  choice: "Groceries",
+                  choice_confidence: "0.94",
+                  noul: null,
+                  category_id: null,
+                  category_name: null,
+                  error_class: null,
+                  error_message: null,
+                },
+              }
+            : {}),
         },
       }),
     );
@@ -1067,8 +1093,12 @@ function account(input: {
   };
 }
 
-function categoryRow(id: string, name: string): Category {
-  return { id, name, parent_id: null, active: true };
+function categoryRow(
+  id: string,
+  name: string,
+  parentId: string | null = null,
+): Category {
+  return { id, name, parent_id: parentId, active: true };
 }
 
 function split(

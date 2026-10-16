@@ -501,6 +501,9 @@ export function App() {
             theme={theme}
             onToggleTheme={toggleTheme}
             merchantRules={merchant.rules}
+            onRemoveMerchantRule={(normalizedKey) => {
+              void merchant.removeRule(normalizedKey);
+            }}
           />
         ) : null}
       </AppShell>

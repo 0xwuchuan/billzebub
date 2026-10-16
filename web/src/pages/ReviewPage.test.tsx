@@ -469,28 +469,36 @@ describe("ReviewPage", () => {
       onApplyMerchantGroup: onApply,
     });
 
+    const apply = screen.getByRole("button", { name: "Apply to all 2" });
+    expect(apply).toBeDisabled();
+    expect(apply).toHaveClass("btn-ghost");
+    expect(apply).not.toHaveClass("btn-primary");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Category for Synthetic Coffee" }),
+    );
+    fireEvent.click(screen.getByRole("option", { name: "Synthetic Food" }));
     expect(
-      screen.getByRole("button", { name: "Apply to all 2 + future" }),
-    ).toBeDisabled();
-    fireEvent.change(screen.getByLabelText("Category for Synthetic Coffee"), {
-      target: { value: categories[0]?.id },
-    });
-    expect(
-      screen.getByRole("button", { name: "Apply to all 2 + future" }),
-    ).toBeEnabled();
-    fireEvent.click(screen.getByRole("button", { name: "Exclude" }));
+      screen.getByRole("switch", {
+        name: "Always categorize Synthetic Coffee as Synthetic Food",
+      }),
+    ).not.toBeChecked();
+    const ready = screen.getByRole("button", { name: "Apply to all 2" });
+    expect(ready).toBeEnabled();
+    expect(ready).toHaveClass("btn-primary");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show Synthetic Coffee charges" }),
+    );
     fireEvent.click(
       screen.getByRole("checkbox", { name: /Synthetic Coffee SG/ }),
     );
-    fireEvent.click(
-      screen.getByRole("button", { name: "Apply to all 1 + future" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Apply to 1" }));
 
     expect(onApply).toHaveBeenCalledWith(
       expect.objectContaining({
         normalizedKey: "synthetic coffee",
         categoryId: categories[0]?.id,
         excludedIds: [second.id],
+        remember: false,
       }),
     );
   });

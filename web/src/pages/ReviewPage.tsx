@@ -95,6 +95,7 @@ export function ReviewPage({
   onApplyMerchantGroup?: (request: MerchantApplyRequest) => void;
   onUndoMerchantGroup?: () => void;
 }) {
+  const [merchantPaper, setMerchantPaper] = useState(false);
   const fresh = useEntrance("review");
   const desk = useDeskMedia();
   const [hiddenIds, setHiddenIds] = useState<string[]>([]);
@@ -349,6 +350,7 @@ export function ReviewPage({
         onUndo={() => {
           onUndoMerchantGroup?.();
         }}
+        onPaperPrimary={setMerchantPaper}
       />
       <div className={`desk review-desk${desk ? "" : " is-card-flow"}`}>
         {desk ? (
@@ -428,6 +430,7 @@ export function ReviewPage({
               onOpenTransaction={onOpenTransaction}
               onOpenImport={onOpenImport}
               onOpenSettings={onOpenSettings}
+              quietPrimary={merchantPaper}
             />
           )}
         </section>
@@ -508,6 +511,7 @@ function Evidence({
   onOpenTransaction,
   onOpenImport,
   onOpenSettings,
+  quietPrimary = false,
 }: {
   review: Review;
   transaction: Transaction | undefined;
@@ -528,6 +532,7 @@ function Evidence({
   onOpenTransaction: (id: string) => void;
   onOpenImport: (id: string) => void;
   onOpenSettings: () => void;
+  quietPrimary?: boolean;
 }) {
   const fresh = useEntrance(`review:${review.id}`);
   const blocking = review.severity === "blocking";
@@ -664,7 +669,7 @@ function Evidence({
           <div className="review-actions review-action-dock">
             {categorization && assignable !== undefined ? (
               <Button
-                variant="primary"
+                variant={quietPrimary ? "ghost" : "primary"}
                 title="Assign Category"
                 disabled={draft === "" || saving === assignable.id}
                 onClick={() => {
@@ -680,7 +685,7 @@ function Evidence({
               ? review.allowed_decisions.map((choice, index) => (
                   <Button
                     key={choice}
-                    variant={index === 0 ? "primary" : "ghost"}
+                    variant={quietPrimary || index !== 0 ? "ghost" : "primary"}
                     title={decisionLabel(choice)}
                     onClick={onOpenSettings}
                   >
@@ -697,7 +702,7 @@ function Evidence({
                     variant={
                       choice.includes("exclude") || choice === "keep_quarantine"
                         ? "outline"
-                        : primaryDecision(review) === choice
+                        : !quietPrimary && primaryDecision(review) === choice
                           ? "primary"
                           : "ghost"
                     }

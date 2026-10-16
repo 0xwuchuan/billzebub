@@ -21,14 +21,22 @@ export type MerchantGroupView = {
   normalizedKey: string;
   label: string;
   etag: string;
+  suggestionConfidence: number | null;
   members: MerchantGroupMember[];
 };
+
+export const HIGH_JEV_CONFIDENCE = 0.9;
+
+export function remembersByDefault(confidence: number | null): boolean {
+  return confidence !== null && confidence >= HIGH_JEV_CONFIDENCE;
+}
 
 export function merchantGroupsFromReviews(
   reviews: Review[],
   transactions: Transaction[],
 ): MerchantGroupView[] {
   const grouped = new Map<string, MerchantGroupMember[]>();
+  const confidence = new Map<string, number>();
   for (const review of reviews) {
     if (
       review.condition_code !== "categorization_needed" ||
@@ -72,6 +80,10 @@ export function merchantGroupsFromReviews(
     const current = grouped.get(key) ?? [];
     current.push(member);
     grouped.set(key, current);
+    const score = jevConfidence(review);
+    if (score !== null) {
+      confidence.set(key, Math.max(confidence.get(key) ?? 0, score));
+    }
   }
   const groups: MerchantGroupView[] = [];
   for (const [normalizedKey, members] of grouped) {
@@ -85,6 +97,7 @@ export function merchantGroupsFromReviews(
       normalizedKey,
       label: groupLabel(ordered.map((member) => member.counterparty)),
       etag: `fixture:${normalizedKey}:${ordered.map((member) => member.transactionId).join("|")}`,
+      suggestionConfidence: confidence.get(normalizedKey) ?? null,
       members: ordered,
     });
   }
@@ -94,6 +107,31 @@ export function merchantGroupsFromReviews(
       left.label.localeCompare(right.label),
   );
   return groups;
+}
+
+export function maxJevConfidence(reviews: Review[]): number | null {
+  let best: number | null = null;
+  for (const review of reviews) {
+    const score = jevConfidence(review);
+    if (score === null) {
+      continue;
+    }
+    best = Math.max(best ?? 0, score);
+  }
+  return best;
+}
+
+function jevConfidence(review: Review): number | null {
+  const attempt = review.context.jev_attempt;
+  if (typeof attempt !== "object" || attempt === null) {
+    return null;
+  }
+  const raw = (attempt as { choice_confidence?: unknown }).choice_confidence;
+  if (typeof raw !== "string" && typeof raw !== "number") {
+    return null;
+  }
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : null;
 }
 
 function groupLabel(counterparties: string[]): string {

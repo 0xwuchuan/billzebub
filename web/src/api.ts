@@ -500,6 +500,7 @@ export async function applyMerchantGroup(input: {
   categoryId: string;
   excludeTransactionIds: string[];
   etag: string;
+  remember: boolean;
 }): Promise<MerchantApplyResult> {
   return request<MerchantApplyResult>("/api/v1/reviews/merchant-groups/apply", {
     method: "POST",
@@ -508,7 +509,16 @@ export async function applyMerchantGroup(input: {
       normalized_key: input.normalizedKey,
       category_id: input.categoryId,
       exclude_transaction_ids: input.excludeTransactionIds,
+      remember: input.remember,
     }),
+  });
+}
+
+export async function forgetMerchantRule(normalizedKey: string): Promise<void> {
+  await request("/api/v1/merchant-memory/forget", {
+    method: "POST",
+    headers: mutationHeaders(),
+    body: JSON.stringify({ normalized_key: normalizedKey }),
   });
 }
 

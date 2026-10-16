@@ -3169,6 +3169,27 @@ button.coverage-chip {
     overflow: auto;
   }
 
+  .merchant-save-dock {
+    display: flex;
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 6;
+    padding: var(--bz-space-3) var(--bz-space-4)
+      calc(var(--bz-space-3) + env(safe-area-inset-bottom, 0px));
+    border-top: 1px solid var(--bz-border);
+    background: var(--bz-bg-card);
+  }
+
+  .merchant-save-dock .btn {
+    width: 100%;
+  }
+
+  .review-page:has(.merchant-save-dock) .review-action-dock {
+    display: none;
+  }
+
   .review-page .review-desk {
     display: flex;
     flex: 1;
@@ -3485,66 +3506,103 @@ button.coverage-chip {
   margin-bottom: var(--bz-space-4);
 }
 
-.merchant-group,
-.merchant-undo {
+.merchant-group {
   padding: var(--bz-space-4) var(--bz-space-5);
 }
 
-.merchant-group h2,
-.merchant-undo p {
+.merchant-group h2 {
   margin: 0;
 }
 
 .merchant-group-head,
-.merchant-undo,
 .merchant-group-actions,
-.merchant-exclude label,
-.merchant-rules li {
+.merchant-members label,
+.merchant-rules li,
+.merchant-future {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--bz-space-3);
 }
 
 .merchant-group-head {
   align-items: flex-start;
-  flex-wrap: wrap;
+}
+
+.merchant-expand {
+  width: var(--bz-control-h);
+  min-height: var(--bz-control-h);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--bz-muted);
+}
+
+.merchant-group-title {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.merchant-dates {
+  margin-left: var(--bz-space-2);
+}
+
+.merchant-group-total {
+  margin: 0 0 0 auto;
+  text-align: right;
 }
 
 .merchant-group-actions {
   flex-wrap: wrap;
-  justify-content: flex-end;
+  align-items: flex-start;
+  margin-top: var(--bz-space-3);
 }
 
-.merchant-category select {
-  max-width: 14rem;
-  min-height: var(--bz-row-h);
-  padding: 0 var(--bz-space-3);
-  border: 1px solid var(--bz-border);
-  border-radius: var(--bz-radius-sm);
-  background: var(--bz-surface);
-  color: inherit;
+.merchant-category {
+  flex: 1 1 12rem;
+  max-width: 16rem;
 }
 
-.merchant-exclude {
+.merchant-future {
+  flex: 1 1 16rem;
+  color: var(--bz-text);
+  font-size: var(--bz-text-sm);
+}
+
+.merchant-apply.btn-ghost:disabled {
+  opacity: 1;
+  background: transparent;
+  border-color: transparent;
+  color: var(--bz-muted);
+}
+
+.merchant-members {
   list-style: none;
   margin: var(--bz-space-3) 0 0;
-  padding: 0;
+  padding: 0 0 0 var(--bz-space-6);
   border-top: 1px solid var(--bz-border);
 }
 
-.merchant-exclude li {
+.merchant-members li {
   border-bottom: 1px solid var(--bz-border);
 }
 
-.merchant-exclude label {
+.merchant-members label {
   justify-content: flex-start;
   min-height: var(--bz-row-h);
   padding: var(--bz-space-2) 0;
 }
 
-.merchant-exclude .amount {
+.merchant-members .amount {
   margin-left: auto;
+}
+
+.toast-undo {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
 }
 
 .merchant-rules {
@@ -3561,4 +3619,28 @@ button.coverage-chip {
 .merchant-rule-name {
   flex: 1 1 auto;
   min-width: 0;
+}
+
+.merchant-rule-source {
+  color: var(--bz-muted);
+  font-size: var(--bz-text-xs);
+}
+
+.merchant-rule-remove {
+  padding: 0 var(--bz-space-2);
+  border: 0;
+  background: transparent;
+  color: var(--bz-muted);
+  font-size: var(--bz-text-sm);
+}
+
+.merchant-rules li:focus-within .merchant-rule-remove,
+.merchant-rule-remove:focus {
+  opacity: 1;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .merchant-rules li:hover .merchant-rule-remove {
+    opacity: 1;
+  }
 }

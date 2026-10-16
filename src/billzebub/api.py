@@ -318,6 +318,13 @@ class MerchantGroupApplyPayload(BaseModel):
     normalized_key: str = Field(min_length=1, max_length=300)
     category_id: UUID
     exclude_transaction_ids: list[UUID] = Field(default_factory=list)
+    remember: bool = True
+
+
+class MerchantMemoryForgetPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    normalized_key: str = Field(min_length=1, max_length=300)
 
 
 class MerchantGroupUndoTransaction(BaseModel):
@@ -1620,6 +1627,7 @@ def create_app(
                 exclude_transaction_ids=tuple(payload.exclude_transaction_ids),
                 actor_id=actors.resolve(identity),
                 if_match=if_match,
+                remember=payload.remember,
             )
         except ReviewGroupError as error:
             raise _review_group_problem(error) from error
@@ -1653,6 +1661,15 @@ def create_app(
         except ReviewGroupError as error:
             raise _review_group_problem(error) from error
         return _owner_response(_undone_group_body(undone))
+
+    @app.post("/api/v1/merchant-memory/forget", tags=["owner"])
+    def forget_merchant_memory(
+        payload: MerchantMemoryForgetPayload,
+        _identity: OwnerIdentity = browser_mutation_dependency,
+        groups: MerchantReviewGroups = merchant_groups_dependency,
+    ) -> JSONResponse:
+        removed = groups.forget_rule(payload.normalized_key)
+        return _owner_response({"removed": removed})
 
     @app.get("/api/v1/merchant-memory", tags=["owner"])
     def list_merchant_memory(

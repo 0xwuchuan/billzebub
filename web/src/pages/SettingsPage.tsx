@@ -44,6 +44,7 @@ export function SettingsPage({
   theme,
   onToggleTheme,
   merchantRules = [],
+  onRemoveMerchantRule,
 }: {
   identity: OwnerIdentity | null;
   accounts: FinancialAccount[];
@@ -64,6 +65,7 @@ export function SettingsPage({
   theme: Theme;
   onToggleTheme: () => void;
   merchantRules?: MerchantRule[];
+  onRemoveMerchantRule?: (normalizedKey: string) => void;
 }) {
   const fresh = useEntrance("settings");
   const [modal, setModal] = useState<SettingsModal | null>(null);
@@ -184,7 +186,12 @@ export function SettingsPage({
               </span>
             </div>
           </div>
-          <MerchantRulesList rules={merchantRules} />
+          <MerchantRulesList
+            rules={merchantRules}
+            {...(onRemoveMerchantRule === undefined
+              ? {}
+              : { onRemove: onRemoveMerchantRule })}
+          />
         </section>
 
         <SettingsSection

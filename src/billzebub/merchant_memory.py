@@ -108,6 +108,21 @@ def refresh_merchant_memory(session: Session, counterparty: str) -> MemoryRule |
     return refresh_normalized_key(session, key)
 
 
+def forget_normalized_key(session: Session, normalized_key: str) -> bool:
+    """Drop a future rule without recomputing it from historical evidence."""
+    key = normalized_key.strip()
+    if not key:
+        return False
+    existing = session.scalar(
+        select(MerchantCategoryMemory).where(MerchantCategoryMemory.normalized_key == key)
+    )
+    if existing is None:
+        return False
+    session.delete(existing)
+    session.flush()
+    return True
+
+
 def refresh_normalized_key(session: Session, normalized_key: str) -> MemoryRule | None:
     key = normalized_key.strip()
     if not key:

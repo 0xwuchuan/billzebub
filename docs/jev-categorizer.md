@@ -79,7 +79,8 @@ billzebub jev eval-threshold
 Pending `categorization_needed` Reviews are also grouped by normalized merchant:
 
 - `GET /api/v1/reviews/merchant-groups`
-- `POST /api/v1/reviews/merchant-groups/apply` with `If-Match` set to the group `etag`, body `{normalized_key, category_id, exclude_transaction_ids}`
+- `POST /api/v1/reviews/merchant-groups/apply` with `If-Match` set to the group `etag`, body `{normalized_key, category_id, exclude_transaction_ids, remember}`. `remember` defaults to true. When it is false the included charges are categorized and the future rule is not kept.
+- `POST /api/v1/merchant-memory/forget` with `{normalized_key}` removes one rule.
 - `POST /api/v1/reviews/merchant-groups/undo` with `If-Match` set to the apply response `undo_etag`
 - `GET /api/v1/merchant-memory`
 
