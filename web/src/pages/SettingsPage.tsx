@@ -10,7 +10,9 @@ import type {
   OwnerIdentity,
   StatementAdapter,
   StatementCoverageReport,
+  Transaction,
 } from "../api";
+import type { CategoryPatch } from "../components/settings/CategoriesPanel";
 import { StatementCoveragePanel } from "../components/StatementCoveragePanel";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { MerchantRulesList } from "../components/MerchantRulesList";
@@ -35,7 +37,10 @@ export function SettingsPage({
   saving,
   onCreateAccount,
   onAddAlias,
+  transactions = [],
+  month,
   onCreateCategory,
+  onUpdateCategory,
   onIssueToken,
   onRotateToken,
   onRevokeToken,
@@ -56,7 +61,11 @@ export function SettingsPage({
   saving: string | null;
   onCreateAccount: (input: CreateFinancialAccountInput) => Promise<void>;
   onAddAlias: (accountId: string, cardLabel: string) => Promise<void>;
+  transactions?: Transaction[] | undefined;
+  month?: string | undefined;
   onCreateCategory: (name: string, parentId?: string) => Promise<void>;
+  onUpdateCategory?:
+    ((category: Category, patch: CategoryPatch) => Promise<void>) | undefined;
   onIssueToken: () => Promise<void>;
   onRotateToken: (tokenId: string) => Promise<void>;
   onRevokeToken: (tokenId: string) => Promise<void>;
@@ -170,8 +179,11 @@ export function SettingsPage({
         >
           <CategoriesPanel
             categories={categories}
+            transactions={transactions}
+            month={month}
             saving={saving === "category"}
             onCreateCategory={onCreateCategory}
+            onUpdateCategory={onUpdateCategory}
             mode="list"
           />
         </SettingsSection>
@@ -255,10 +267,13 @@ export function SettingsPage({
             <CategoriesPanel
               categories={categories}
               saving={saving === "category"}
+              transactions={transactions}
+              month={month}
               onCreateCategory={async (name, parentId) => {
                 await onCreateCategory(name, parentId);
                 setModal(null);
               }}
+              onUpdateCategory={onUpdateCategory}
               mode="form"
             />
           ) : null}

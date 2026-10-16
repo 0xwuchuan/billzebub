@@ -20,7 +20,9 @@ import {
   issueToken,
   revokeToken,
   rotateToken,
+  updateCategory,
   type Category,
+  type CategoryPatch,
   type CreateFinancialAccountInput,
   type FinancialAccount,
   type IssuedToken,
@@ -316,7 +318,17 @@ export function useWorkspace() {
 
   async function addCategory(name: string, parentId?: string): Promise<void> {
     if (import.meta.env.DEV && fixtureMode !== null) {
-      setError("Example data stays in the browser. Nothing was written.");
+      const category: Category = {
+        id: `example-local-${name.toLowerCase()}`,
+        name,
+        parent_id: parentId ?? null,
+        active: true,
+        version: 1,
+      };
+      setWorkspace((current) => ({
+        ...current,
+        categories: [...current.categories, category],
+      }));
       return;
     }
     setSaving("category");
@@ -326,6 +338,38 @@ export function useWorkspace() {
       setWorkspace((current) => ({
         ...current,
         categories: [...current.categories, category],
+      }));
+    } catch (requestError) {
+      setError(messageFor(requestError));
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function reviseCategory(
+    category: Category,
+    patch: CategoryPatch,
+  ): Promise<void> {
+    if (import.meta.env.DEV && fixtureMode !== null) {
+      setWorkspace((current) => ({
+        ...current,
+        categories: current.categories.map((item) =>
+          item.id === category.id
+            ? { ...item, ...patch, version: (item.version ?? 1) + 1 }
+            : item,
+        ),
+      }));
+      return;
+    }
+    setSaving("category");
+    setError(null);
+    try {
+      const updated = await updateCategory(category, patch);
+      setWorkspace((current) => ({
+        ...current,
+        categories: current.categories.map((item) =>
+          item.id === updated.id ? updated : item,
+        ),
       }));
     } catch (requestError) {
       setError(messageFor(requestError));
@@ -513,6 +557,7 @@ export function useWorkspace() {
     addAccount,
     addWalletAlias,
     addCategory,
+    reviseCategory,
     addToken,
     replaceToken,
     removeToken,

@@ -406,7 +406,7 @@ p {
   display: inline-flex;
   align-items: center;
   gap: var(--bz-space-1);
-  max-width: min(9.75rem, 100%);
+  max-width: 16rem;
   min-width: 0;
   min-height: 1.375rem;
   overflow: hidden;
@@ -423,19 +423,49 @@ p {
   line-height: 1.2;
 }
 
+.cat-chip.is-child {
+  --cat-color: color-mix(in srgb, var(--cat-base, var(--bz-muted)) 68%, white);
+}
+
+.cat-chip-parent {
+  flex: 0 0 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--bz-muted);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cat-chip-sep {
+  flex: 0 0 auto;
+  color: var(--bz-muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.cat-chip-archived,
+.cat-chip-sub {
+  flex: 0 0 auto;
+  color: var(--bz-muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.cat-chip-sub {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
 .cat-chip.is-muted {
   color: var(--bz-muted);
 }
 
-.cat-chip-dot {
-  flex: 0 0 6px;
-  width: 6px;
-  height: 6px;
-  border-radius: var(--bz-radius-pill);
-  background: var(--cat-color, var(--bz-muted));
-}
-
 .cat-chip-label {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;

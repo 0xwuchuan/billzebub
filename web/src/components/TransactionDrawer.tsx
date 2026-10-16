@@ -1,12 +1,25 @@
+import { useEffect, useRef, useState } from "react";
+
 import type { Category, Transaction } from "../api";
 import { useOverlayMedia } from "../hooks/useOverlayMedia";
+import {
+  buildPickerRows,
+  categoryUsage,
+  chipParts,
+  closedPicker,
+  draftFromCategory,
+  recentLeafIds,
+  reducePickerKey,
+  type PickerState,
+} from "../lib/categoryTree";
+import { CategoryPicker } from "./CategoryPicker";
 import { CloseIcon } from "./icons";
 import { counterpartyText } from "../lib/identity";
 import { MoneyText } from "./MoneyText";
 import { UserLabel } from "./UserLabel";
 import { Button } from "./ui/Button";
 import { CategoryChip } from "./ui/CategoryChip";
-import { categoryLabel, dayMonthLabel, kindLabel } from "../lib/labels";
+import { dayMonthLabel, kindLabel } from "../lib/labels";
 import { formatUnsigned } from "../lib/money";
 import {
   activityAmount,
@@ -149,7 +162,7 @@ function DrawerBody({
           <dd>{kindLabel(transaction.kind)}</dd>
           <dt>Category</dt>
           <dd>
-            <CategoryChip name={categoryLabel(transaction)} />
+            <AssignedChip transaction={transaction} categories={categories} />
           </dd>
           <dt>Confirmation</dt>
           <dd>
@@ -168,27 +181,16 @@ function DrawerBody({
         </dl>
         {categorize ? (
           <>
-            <label
-              className="field-label"
-              htmlFor={`drawer-cat-${transaction.id}`}
-            >
+            <label className="sr-only" htmlFor={`drawer-cat-${transaction.id}`}>
               Category for {transaction.counterparty}
-              <select
-                className="select"
-                id={`drawer-cat-${transaction.id}`}
-                value={draft}
-                onChange={(event) => {
-                  onDraft(event.target.value);
-                }}
-              >
-                <option value="">Choose Category</option>
-                {categories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
-              </select>
             </label>
+            <DrawerPicker
+              transaction={transaction}
+              categories={categories}
+              draft={draft}
+              inputId={`drawer-cat-${transaction.id}`}
+              onDraft={onDraft}
+            />
             <Button
               variant="primary"
               disabled={draft === "" || saving}
@@ -202,5 +204,119 @@ function DrawerBody({
         ) : null}
       </div>
     </>
+  );
+}
+
+function AssignedChip({
+  transaction,
+  categories,
+}: {
+  transaction: Transaction;
+  categories: Category[];
+}) {
+  const split = transaction.category_splits[0];
+  if (split === undefined) {
+    return <CategoryChip name="Uncategorized" />;
+  }
+  const parts = chipParts(categories, split.id, split.name);
+  const unsure =
+    parts.parentName === null &&
+    categories.some(
+      (category) => category.active && category.parent_id === split.id,
+    ) &&
+    transaction.reviews.some(
+      (review) => review.condition_code === "categorization_needed",
+    );
+  return (
+    <CategoryChip
+      name={parts.name}
+      parentName={parts.parentName}
+      archived={parts.archived}
+      unsure={unsure}
+    />
+  );
+}
+
+function DrawerPicker({
+  transaction,
+  categories,
+  draft,
+  inputId,
+  onDraft,
+}: {
+  transaction: Transaction;
+  categories: Category[];
+  draft: string;
+  inputId: string;
+  onDraft: (categoryId: string) => void;
+}) {
+  const sheet = useOverlayMedia();
+  const searchRef = useRef<HTMLInputElement>(null);
+  const [picker, setPicker] = useState<PickerState>(closedPicker);
+  useEffect(() => {
+    if (!picker.open) {
+      return;
+    }
+    searchRef.current?.focus();
+  }, [picker.open]);
+  const rows = buildPickerRows({
+    categories,
+    query: picker.query,
+    parentId: picker.parentId,
+    placing: picker.placing,
+    selectedId: draft === "" ? null : draft,
+    recentIds: recentLeafIds([transaction], categories),
+    usage: categoryUsage([transaction]),
+    allowCreate: false,
+  });
+  return (
+    <CategoryPicker
+      rows={rows}
+      draft={draftFromCategory(categories, draft)}
+      open={picker.open}
+      query={picker.query}
+      activeIndex={picker.index}
+      inputId={inputId}
+      listId={`${inputId}-list`}
+      searchRef={searchRef}
+      sheet={sheet}
+      onOpen={() => {
+        setPicker({ ...closedPicker, open: true });
+      }}
+      onDismiss={() => {
+        setPicker(closedPicker);
+      }}
+      onQuery={(query) => {
+        setPicker((current) => ({
+          ...current,
+          query,
+          index: 0,
+          parentId: query.trim() === "" ? current.parentId : null,
+        }));
+      }}
+      onHighlight={(index) => {
+        setPicker((current) => ({ ...current, index }));
+      }}
+      onActivate={(row) => {
+        const next = reducePickerKey(
+          {
+            ...picker,
+            index: rows.findIndex((item) => item.key === row.key),
+          },
+          rows,
+          "Enter",
+        );
+        if (next.effect?.type === "assign") {
+          onDraft(next.effect.categoryId);
+          setPicker(closedPicker);
+          return;
+        }
+        if (next.effect?.type === "close") {
+          setPicker(closedPicker);
+          return;
+        }
+        setPicker(next.state);
+      }}
+    />
   );
 }

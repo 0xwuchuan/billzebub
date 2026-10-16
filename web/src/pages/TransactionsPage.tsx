@@ -23,6 +23,8 @@ export function TransactionsPage({
   accounts,
   confirmation,
   category,
+  categoryIds = [],
+  directOnly = false,
   accountId,
   selectedId,
   today,
@@ -31,6 +33,7 @@ export function TransactionsPage({
   saving,
   onConfirmation,
   onCategory,
+  onDirectOnly,
   onAccount,
   onOpen,
   onLoadMore,
@@ -42,6 +45,8 @@ export function TransactionsPage({
   accounts: Array<{ id: string; name: string }>;
   confirmation: ConfirmationFilter;
   category: string;
+  categoryIds?: string[];
+  directOnly?: boolean;
   accountId: string;
   selectedId: string | null;
   today: Date;
@@ -50,6 +55,7 @@ export function TransactionsPage({
   saving: string | null;
   onConfirmation: (value: ConfirmationFilter) => void;
   onCategory: (value: string) => void;
+  onDirectOnly?: () => void;
   onAccount: (value: string) => void;
   onOpen: (id: string) => void;
   onLoadMore: () => void;
@@ -68,6 +74,8 @@ export function TransactionsPage({
       query,
       accountId,
       category,
+      categoryIds,
+      categories,
       confirmation,
     }),
   );
@@ -208,6 +216,16 @@ export function TransactionsPage({
             {category} ×
           </button>
         ) : null}
+        {categoryIds.length > 1 && onDirectOnly !== undefined ? (
+          <button
+            className="chip"
+            type="button"
+            aria-pressed={directOnly}
+            onClick={onDirectOnly}
+          >
+            Only direct
+          </button>
+        ) : null}
         <div className="add-filter">
           <button
             className="chip"
@@ -314,6 +332,7 @@ export function TransactionsPage({
                   </div>
                   {group.rows.map((transaction) => (
                     <TxRow
+                      categories={categories}
                       key={transaction.id}
                       transaction={transaction}
                       selectable

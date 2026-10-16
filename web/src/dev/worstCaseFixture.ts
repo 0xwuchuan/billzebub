@@ -238,6 +238,36 @@ function worstCategories(): Category[] {
       ),
     ),
     categoryRow("example-cat-uncat", "Uncategorized"),
+    categoryRow("example-cat-coffee", "Coffee", "example-cat-dining"),
+    categoryRow("example-cat-late", "Late night", "example-cat-dining"),
+    categoryRow("example-cat-wet", "Wet market", "example-cat-groceries"),
+    categoryRow("example-cat-dining-child", "Dining", "example-cat-groceries"),
+    categoryRow(
+      "example-cat-archived",
+      "Club nights",
+      "example-cat-dining",
+      false,
+    ),
+    categoryRow("example-cat-subscriptions", "Subscriptions"),
+    categoryRow("example-cat-news", "News", "example-cat-subscriptions"),
+    categoryRow("example-cat-music", "Music", "example-cat-subscriptions"),
+    categoryRow("example-cat-health", "Health"),
+    categoryRow("example-cat-clinic", "Clinic", "example-cat-health"),
+    categoryRow("example-cat-utilities", "Utilities"),
+    categoryRow("example-cat-power", "Power", "example-cat-utilities"),
+    categoryRow("example-cat-household", "Household"),
+    ...Array.from({ length: 12 }, (_, index) =>
+      categoryRow(
+        `example-cat-room-${index + 1}`,
+        index === 0
+          ? atLimit(
+              "Very long subcategory name for the narrow phone chip and the desktop picker row",
+              120,
+            )
+          : `Room ${index + 1}`,
+        "example-cat-household",
+      ),
+    ),
   ];
 }
 
@@ -445,6 +475,105 @@ function worstTransactions(today: Date): Transaction[] {
       splits: [],
     },
     {
+      id: "example-tx-coffee",
+      account: jo,
+      counterparty: "Example Roaster",
+      amount: "6.50",
+      kind: "expense",
+      date: iso(today),
+      splits: [
+        split(
+          categoryRow("example-cat-coffee", "Coffee", "example-cat-dining"),
+          "6.50",
+        ),
+      ],
+    },
+    {
+      id: "example-tx-unsorted",
+      account: jo,
+      counterparty: "Example Hawker",
+      amount: "18.00",
+      kind: "expense",
+      date: iso(today),
+      splits: [split(dining, "18.00")],
+    },
+    {
+      id: "example-tx-provisional-child",
+      account: jo,
+      counterparty: "Example Late Supper",
+      amount: "0.00",
+      authorized: "22.00",
+      kind: "expense",
+      date: iso(today),
+      splits: [
+        split(
+          categoryRow("example-cat-late", "Late night", "example-cat-dining"),
+          "22.00",
+        ),
+      ],
+    },
+    {
+      id: "example-tx-archived",
+      account: long,
+      counterparty: "Example Archived Club",
+      amount: "40.00",
+      kind: "expense",
+      date: iso(shift(today, -20)),
+      splits: [
+        split(
+          categoryRow(
+            "example-cat-archived",
+            "Club nights",
+            "example-cat-dining",
+            false,
+          ),
+          "40.00",
+        ),
+      ],
+    },
+    {
+      id: "example-tx-fallback",
+      account: jo,
+      counterparty: "Example Parent Fallback",
+      amount: "31.00",
+      kind: "expense",
+      date: iso(today),
+      splits: [split(dining, "31.00")],
+    },
+    {
+      id: "example-tx-utilities",
+      account: jo,
+      counterparty: "Example Power Bill",
+      amount: "44.00",
+      kind: "expense",
+      date: iso(today),
+      splits: [
+        split(categoryRow("example-cat-utilities", "Utilities"), "44.00"),
+      ],
+    },
+    {
+      id: "example-tx-long-child",
+      account: jo,
+      counterparty: "Example Narrow Chip",
+      amount: "0.00",
+      authorized: "9.00",
+      kind: "expense",
+      date: iso(today),
+      splits: [
+        split(
+          categoryRow(
+            "example-cat-room-1",
+            atLimit(
+              "Very long subcategory name for the narrow phone chip and the desktop picker row",
+              120,
+            ),
+            "example-cat-household",
+          ),
+          "9.00",
+        ),
+      ],
+    },
+    {
       id: "example-tx-file",
       account: url,
       counterparty:
@@ -582,6 +711,39 @@ function worstReviews(
           noul: "example",
           category_id: null,
           category_name: null,
+          error_class: null,
+          error_message: null,
+        },
+      },
+    }),
+    review({
+      id: "example-review-fallback",
+      severity: "attention",
+      condition: "categorization_needed",
+      decisions: ["keep", "categorize"],
+      created: iso(today),
+      subjectType: "transaction",
+      subjectId: "example-tx-fallback",
+      context: {
+        transaction_id: "example-tx-fallback",
+        counterparty: "Example Parent Fallback",
+        account: "Jo",
+        amount: "31.00",
+        currency: "SGD",
+        effective_date: iso(today),
+        kind: "expense",
+        jev_parent_fallback: true,
+        suggested_category_id: "example-cat-dining",
+        suggested_category_name: "Dining",
+        jev_attempt: {
+          attempted_at: iso(today),
+          model: "example-model",
+          action: "apply",
+          choice: "Dining > Coffee",
+          choice_confidence: "0.62",
+          noul: null,
+          category_id: "example-cat-dining",
+          category_name: "Dining",
           error_class: null,
           error_message: null,
         },
@@ -1097,8 +1259,9 @@ function categoryRow(
   id: string,
   name: string,
   parentId: string | null = null,
+  active = true,
 ): Category {
-  return { id, name, parent_id: parentId, active: true };
+  return { id, name, parent_id: parentId, active };
 }
 
 function split(

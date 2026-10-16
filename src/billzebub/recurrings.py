@@ -90,6 +90,10 @@ _COUNTERPARTY_NOISE = frozenset(
         "www",
     }
 )
+# Card descriptors that rename one merchant. ``AMZNPRIMES*`` is Amazon Prime.
+_COUNTERPARTY_ALIASES = {
+    "amznprimes": "amznprime",
+}
 
 
 class RecurringJobQueue(Protocol):
@@ -241,11 +245,13 @@ def normalize_counterparty(value: str) -> str:
     """Fold a merchant label into the cluster and match key.
 
     Digit-only tokens and long mixed per-charge references are dropped so
-    repeated charges that embed a unique ref still share one key.
+    repeated charges that embed a unique ref still share one key. Known
+    descriptor aliases fold onto the token the other charges already use, so
+    ``amznprimes`` matches ``amznprime``.
     """
     folded = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode().casefold()
     tokens = [
-        token
+        _COUNTERPARTY_ALIASES.get(token, token)
         for token in _TOKEN_PATTERN.findall(folded)
         if token not in _COUNTERPARTY_NOISE
         and not token.isdigit()

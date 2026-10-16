@@ -29,7 +29,8 @@ from billzebub.persistence.models import (
     SourceArtifact,
 )
 from billzebub.reconciliation import Reconciliation
-from billzebub.reviews import PendingReviewStatus
+from billzebub.review_actions import ReviewActions
+from billzebub.reviews import PendingReviewStatus, ReviewDecision
 
 
 @pytest.fixture
@@ -422,6 +423,48 @@ def test_worker_jev_applies_category_at_half_confidence(
     assert attempt.kind == "expense"
     assert attempt.model == "jev-1.13.0"
     assert attempt.error_class is None
+
+
+@pytest.mark.integration
+def test_jev_parent_fallback_keeps_a_review_the_owner_can_keep(
+    database: Database,
+    evidence: tuple[UUID, UUID, UUID],
+) -> None:
+    catalog = CategoryCatalog(database)
+    food = catalog.create("Food")
+    catalog.create("Dining", parent_id=food.id)
+    transaction_id = _confirm_expense(database, evidence, counterparty="Synthetic Cafe")
+    proposer = _FixedProposer(
+        Proposal(
+            action="apply",
+            category_id=food.id,
+            category_name="Food",
+            confidence=Decimal("0.70"),
+            model="jev-1.13.0",
+            choice="Food > Dining",
+            fell_back_to_parent=True,
+        )
+    )
+
+    updated = JevCategorizer(database, proposer).categorize_transaction(transaction_id)
+    review = _pending_categorization(database, transaction_id)
+
+    assert updated is not None
+    assert FinancialHistory(database).get(transaction_id).category_splits[0].category_id == food.id
+    assert review is not None
+    assert review.allowed_decisions == ["keep", "categorize"]
+    assert review.context["jev_parent_fallback"] is True
+    assert review.context["suggested_category_id"] == str(food.id)
+    assert review.context["suggested_category_name"] == "Food"
+    resolved = ReviewActions(database).decide(
+        ReviewDecision(
+            review_id=review.id,
+            expected_version=review.version,
+            choice="keep",
+        )
+    )
+    assert resolved.status is PendingReviewStatus.RESOLVED
+    assert _pending_categorization(database, transaction_id) is None
 
 
 @pytest.mark.integration

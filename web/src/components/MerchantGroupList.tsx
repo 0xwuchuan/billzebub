@@ -1,14 +1,22 @@
 import { useEffect, useId, useRef, useState, type RefObject } from "react";
 
 import type { Category } from "../api";
+import { useOverlayMedia } from "../hooks/useOverlayMedia";
+import {
+  buildPickerRows,
+  draftFromCategory,
+  reducePickerKey,
+  type PickerRow,
+  type PickerState as TreePicker,
+} from "../lib/categoryTree";
 import { dayMonthLabel } from "../lib/labels";
-import { merchantPickerRows } from "../lib/merchantCategoryPicker";
 import {
   remembersByDefault,
   type MerchantGroupMember,
   type MerchantGroupView,
 } from "../lib/merchantGroups";
 import { amountToCents, centsToMoney, formatUnsigned } from "../lib/money";
+import { CategoryPicker } from "./CategoryPicker";
 import { Button } from "./ui/Button";
 import { MoneyText } from "./MoneyText";
 
@@ -61,6 +69,7 @@ export function MerchantGroupList({
   const [focusKey, setFocusKey] = useState<string | null>(null);
   const [picker, setPicker] = useState<PickerState | null>(null);
   const phone = usePhone();
+  const sheet = useOverlayMedia();
   const searchRef = useRef<HTMLInputElement>(null);
   const paper = groups.some((group) => {
     const categoryId = drafts[group.normalizedKey] ?? "";
@@ -90,11 +99,61 @@ export function MerchantGroupList({
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
-      if (event.metaKey || event.ctrlKey || event.altKey || event.isComposing) {
+      if (
+        event.metaKey ||
+        event.ctrlKey ||
+        event.isComposing ||
+        (event.altKey && event.key !== "Enter")
+      ) {
         return;
       }
       const target = event.target;
-      if (isTyping(target) || groups.length === 0 || inDecision(target)) {
+      const inMerchant =
+        target instanceof Element &&
+        target.closest(".merchant-category") !== null;
+      if (
+        !inMerchant &&
+        (isTyping(target) || groups.length === 0 || inDecision(target))
+      ) {
+        return;
+      }
+      if (inMerchant && picker !== null) {
+        const rows = merchantRows(categories, picker, drafts[picker.key] ?? "");
+        const next = reducePickerKey(toTree(picker), rows, event.key, {
+          alt: event.altKey,
+        });
+        const changed =
+          next.effect !== null ||
+          !next.state.open ||
+          next.state.index !== picker.index ||
+          next.state.parentId !== picker.parentId ||
+          next.state.query !== picker.query;
+        if (!changed) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        if (next.effect?.type === "assign") {
+          const categoryId = next.effect.categoryId;
+          const chosen = picker.key;
+          setDrafts((current) => ({
+            ...current,
+            [chosen]: categoryId,
+          }));
+          setPaperKey(chosen);
+          setPicker(null);
+          return;
+        }
+        if (next.effect?.type === "close" || !next.state.open) {
+          setPicker(null);
+          return;
+        }
+        setPicker({
+          key: picker.key,
+          query: next.state.query,
+          index: next.state.index,
+          parentId: next.state.parentId,
+        });
         return;
       }
       const key = focusKey ?? groups[0]?.normalizedKey ?? null;
@@ -126,7 +185,7 @@ export function MerchantGroupList({
     return () => {
       window.removeEventListener("keydown", onKey, true);
     };
-  }, [focusKey, groups]);
+  }, [categories, drafts, focusKey, groups, picker]);
 
   if (groups.length === 0 && undo === null) {
     return null;
@@ -220,6 +279,7 @@ export function MerchantGroupList({
                     categoryId={categoryId}
                     picker={picker?.key === group.normalizedKey ? picker : null}
                     searchRef={searchRef}
+                    sheet={sheet}
                     onOpen={() => {
                       setFocusKey(group.normalizedKey);
                       setPicker({
@@ -233,19 +293,18 @@ export function MerchantGroupList({
                       setPicker((current) =>
                         current === null
                           ? current
-                          : { ...current, query, index: 0 },
+                          : {
+                              ...current,
+                              query,
+                              index: 0,
+                              parentId:
+                                query.trim() === "" ? current.parentId : null,
+                            },
                       );
                     }}
                     onHighlight={(index) => {
                       setPicker((current) =>
                         current === null ? current : { ...current, index },
-                      );
-                    }}
-                    onDrill={(parentId) => {
-                      setPicker((current) =>
-                        current === null
-                          ? current
-                          : { ...current, parentId, query: "", index: 0 },
                       );
                     }}
                     onChoose={(nextId) => {
@@ -255,6 +314,13 @@ export function MerchantGroupList({
                       }));
                       setPaperKey(group.normalizedKey);
                       setPicker(null);
+                    }}
+                    onMove={(next) => {
+                      setPicker((current) =>
+                        current === null || current.key !== group.normalizedKey
+                          ? current
+                          : { ...current, ...next },
+                      );
                     }}
                     onClose={() => {
                       setPicker(null);
@@ -410,11 +476,12 @@ function MerchantCategoryField({
   categoryId,
   picker,
   searchRef,
+  sheet,
   onOpen,
   onQuery,
   onHighlight,
-  onDrill,
   onChoose,
+  onMove,
   onClose,
 }: {
   group: MerchantGroupView;
@@ -422,137 +489,94 @@ function MerchantCategoryField({
   categoryId: string;
   picker: PickerState | null;
   searchRef: RefObject<HTMLInputElement | null>;
+  sheet: boolean;
   onOpen: () => void;
   onQuery: (query: string) => void;
   onHighlight: (index: number) => void;
-  onDrill: (parentId: string | null) => void;
   onChoose: (categoryId: string) => void;
+  onMove: (next: {
+    query: string;
+    index: number;
+    parentId: string | null;
+  }) => void;
   onClose: () => void;
 }) {
   const listId = useId();
+  const labelId = `${listId}-label`;
   const open = picker !== null;
-  const rows = merchantPickerRows(
-    categories,
-    picker?.query ?? "",
-    picker?.parentId ?? null,
-  );
-  const active = rows[picker?.index ?? 0] ?? null;
-  const draft =
-    categories.find((category) => category.id === categoryId) ?? null;
-  const parent =
-    draft?.parent_id == null
-      ? null
-      : (categories.find((category) => category.id === draft.parent_id) ??
-        null);
+  const tree = toTree(picker);
+  const rows = merchantRows(categories, picker, categoryId);
   return (
-    <div className={`cat-picker merchant-category${open ? " is-open" : ""}`}>
-      <span className="sr-only" id={`${listId}-label`}>
+    <div className="merchant-category">
+      <span className="sr-only" id={labelId}>
         Category for {group.label}
       </span>
-      {open ? (
-        <input
-          ref={searchRef}
-          className="field cat-picker-search"
-          role="combobox"
-          type="text"
-          aria-expanded="true"
-          aria-controls={listId}
-          aria-labelledby={`${listId}-label`}
-          placeholder="Search categories"
-          value={picker?.query ?? ""}
-          onChange={(event) => {
-            onQuery(event.target.value);
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              event.preventDefault();
-              onClose();
-              return;
-            }
-            if (event.key === "ArrowDown") {
-              event.preventDefault();
-              onHighlight(Math.min(rows.length - 1, (picker?.index ?? 0) + 1));
-              return;
-            }
-            if (event.key === "ArrowUp") {
-              event.preventDefault();
-              onHighlight(Math.max(0, (picker?.index ?? 0) - 1));
-              return;
-            }
-            if (event.key === "ArrowLeft" && (picker?.query ?? "") === "") {
-              event.preventDefault();
-              onDrill(null);
-              return;
-            }
-            if (event.key === "Enter" && active !== null) {
-              event.preventDefault();
-              activate(active);
-            }
-          }}
-        />
-      ) : (
-        <button
-          className="select cat-picker-trigger"
-          type="button"
-          aria-expanded="false"
-          aria-controls={listId}
-          aria-labelledby={`${listId}-label`}
-          onClick={onOpen}
-        >
-          {draft === null
-            ? "Choose Category"
-            : parent === null
-              ? draft.name
-              : `${parent.name} › ${draft.name}`}
-        </button>
-      )}
-      {open ? (
-        rows.length === 0 ? (
-          <p className="cat-picker-empty">No matching Category</p>
-        ) : (
-          <ul className="cat-picker-list" id={listId} role="listbox">
-            {rows.map((row, index) => (
-              <li key={row.key}>
-                <button
-                  className={`cat-picker-option${index === (picker?.index ?? 0) ? " is-active" : ""}${row.kind === "just" ? " is-just" : ""}`}
-                  type="button"
-                  role="option"
-                  aria-selected={index === (picker?.index ?? 0)}
-                  onMouseEnter={() => {
-                    onHighlight(index);
-                  }}
-                  onClick={() => {
-                    activate(row);
-                  }}
-                >
-                  {row.name}
-                  {row.hasChildren ? (
-                    <span className="cat-picker-chevron" aria-hidden="true">
-                      ›
-                    </span>
-                  ) : null}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )
-      ) : null}
+      <CategoryPicker
+        rows={rows}
+        draft={draftFromCategory(categories, categoryId)}
+        open={open}
+        query={tree.query}
+        activeIndex={tree.index}
+        inputId={`${listId}-input`}
+        listId={listId}
+        searchRef={searchRef}
+        sheet={sheet}
+        labelledBy={labelId}
+        onOpen={onOpen}
+        onDismiss={onClose}
+        onQuery={onQuery}
+        onHighlight={onHighlight}
+        onActivate={(row) => {
+          const index = rows.findIndex((item) => item.key === row.key);
+          const next = reducePickerKey(
+            { ...tree, index: index < 0 ? tree.index : index },
+            rows,
+            "Enter",
+          );
+          if (next.effect?.type === "assign") {
+            onChoose(next.effect.categoryId);
+            return;
+          }
+          if (next.effect?.type === "close" || !next.state.open) {
+            onClose();
+            return;
+          }
+          onMove({
+            query: next.state.query,
+            index: next.state.index,
+            parentId: next.state.parentId,
+          });
+        }}
+      />
     </div>
   );
+}
 
-  function activate(row: (typeof rows)[number]) {
-    if (row.kind === "back") {
-      onDrill(null);
-      return;
-    }
-    if (row.hasChildren) {
-      onDrill(row.key);
-      return;
-    }
-    if (row.categoryId !== null) {
-      onChoose(row.categoryId);
-    }
-  }
+function merchantRows(
+  categories: Category[],
+  picker: PickerState | null,
+  categoryId: string,
+): PickerRow[] {
+  return buildPickerRows({
+    categories,
+    query: picker?.query ?? "",
+    parentId: picker?.parentId ?? null,
+    placing: false,
+    selectedId: categoryId === "" ? null : categoryId,
+    recentIds: [],
+    usage: new Map(),
+    allowCreate: false,
+  });
+}
+
+function toTree(picker: PickerState | null): TreePicker {
+  return {
+    open: picker !== null,
+    query: picker?.query ?? "",
+    index: picker?.index ?? 0,
+    parentId: picker?.parentId ?? null,
+    placing: false,
+  };
 }
 
 function includedMembers(

@@ -8,7 +8,12 @@ from uuid import UUID
 from sqlalchemy import select
 
 from billzebub.jobs import JobQueue
-from billzebub.persistence.models import Extraction, PendingReview
+from billzebub.owner_transaction_actions import (
+    OwnerCategorizationCommand,
+    OwnerTransactionActionError,
+    OwnerTransactionActions,
+)
+from billzebub.persistence.models import Extraction, FinancialTransaction, PendingReview
 from billzebub.reconciliation import Reconciliation
 from billzebub.reviews import (
     PendingReviewRecord,
@@ -81,9 +86,13 @@ class ReviewActions:
         if condition_code.startswith("agent_proposal:"):
             return self._inbox.decide(command)
         if condition_code == "categorization_needed":
-            raise ReviewActionError(
-                "categorization reviews are resolved by categorizing the Transaction"
-            )
+            if command.choice == "keep":
+                return self._inbox.decide(command)
+            if command.category_id is None or command.choice != "categorize":
+                raise ReviewActionError(
+                    "categorization reviews are resolved by categorizing the Transaction"
+                )
+            return self._decide_categorization(command)
         if condition_code.startswith("statement_extraction:"):
             return self._decide_extraction_failure(command)
         if condition_code.startswith("statement_reprocess:"):
@@ -110,6 +119,53 @@ class ReviewActions:
             self._require_open_decision(command, frozenset({self._EXCLUDE_SOURCE_ARTIFACT}))
             return self._inbox.decide(command)
         raise ReviewActionError("Pending Review requires a specialized workflow")
+
+    def _decide_categorization(self, command: ReviewDecision) -> PendingReviewRecord:
+        category_id = command.category_id
+        actor_id = command.actor_id
+        if category_id is None or actor_id is None:
+            raise ReviewActionError(
+                "categorization reviews are resolved by categorizing the Transaction"
+            )
+        with self._database.transaction() as session:
+            review = session.scalar(
+                select(PendingReview).where(PendingReview.id == command.review_id).with_for_update()
+            )
+            if review is None:
+                raise ReviewError("Pending Review was not found")
+            if review.status != PendingReviewStatus.PENDING.value:
+                raise ReviewError("Pending Review is no longer Pending")
+            if command.expected_version != review.version:
+                raise ReviewError("Pending Review version is stale")
+            if command.choice not in review.allowed_decisions or command.choice != "categorize":
+                raise ReviewError("decision is not permitted for this Pending Review")
+            if review.subject_type != "transaction":
+                raise ReviewActionError(
+                    "categorization reviews are resolved by categorizing the Transaction"
+                )
+            transaction = session.scalar(
+                select(FinancialTransaction)
+                .where(FinancialTransaction.id == review.subject_id)
+                .with_for_update()
+            )
+            if transaction is None:
+                raise ReviewActionError(
+                    "categorization reviews are resolved by categorizing the Transaction"
+                )
+            try:
+                OwnerTransactionActions(self._database).categorize_in_session(
+                    session,
+                    OwnerCategorizationCommand(
+                        transaction_id=transaction.id,
+                        expected_version=transaction.current_version,
+                        category_id=category_id,
+                        actor_id=actor_id,
+                    ),
+                )
+            except OwnerTransactionActionError as error:
+                raise ReviewActionError(str(error)) from error
+            session.refresh(review)
+            return ReviewInbox._record(review)
 
     def _decide_extraction_failure(self, command: ReviewDecision) -> PendingReviewRecord:
         review = self._require_open_decision(command, self._EXTRACTION_DECISIONS)

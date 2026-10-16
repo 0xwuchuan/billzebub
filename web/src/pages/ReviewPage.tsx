@@ -15,8 +15,22 @@ import { MoneyText } from "../components/MoneyText";
 import { UserLabel } from "../components/UserLabel";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
+import { CategoryChip } from "../components/ui/CategoryChip";
 import { useDeskMedia } from "../hooks/useDeskMedia";
+import { useOverlayMedia } from "../hooks/useOverlayMedia";
 import { useEntrance } from "../hooks/useEntrance";
+import {
+  buildPickerRows,
+  categoryUsage,
+  childCategories,
+  compareCategoryNames,
+  closedPicker,
+  draftFromCategory,
+  recentLeafIds,
+  reducePickerKey,
+  type PickerRow,
+  type PickerState,
+} from "../lib/categoryTree";
 import {
   activityAmount,
   categorizationAmount,
@@ -42,10 +56,6 @@ import { UNKNOWN_COUNTERPARTY, formatAccountLabel } from "../lib/identity";
 import { formatUnsigned } from "../lib/money";
 import type { ReviewFilter } from "../lib/route";
 
-const CLOSED_PICKER = { open: false, query: "", index: 0 };
-
-type PickerState = typeof CLOSED_PICKER;
-
 export function ReviewPage({
   reviews,
   transactions,
@@ -60,6 +70,7 @@ export function ReviewPage({
   onSelect,
   onDraft,
   onAssign,
+  onApply,
   onDecide,
   onOpenTransaction,
   onOpenImport,
@@ -84,6 +95,10 @@ export function ReviewPage({
   onSelect: (id: string) => void;
   onDraft: (transactionId: string, categoryId: string) => void;
   onAssign: (transaction: Transaction) => void | Promise<boolean | void>;
+  onApply?: (
+    transaction: Transaction,
+    categoryId: string,
+  ) => void | Promise<boolean | void>;
   onDecide: (review: Review, choice: string) => void | Promise<boolean | void>;
   onOpenTransaction: (id: string) => void;
   onOpenImport: (id: string) => void;
@@ -98,6 +113,7 @@ export function ReviewPage({
   const [merchantPaper, setMerchantPaper] = useState(false);
   const fresh = useEntrance("review");
   const desk = useDeskMedia();
+  const sheet = useOverlayMedia();
   const [hiddenIds, setHiddenIds] = useState<string[]>([]);
   const hidden = new Set([...hiddenIds, ...suppressedReviewIds]);
   const groups =
@@ -112,11 +128,11 @@ export function ReviewPage({
     items.find((item) => item.id === selectedId) ?? items[0] ?? null;
   const selectedAssignId =
     selected === null ? null : reviewTransactionId(selected);
-  const [picker, setPicker] = useState<PickerState>(CLOSED_PICKER);
+  const [picker, setPicker] = useState<PickerState>(closedPicker);
   const [pickerReviewId, setPickerReviewId] = useState(selected?.id ?? "");
   if ((selected?.id ?? "") !== pickerReviewId) {
     setPickerReviewId(selected?.id ?? "");
-    setPicker(CLOSED_PICKER);
+    setPicker(closedPicker);
   }
   const cardRef = useRef<HTMLElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -165,11 +181,11 @@ export function ReviewPage({
   }
 
   function openPicker(query: string) {
-    setPicker({ open: true, query, index: 0 });
+    setPicker({ ...closedPicker, open: true, query });
   }
 
   function closePicker() {
-    setPicker(CLOSED_PICKER);
+    setPicker(closedPicker);
     cardRef.current?.focus();
   }
 
@@ -177,7 +193,7 @@ export function ReviewPage({
     if (selectedAssignId !== null) {
       onDraft(selectedAssignId, categoryId);
     }
-    setPicker(CLOSED_PICKER);
+    setPicker(closedPicker);
     cardRef.current?.focus();
   }
 
@@ -189,13 +205,9 @@ export function ReviewPage({
     if (id === undefined || id === selected?.id) {
       return;
     }
-    setPicker(CLOSED_PICKER);
+    setPicker(closedPicker);
     onSelect(id);
     cardRef.current?.focus();
-  }
-
-  function highlightCategory(index: number) {
-    setPicker((current) => ({ ...current, index }));
   }
 
   function appendQuery(character: string) {
@@ -204,7 +216,39 @@ export function ReviewPage({
       open: true,
       query: `${current.query}${character}`,
       index: 0,
+      parentId: null,
+      placing: false,
     }));
+  }
+
+  function rowsFor(state: PickerState): PickerRow[] {
+    return buildPickerRows({
+      categories,
+      query: state.query,
+      parentId: state.parentId,
+      placing: state.placing,
+      selectedId:
+        selectedAssignId === null ? null : (drafts[selectedAssignId] ?? null),
+      recentIds: recentLeafIds(transactions, categories),
+      usage: categoryUsage(transactions),
+      allowCreate: onApply !== undefined,
+    });
+  }
+
+  function applyPickerResult(next: ReturnType<typeof reducePickerKey>) {
+    if (next.effect?.type === "close") {
+      closePicker();
+      return;
+    }
+    if (next.effect?.type === "assign") {
+      chooseCategory(next.effect.categoryId);
+      return;
+    }
+    if (next.effect?.type === "create") {
+      closePicker();
+      return;
+    }
+    setPicker(next.state);
   }
 
   function confirmCurrent() {
@@ -220,6 +264,11 @@ export function ReviewPage({
       }
       const draftId =
         selectedAssignId === null ? "" : (drafts[selectedAssignId] ?? "");
+      const fallback = parentFallback(selected, categories, transactions);
+      if (draftId === "" && fallback !== null) {
+        keepParent(fallback.parent.id);
+        return;
+      }
       if (draftId === "") {
         openPicker("");
         return;
@@ -233,17 +282,67 @@ export function ReviewPage({
     }
   }
 
+  function keepParent(parentId: string) {
+    if (selected === null) {
+      return;
+    }
+    const assignable =
+      transactionForReview(selected, transactions) ??
+      transactionFromReviewContext(selected);
+    if (assignable === undefined) {
+      return;
+    }
+    const already = assignable.category_splits.some(
+      (split) => split.id === parentId,
+    );
+    if (already && selected.allowed_decisions.includes("keep")) {
+      decideAndAdvance(selected, "keep");
+      return;
+    }
+    applyCategory(assignable, parentId);
+  }
+
+  function applyCategory(transaction: Transaction, categoryId: string) {
+    if (selected === null) {
+      return;
+    }
+    if (onApply === undefined) {
+      chooseCategory(categoryId);
+      return;
+    }
+    const reviewId = selected.id;
+    advancePast(reviewId);
+    void Promise.resolve(onApply(transaction, categoryId)).then((result) => {
+      finishAdvance(reviewId, result);
+    });
+  }
+
   useEffect(() => {
+    const fallback =
+      selected === null
+        ? null
+        : parentFallback(selected, categories, transactions);
     keyboardRef.current = {
-      categories,
       picker,
+      rows: rowsFor(picker),
       openPicker,
       closePicker,
-      chooseCategory,
       moveQueue,
-      highlightCategory,
       appendQuery,
       confirmCurrent,
+      applyPickerResult,
+      keepParent,
+      applyChild: (categoryId: string) => {
+        const assignable =
+          selected === null
+            ? undefined
+            : (transactionForReview(selected, transactions) ??
+              transactionFromReviewContext(selected));
+        if (assignable !== undefined) {
+          applyCategory(assignable, categoryId);
+        }
+      },
+      fallbackChildIds: fallback?.children.map((child) => child.id) ?? [],
       categorization: selected?.condition_code === "categorization_needed",
     };
   });
@@ -251,7 +350,12 @@ export function ReviewPage({
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       const snapshot = keyboardRef.current;
-      if (snapshot === null || event.metaKey || event.ctrlKey || event.altKey) {
+      if (
+        snapshot === null ||
+        event.metaKey ||
+        event.ctrlKey ||
+        (event.altKey && event.key !== "Enter")
+      ) {
         return;
       }
       if (event.isComposing || isTextEntry(event.target)) {
@@ -264,6 +368,25 @@ export function ReviewPage({
       }
       if (snapshot.picker.open) {
         handlePickerKey(event, snapshot);
+        return;
+      }
+      if (
+        snapshot.fallbackChildIds.length > 0 &&
+        (event.key === "1" || event.key === "2" || event.key === "3")
+      ) {
+        const childId = snapshot.fallbackChildIds[Number(event.key) - 1];
+        if (childId !== undefined) {
+          event.preventDefault();
+          snapshot.applyChild(childId);
+        }
+        return;
+      }
+      if (
+        snapshot.fallbackChildIds.length > 0 &&
+        (event.key === "k" || event.key === "K")
+      ) {
+        event.preventDefault();
+        snapshot.confirmCurrent();
         return;
       }
       if (event.key === "ArrowDown" || event.key === "j") {
@@ -416,17 +539,48 @@ export function ReviewPage({
               onAssign={assignAndAdvance}
               onDecide={decideAndAdvance}
               picker={picker}
+              sheet={sheet}
               searchRef={searchRef}
+              transactions={transactions}
               onPickerOpen={() => {
                 openPicker("");
               }}
+              onPickerDismiss={closePicker}
               onPickerQuery={(query) => {
-                setPicker((current) => ({ ...current, query, index: 0 }));
+                setPicker((current) => ({
+                  ...current,
+                  query,
+                  index: 0,
+                  parentId: query.trim() === "" ? current.parentId : null,
+                  placing: false,
+                }));
               }}
               onPickerHighlight={(index) => {
                 setPicker((current) => ({ ...current, index }));
               }}
-              onPickerChoose={chooseCategory}
+              onPickerActivate={(row) => {
+                applyPickerResult(
+                  reducePickerKey(
+                    {
+                      ...picker,
+                      index: rowsFor(picker).findIndex(
+                        (item) => item.key === row.key,
+                      ),
+                    },
+                    rowsFor(picker),
+                    "Enter",
+                  ),
+                );
+              }}
+              onApplyChild={(categoryId) => {
+                const assignable =
+                  transactionForReview(selected, transactions) ??
+                  transactionFromReviewContext(selected);
+                if (assignable !== undefined) {
+                  applyCategory(assignable, categoryId);
+                }
+              }}
+              onKeepParent={keepParent}
               onOpenTransaction={onOpenTransaction}
               onOpenImport={onOpenImport}
               onOpenSettings={onOpenSettings}
@@ -503,11 +657,16 @@ function Evidence({
   onAssign,
   onDecide,
   picker,
+  sheet,
   searchRef,
+  transactions,
   onPickerOpen,
+  onPickerDismiss,
   onPickerQuery,
   onPickerHighlight,
-  onPickerChoose,
+  onPickerActivate,
+  onApplyChild,
+  onKeepParent,
   onOpenTransaction,
   onOpenImport,
   onOpenSettings,
@@ -524,11 +683,16 @@ function Evidence({
   onAssign: (transaction: Transaction) => void;
   onDecide: (review: Review, choice: string) => void;
   picker: PickerState;
+  sheet: boolean;
   searchRef: RefObject<HTMLInputElement | null>;
+  transactions: Transaction[];
   onPickerOpen: () => void;
+  onPickerDismiss: () => void;
   onPickerQuery: (query: string) => void;
   onPickerHighlight: (index: number) => void;
-  onPickerChoose: (categoryId: string) => void;
+  onPickerActivate: (row: PickerRow) => void;
+  onApplyChild: (categoryId: string) => void;
+  onKeepParent: (parentId: string) => void;
   onOpenTransaction: (id: string) => void;
   onOpenImport: (id: string) => void;
   onOpenSettings: () => void;
@@ -550,6 +714,19 @@ function Evidence({
       ? ""
       : review.subject_type);
   const categorization = review.condition_code === "categorization_needed";
+  const fallback = categorization
+    ? parentFallback(review, categories, transactions)
+    : null;
+  const pickerRows = buildPickerRows({
+    categories,
+    query: picker.query,
+    parentId: picker.parentId,
+    placing: picker.placing,
+    selectedId: draft === "" ? null : draft,
+    recentIds: recentLeafIds(transactions, categories),
+    usage: categoryUsage(transactions),
+    allowCreate: false,
+  });
   const jevAttempt = categorization
     ? jevAttemptFromContext(review.context)
     : null;
@@ -641,7 +818,14 @@ function Evidence({
           </p>
         </div>
         <section className="review-decision">
-          {categorization && assignable !== undefined ? (
+          {categorization && assignable !== undefined && fallback !== null ? (
+            <ParentFallbackCard
+              parent={fallback.parent}
+              picks={fallback.children}
+              onPick={onApplyChild}
+            />
+          ) : null}
+          {categorization && assignable !== undefined && fallback === null ? (
             <div className="cat-picker-slot">
               <label
                 className="sr-only"
@@ -650,24 +834,41 @@ function Evidence({
                 Category for {assignable.counterparty}
               </label>
               <CategoryPicker
-                categories={categories}
-                matches={filterCategories(categories, picker.query)}
-                draftId={draft}
+                rows={pickerRows}
+                draft={draftFromCategory(categories, draft)}
                 open={picker.open}
                 query={picker.query}
                 activeIndex={picker.index}
                 inputId={`review-cat-${assignable.id}`}
                 listId={`review-cat-list-${assignable.id}`}
                 searchRef={searchRef}
+                sheet={sheet}
                 onOpen={onPickerOpen}
+                onDismiss={onPickerDismiss}
                 onQuery={onPickerQuery}
                 onHighlight={onPickerHighlight}
-                onChoose={onPickerChoose}
+                onActivate={onPickerActivate}
               />
             </div>
           ) : null}
           <div className="review-actions review-action-dock">
-            {categorization && assignable !== undefined ? (
+            {categorization && assignable !== undefined && fallback !== null ? (
+              <Button
+                variant="primary"
+                title={`Keep ${fallback.parent.name}`}
+                disabled={saving === assignable.id}
+                onClick={() => {
+                  onKeepParent(fallback.parent.id);
+                }}
+              >
+                <span className="decision-choice">
+                  {saving === assignable.id
+                    ? "Saving…"
+                    : `Keep ${fallback.parent.name}`}
+                </span>
+              </Button>
+            ) : null}
+            {categorization && assignable !== undefined && fallback === null ? (
               <Button
                 variant={quietPrimary ? "ghost" : "primary"}
                 title="Assign Category"
@@ -881,66 +1082,113 @@ function evidenceBody(
 }
 
 type KeyboardSnapshot = {
-  categories: Category[];
   picker: PickerState;
+  rows: PickerRow[];
   categorization: boolean;
+  fallbackChildIds: string[];
   openPicker: (query: string) => void;
   closePicker: () => void;
-  chooseCategory: (categoryId: string) => void;
   moveQueue: (delta: number) => void;
-  highlightCategory: (index: number) => void;
   appendQuery: (character: string) => void;
   confirmCurrent: () => void;
+  applyPickerResult: (next: ReturnType<typeof reducePickerKey>) => void;
+  keepParent: (parentId: string) => void;
+  applyChild: (categoryId: string) => void;
 };
 
-function filterCategories(categories: Category[], query: string): Category[] {
-  const needle = query.trim().toLowerCase();
-  if (needle === "") {
-    return categories;
+function parentFallback(
+  review: Review,
+  categories: Category[],
+  transactions: Transaction[],
+): { parent: Category; children: Category[] } | null {
+  if (review.context.jev_parent_fallback !== true) {
+    return null;
   }
-  return categories.filter((category) =>
-    category.name.toLowerCase().includes(needle),
+  const suggested = contextString(review.context, "suggested_category_id");
+  const attempt = jevAttemptFromContext(review.context);
+  const categoryId = suggested ?? attempt?.category_id ?? null;
+  if (categoryId === null) {
+    return null;
+  }
+  const parent = categories.find(
+    (category) => category.id === categoryId && category.parent_id === null,
+  );
+  if (parent === undefined) {
+    return null;
+  }
+  const usage = categoryUsage(transactions);
+  const children = childCategories(categories, parent.id)
+    .sort(
+      (left, right) =>
+        (usage.get(right.id) ?? 0) - (usage.get(left.id) ?? 0) ||
+        compareCategoryNames(left.name, right.name),
+    )
+    .slice(0, 3);
+  if (children.length === 0) {
+    return null;
+  }
+  return { parent, children };
+}
+
+function ParentFallbackCard({
+  parent,
+  picks,
+  onPick,
+}: {
+  parent: Category;
+  picks: Category[];
+  onPick: (categoryId: string) => void;
+}) {
+  return (
+    <div className="cat-fallback">
+      <CategoryChip name={parent.name} unsure />
+      <p className="cat-fallback-prompt">Pick a subcategory?</p>
+      <div className="cat-fallback-picks">
+        {picks.map((child, index) => (
+          <button
+            key={child.id}
+            className="btn btn-ghost cat-fallback-pick"
+            type="button"
+            onClick={() => {
+              onPick(child.id);
+            }}
+          >
+            <span className="cat-fallback-key">{index + 1}</span>
+            {child.name}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
 function handlePickerKey(event: KeyboardEvent, snapshot: KeyboardSnapshot) {
-  const matches = filterCategories(snapshot.categories, snapshot.picker.query);
-  if (event.key === "Escape") {
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    snapshot.closePicker();
-    return;
-  }
-  if (event.key === "ArrowDown") {
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    if (matches.length === 0) {
-      return;
-    }
-    snapshot.highlightCategory(
-      Math.min(matches.length - 1, snapshot.picker.index + 1),
-    );
-    return;
-  }
-  if (event.key === "ArrowUp") {
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    snapshot.highlightCategory(Math.max(0, snapshot.picker.index - 1));
-    return;
-  }
-  if (event.key === "Enter") {
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    const choice = matches[snapshot.picker.index];
-    if (choice !== undefined) {
-      snapshot.chooseCategory(choice.id);
+  const navigation = new Set([
+    "Escape",
+    "ArrowDown",
+    "ArrowUp",
+    "ArrowLeft",
+    "ArrowRight",
+    "Enter",
+    "Backspace",
+  ]);
+  if (!navigation.has(event.key)) {
+    if (!isCategorySearch(event.target) && isQueryChar(event.key, true)) {
+      event.preventDefault();
+      snapshot.appendQuery(event.key);
     }
     return;
   }
-  if (!isCategorySearch(event.target) && isQueryChar(event.key, true)) {
-    event.preventDefault();
-    snapshot.appendQuery(event.key);
+  if (event.key === "Backspace" && snapshot.picker.query !== "") {
+    return;
   }
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  snapshot.applyPickerResult(
+    reducePickerKey(snapshot.picker, snapshot.rows, event.key, {
+      alt: event.altKey,
+    }),
+  );
 }
 
 function ShortcutList({
