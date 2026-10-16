@@ -1,4 +1,11 @@
-import { useEffect, useId, useRef, useState, type RefObject } from "react";
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 
 import type { Category } from "../api";
 import { useOverlayMedia } from "../hooks/useOverlayMedia";
@@ -68,10 +75,15 @@ export function MerchantGroupList({
   const [paperKey, setPaperKey] = useState<string | null>(null);
   const [focusKey, setFocusKey] = useState<string | null>(null);
   const [picker, setPicker] = useState<PickerState | null>(null);
+  const [skipped, setSkipped] = useState<string[]>([]);
   const phone = usePhone();
   const sheet = useOverlayMedia();
   const searchRef = useRef<HTMLInputElement>(null);
-  const paper = groups.some((group) => {
+  const visibleGroups = useMemo(
+    () => groups.filter((group) => !skipped.includes(group.normalizedKey)),
+    [groups, skipped],
+  );
+  const paper = visibleGroups.some((group) => {
     const categoryId = drafts[group.normalizedKey] ?? "";
     const included = includedMembers(
       group,
@@ -113,7 +125,7 @@ export function MerchantGroupList({
         target.closest(".merchant-category") !== null;
       if (
         !inMerchant &&
-        (isTyping(target) || groups.length === 0 || inDecision(target))
+        (isTyping(target) || visibleGroups.length === 0 || inDecision(target))
       ) {
         return;
       }
@@ -156,8 +168,11 @@ export function MerchantGroupList({
         });
         return;
       }
-      const key = focusKey ?? groups[0]?.normalizedKey ?? null;
-      if (key === null) {
+      const key = focusKey ?? visibleGroups[0]?.normalizedKey ?? null;
+      if (
+        key === null ||
+        !visibleGroups.some((group) => group.normalizedKey === key)
+      ) {
         return;
       }
       if (event.key === "p" || event.key === "P") {
@@ -169,7 +184,7 @@ export function MerchantGroupList({
       if (event.key === "f" || event.key === "F") {
         event.preventDefault();
         event.stopPropagation();
-        const group = groups.find((item) => item.normalizedKey === key);
+        const group = visibleGroups.find((item) => item.normalizedKey === key);
         if (group === undefined) {
           return;
         }
@@ -185,15 +200,15 @@ export function MerchantGroupList({
     return () => {
       window.removeEventListener("keydown", onKey, true);
     };
-  }, [categories, drafts, focusKey, groups, picker]);
+  }, [categories, drafts, focusKey, picker, visibleGroups]);
 
-  if (groups.length === 0 && undo === null) {
+  if (visibleGroups.length === 0 && undo === null) {
     return null;
   }
 
   const dockGroup =
-    groups.find((group) => group.normalizedKey === paperKey) ??
-    groups[0] ??
+    visibleGroups.find((group) => group.normalizedKey === paperKey) ??
+    visibleGroups[0] ??
     null;
 
   return (
@@ -213,9 +228,9 @@ export function MerchantGroupList({
           </button>
         </div>
       )}
-      {groups.length === 0 ? null : (
+      {visibleGroups.length === 0 ? null : (
         <section className="merchant-groups" aria-label="Merchant groups">
-          {groups.map((group) => {
+          {visibleGroups.map((group) => {
             const excludedIds = excluded[group.normalizedKey] ?? [];
             const included = includedMembers(group, excludedIds);
             const categoryId = drafts[group.normalizedKey] ?? "";
@@ -343,6 +358,27 @@ export function MerchantGroupList({
                       {category === undefined ? "" : ` as ${category.name}`}
                     </span>
                   </label>
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      setSkipped((current) =>
+                        current.includes(group.normalizedKey)
+                          ? current
+                          : [...current, group.normalizedKey],
+                      );
+                      setExpanded((current) =>
+                        current === group.normalizedKey ? null : current,
+                      );
+                      setPicker((current) =>
+                        current?.key === group.normalizedKey ? null : current,
+                      );
+                      setPaperKey((current) =>
+                        current === group.normalizedKey ? null : current,
+                      );
+                    }}
+                  >
+                    Skip merchant
+                  </Button>
                   {phone ? null : (
                     <Button
                       className="merchant-apply"

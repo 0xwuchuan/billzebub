@@ -473,6 +473,9 @@ describe("ReviewPage", () => {
     expect(apply).toBeDisabled();
     expect(apply).toHaveClass("btn-ghost");
     expect(apply).not.toHaveClass("btn-primary");
+    const skip = screen.getByRole("button", { name: "Skip merchant" });
+    expect(skip).toHaveClass("btn-ghost");
+    expect(skip).not.toHaveClass("btn-primary");
     fireEvent.click(
       screen.getByRole("button", { name: "Category for Synthetic Coffee" }),
     );
@@ -501,6 +504,36 @@ describe("ReviewPage", () => {
         remember: false,
       }),
     );
+  });
+
+  it("skips a merchant group without categorizing it", () => {
+    const second = {
+      ...coffee,
+      id: "00000000-0000-0000-0000-000000000030",
+      counterparty: "Synthetic Coffee SG",
+    };
+    const secondReview = {
+      ...coffeeReview,
+      id: "00000000-0000-0000-0000-000000000031",
+      subject_id: second.id,
+    };
+    const onApply = vi.fn();
+    renderPage({
+      reviews: [coffeeReview, secondReview],
+      transactions: [coffee, second],
+      onApplyMerchantGroup: onApply,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Skip merchant" }));
+
+    expect(
+      screen.queryByRole("heading", { name: "Synthetic Coffee" }),
+    ).not.toBeInTheDocument();
+    expect(onApply).not.toHaveBeenCalled();
+    const queue = screen.getByRole("region", { name: "Pending Review queue" });
+    expect(
+      within(queue).queryByRole("button", { name: /Synthetic Coffee/ }),
+    ).not.toBeInTheDocument();
   });
 
   it("keeps an applied merchant charge out of the individual queue", () => {
