@@ -536,6 +536,28 @@ describe("ReviewPage", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("undoes a merchant apply from Z and command Z", () => {
+    const onUndo = vi.fn();
+    renderPage({
+      reviews: [],
+      transactions: [],
+      merchantUndo: {
+        label: "Example Spotify",
+        categoryName: "Groceries",
+        count: 3,
+        remember: true,
+      },
+      onUndoMerchantGroup: onUndo,
+    });
+
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Categorized 3 · Rule saved · Undo",
+    );
+    fireEvent.keyDown(document.body, { key: "z" });
+    fireEvent.keyDown(document.body, { key: "z", metaKey: true });
+    expect(onUndo).toHaveBeenCalledTimes(2);
+  });
+
   it("keeps an applied merchant charge out of the individual queue", () => {
     renderPage({
       reviews: [coffeeReview, grocerReview],
@@ -594,6 +616,8 @@ function pageElement({
   onApplyMerchantGroup,
   merchantGroups,
   suppressedReviewIds,
+  merchantUndo,
+  onUndoMerchantGroup,
 }: PageProps) {
   return (
     <ReviewPage
@@ -617,6 +641,8 @@ function pageElement({
       {...(onApplyMerchantGroup === undefined ? {} : { onApplyMerchantGroup })}
       {...(merchantGroups === undefined ? {} : { merchantGroups })}
       {...(suppressedReviewIds === undefined ? {} : { suppressedReviewIds })}
+      {...(merchantUndo === undefined ? {} : { merchantUndo })}
+      {...(onUndoMerchantGroup === undefined ? {} : { onUndoMerchantGroup })}
     />
   );
 }
@@ -638,4 +664,11 @@ type PageProps = {
   }) => void;
   merchantGroups?: [];
   suppressedReviewIds?: string[];
+  merchantUndo?: {
+    label: string;
+    categoryName: string;
+    count: number;
+    remember: boolean;
+  };
+  onUndoMerchantGroup?: () => void;
 };

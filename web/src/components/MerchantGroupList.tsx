@@ -111,6 +111,14 @@ export function MerchantGroupList({
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
+      if (undo !== null && !event.isComposing && isUndoKey(event)) {
+        if (event.metaKey || event.ctrlKey || !isTyping(event.target)) {
+          event.preventDefault();
+          event.stopPropagation();
+          onUndo();
+          return;
+        }
+      }
       if (
         event.metaKey ||
         event.ctrlKey ||
@@ -200,7 +208,7 @@ export function MerchantGroupList({
     return () => {
       window.removeEventListener("keydown", onKey, true);
     };
-  }, [categories, drafts, focusKey, picker, visibleGroups]);
+  }, [categories, drafts, focusKey, onUndo, picker, undo, visibleGroups]);
 
   if (visibleGroups.length === 0 && undo === null) {
     return null;
@@ -214,7 +222,7 @@ export function MerchantGroupList({
   return (
     <>
       {undo === null ? null : (
-        <div className="toast" role="status">
+        <div className="toast merchant-undo-toast" role="status">
           Categorized {undo.count}
           {undo.remember ? " · Rule saved" : ""}
           {" · "}
@@ -277,7 +285,10 @@ export function MerchantGroupList({
                     <p className="muted">
                       {group.members.length} pending
                       {dates === "" ? null : (
-                        <span className="merchant-dates">{dates}</span>
+                        <span className="merchant-dates">
+                          {" · "}
+                          {dates}
+                        </span>
                       )}
                     </p>
                   </div>
@@ -663,6 +674,10 @@ function inDecision(target: EventTarget | null): boolean {
   return (
     target instanceof Element && target.closest("#review-decision") !== null
   );
+}
+
+function isUndoKey(event: KeyboardEvent): boolean {
+  return !event.altKey && (event.key === "z" || event.key === "Z");
 }
 
 function isTyping(target: EventTarget | null): boolean {
