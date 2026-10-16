@@ -2473,8 +2473,15 @@ button.coverage-chip {
   display: inline-flex;
   align-items: center;
   gap: var(--bz-space-2);
-  flex: 0 1 auto;
+  flex: 0 0 auto;
+  width: max-content;
   min-width: 0;
+  max-width: 16rem;
+}
+
+.tx-row .cat-chip {
+  flex: 0 0 auto;
+  width: max-content;
   max-width: 16rem;
 }
 

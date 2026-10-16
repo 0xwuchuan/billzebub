@@ -30,7 +30,6 @@ export function CategoryChip({
       style={{ "--cat-base": color, "--cat-color": color } as CSSProperties}
       title={archived ? `${title} archived` : title}
     >
-      <i className="cat-chip-dot" aria-hidden="true" />
       {parentName != null && parentName !== "" ? (
         <>
           <span className="cat-chip-parent" dir="auto">

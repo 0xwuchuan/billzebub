@@ -4,8 +4,10 @@ import { describe, expect, it } from "vitest";
 
 const page = readFileSync("src/pages/TransactionsPage.tsx", "utf8");
 const drawer = readFileSync("src/components/TransactionDrawer.tsx", "utf8");
+const chip = readFileSync("src/components/ui/CategoryChip.tsx", "utf8");
 const screens = readFileSync("src/styles/screens.css", "utf8");
 const shell = readFileSync("src/styles/shell.css", "utf8");
+const base = readFileSync("src/styles/base.css", "utf8");
 
 describe("transactions chrome", () => {
   it("uses TxRow dots so CategoryChip stays the only pill", () => {
@@ -65,5 +67,17 @@ describe("transactions chrome", () => {
     expect(drawer).toMatch(/confirm-dot/);
     expect(drawer).toMatch(/role="dialog"/);
     expect(drawer).toMatch(/className="tx-detail"/);
+  });
+
+  it("gives a desktop transaction chip a real width and no hue dot", () => {
+    expect(chip).not.toMatch(/cat-chip-dot/);
+    expect(base).not.toMatch(/\.cat-chip\s*\{[^}]*container-type/);
+    const status = screens.slice(
+      screens.indexOf(".tx-row-status {"),
+      screens.indexOf(".tx-amount-side {"),
+    );
+    expect(status).toMatch(/flex:\s*0 0 auto/);
+    expect(status).toMatch(/max-width:\s*16rem/);
+    expect(screens).toMatch(/\.tx-row \.cat-chip\s*\{[^}]*max-width:\s*16rem/);
   });
 });

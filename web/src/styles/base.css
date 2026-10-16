@@ -421,7 +421,6 @@ p {
   font-size: var(--bz-text-meta);
   font-weight: 600;
   line-height: 1.2;
-  container-type: inline-size;
 }
 
 .cat-chip.is-child {
@@ -429,7 +428,7 @@ p {
 }
 
 .cat-chip-parent {
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   min-width: 0;
   overflow: hidden;
   color: var(--bz-muted);
@@ -465,16 +464,8 @@ p {
   color: var(--bz-muted);
 }
 
-.cat-chip-dot {
-  flex: 0 0 6px;
-  width: 6px;
-  height: 6px;
-  border-radius: var(--bz-radius-pill);
-  background: var(--cat-color, var(--bz-muted));
-}
-
 .cat-chip-label {
-  flex: 1 10000 auto;
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
