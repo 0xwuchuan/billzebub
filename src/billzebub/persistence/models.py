@@ -1033,7 +1033,8 @@ class JevCategorizationAttempt(Base):
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
     effective_date: Mapped[date] = mapped_column(Date, nullable=False)
     kind: Mapped[str] = mapped_column(String(30), nullable=False)
-    choice: Mapped[str | None] = mapped_column(String(120))
+    choice: Mapped[str | None] = mapped_column(String(500))
+    skip_reason: Mapped[str | None] = mapped_column(String(40))
     choice_confidence: Mapped[Decimal | None] = mapped_column(Numeric())
     noul: Mapped[Decimal | None] = mapped_column(Numeric())
     action: Mapped[str] = mapped_column(String(10), nullable=False)
@@ -1062,6 +1063,17 @@ class JevCategorizationAttempt(Base):
             name="noul_range",
         ),
         CheckConstraint("action IN ('apply', 'skip')", name="action_known"),
+        CheckConstraint(
+            "skip_reason IS NULL OR skip_reason IN ("
+            "'low_confidence', 'missing_choice', 'missing_confidence', "
+            "'unknown_category', 'ambiguous_category', 'jev_unavailable', 'empty_catalog')",
+            name="skip_reason_known",
+        ),
+        CheckConstraint(
+            "(action = 'apply' AND skip_reason IS NULL) OR "
+            "(action = 'skip' AND skip_reason IS NOT NULL)",
+            name="skip_reason_matches_action",
+        ),
         CheckConstraint(
             "(action = 'apply' AND category_id IS NOT NULL AND category_name IS NOT NULL "
             "AND length(btrim(category_name)) > 0) OR "

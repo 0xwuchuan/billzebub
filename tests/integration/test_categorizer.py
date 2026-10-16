@@ -12,7 +12,7 @@ from billzebub.categories import CategoryCatalog
 from billzebub.claims import ClaimBook, ClaimDraft, ClaimType
 from billzebub.financial_history import Confirmation, FinancialHistory, TransactionKind
 from billzebub.identity import OwnerIdentity
-from billzebub.jev import JevCategory, JevError, JevSubject, Proposal
+from billzebub.jev import JevCategory, JevError, JevSubject, Proposal, parse_jev_proposal
 from billzebub.jev_categorizer import JevCategorizer
 from billzebub.money import Money
 from billzebub.owner_actors import OwnerActors
@@ -489,6 +489,7 @@ def test_worker_jev_below_threshold_or_missing_key_leaves_review(
             confidence=Decimal("0.49"),
             model="jev-1.13.0",
             choice="Gifts",
+            skip_reason="low_confidence",
         )
     )
 
@@ -508,6 +509,7 @@ def test_worker_jev_below_threshold_or_missing_key_leaves_review(
     assert skip_attempt.action == "skip"
     assert skip_attempt.choice == "Gifts"
     assert skip_attempt.choice_confidence == Decimal("0.49")
+    assert skip_attempt.skip_reason == "low_confidence"
     assert skip_attempt.noul is None
     assert skip_attempt.category_id is None
     assert skip_attempt.category_name is None
@@ -519,6 +521,7 @@ def test_worker_jev_below_threshold_or_missing_key_leaves_review(
     assert attempt_context["action"] == "skip"
     assert attempt_context["choice"] == "Gifts"
     assert attempt_context["choice_confidence"] == "0.49"
+    assert attempt_context["skip_reason"] == "low_confidence"
     assert attempt_context["noul"] is None
     assert attempt_context["category_name"] is None
     assert attempt_context["model"] == "jev-1.13.0"
@@ -546,6 +549,7 @@ def test_worker_jev_persists_typesafe_errors_then_retries(
     assert attempt is not None
     assert attempt.action == "skip"
     assert attempt.error_class == "TypeSafeError"
+    assert attempt.skip_reason == "jev_unavailable"
     assert attempt.error_message == "nope"
     assert "api_key" not in (attempt.error_message or "").casefold()
     review = _pending_categorization(database, transaction_id)
@@ -658,6 +662,7 @@ def test_claim_jev_below_threshold_stays_uncategorized_for_catch_up(
             confidence=Decimal("0.49"),
             model="jev-1.13.0",
             choice="Gifts",
+            skip_reason="low_confidence",
         )
     )
 
@@ -789,6 +794,7 @@ def test_claim_jev_persists_typesafe_errors_without_a_category(
     assert attempt.transaction_id is None
     assert attempt.action == "skip"
     assert attempt.error_class == "TypeSafeError"
+    assert attempt.skip_reason == "jev_unavailable"
     assert attempt.error_message == "nope"
     with database.transaction() as session:
         stored = session.scalar(select(ClaimCategory).where(ClaimCategory.claim_id == claim_id))
@@ -807,3 +813,62 @@ def _latest_attempt(database: Database, transaction_id: UUID) -> JevCategorizati
                 JevCategorizationAttempt.id.desc(),
             )
         )
+
+
+class _ParsingProposer:
+    def __init__(self, choice: str) -> None:
+        self.choice = choice
+        self.model = "jev-1.13.0"
+
+    def propose(self, subject: JevSubject, categories: Sequence[JevCategory]) -> Proposal:
+        del subject
+        return parse_jev_proposal(
+            self.choice,
+            Decimal("0.96"),
+            categories,
+            Decimal("0.5"),
+            model=self.model,
+        )
+
+
+@pytest.mark.integration
+def test_high_confidence_path_and_ambiguous_leaf_record_raw_choice_and_skip_reason(
+    database: Database,
+    evidence: tuple[UUID, UUID, UUID],
+) -> None:
+    catalog = CategoryCatalog(database)
+    bank = catalog.create("Bank")
+    card = catalog.create("Card")
+    bank_fees = catalog.create("Fees", parent_id=bank.id)
+    catalog.create("Fees", parent_id=card.id)
+    raw_choice = "  Bank / Fees "
+    applied_id = _confirm_expense(database, evidence, counterparty="Synthetic Path Shop")
+    ambiguous_id = _confirm_expense(
+        database,
+        evidence,
+        counterparty="Synthetic Ambiguous Shop",
+        amount="-4.00",
+        day=date(2026, 3, 8),
+    )
+
+    updated = JevCategorizer(database, _ParsingProposer(raw_choice)).categorize_transaction(
+        applied_id
+    )
+    assert (
+        JevCategorizer(database, _ParsingProposer("Fees")).categorize_transaction(ambiguous_id)
+        is None
+    )
+
+    assert updated is not None
+    assert updated.category_splits[0].category_id == bank_fees.id
+    applied = _latest_attempt(database, applied_id)
+    skipped = _latest_attempt(database, ambiguous_id)
+    assert applied is not None
+    assert applied.action == "apply"
+    assert applied.choice == raw_choice
+    assert applied.skip_reason is None
+    assert skipped is not None
+    assert skipped.action == "skip"
+    assert skipped.choice == "Fees"
+    assert skipped.skip_reason == "ambiguous_category"
+    assert skipped.category_id is None

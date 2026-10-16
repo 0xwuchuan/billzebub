@@ -9,11 +9,12 @@ for leftovers. Below the confidence floor it leaves the row uncategorized.
 from __future__ import annotations
 
 import logging
+import random
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -29,7 +30,15 @@ from billzebub.financial_history import (
     TransactionKind,
     TransactionSnapshot,
 )
-from billzebub.jev import DEFAULT_MODEL, JevCategory, JevError, JevSubject, Proposal, Proposer
+from billzebub.jev import (
+    DEFAULT_MODEL,
+    SKIP_EMPTY_CATALOG,
+    JevCategory,
+    JevError,
+    JevSubject,
+    Proposal,
+    Proposer,
+)
 from billzebub.jev_attempts import proposal_from_jev_error, record_jev_attempt
 from billzebub.owner_transaction_actions import (
     OwnerCategorizationCommand,
@@ -43,7 +52,9 @@ from billzebub.persistence.models import (
     Claim,
     ClaimCategory,
     ClaimDispositionEvent,
+    DurableJob,
     Extraction,
+    JobStatus,
     PendingReview,
     TransactionClaim,
 )
@@ -71,6 +82,11 @@ _ELIGIBLE_CLAIM_DISPOSITIONS = frozenset(
 DEFAULT_CATCHUP_HOUR = 21
 DEFAULT_CATCHUP_TIMEZONE = "Asia/Singapore"
 DEFAULT_CATCHUP_CRON = "0 21 * * *"
+CATEGORIZE_MAX_ATTEMPTS = 8
+JEV_RETRY_BASE_SECONDS = 30
+JEV_RETRY_CAP = timedelta(minutes=30)
+_CATEGORIZE_KINDS = (CATEGORIZE_TRANSACTION_JOB, CATEGORIZE_CLAIM_JOB)
+_JEV_UNAVAILABLE = "jev_unavailable"
 
 
 class JobEnqueuer(Protocol):
@@ -109,11 +125,34 @@ class JevCatchupScheduler:
         return local.date().isoformat()
 
 
+def jev_retry_delay(
+    attempt: int,
+    *,
+    random_unit: Callable[[], float] | None = None,
+) -> timedelta:
+    """Equal-jitter exponential delay after a failed categorize attempt.
+
+    ``attempt`` is 1-based. The full delay is ``min(30 min, 30s * 2**(attempt-1))``.
+    Jitter keeps half of that and adds ``U(0, 1)`` times the other half, so a
+    timeout or ``jev_unavailable`` waits somewhere in ``[full/2, full]``.
+    """
+    exponent = max(attempt, 1) - 1
+    full_seconds = min(JEV_RETRY_CAP.total_seconds(), JEV_RETRY_BASE_SECONDS * (2**exponent))
+    unit = random.random() if random_unit is None else random_unit()
+    if unit < 0:
+        unit = 0.0
+    elif unit > 1:
+        unit = 1.0
+    delay_seconds = full_seconds * 0.5 + unit * full_seconds * 0.5
+    return timedelta(seconds=delay_seconds)
+
+
 def enqueue_transaction_categorization(queue: JobEnqueuer, transaction_id: UUID) -> None:
     queue.enqueue(
         CATEGORIZE_TRANSACTION_JOB,
         {"transaction_id": str(transaction_id)},
         dedupe_key=str(transaction_id),
+        max_attempts=CATEGORIZE_MAX_ATTEMPTS,
     )
 
 
@@ -122,6 +161,7 @@ def enqueue_claim_categorization(queue: JobEnqueuer, claim_id: UUID) -> None:
         CATEGORIZE_CLAIM_JOB,
         {"claim_id": str(claim_id)},
         dedupe_key=str(claim_id),
+        max_attempts=CATEGORIZE_MAX_ATTEMPTS,
     )
 
 
@@ -140,6 +180,144 @@ def enqueue_jev_catch_up(queue: JobEnqueuer, run_date: str) -> None:
         {"run_date": run_date},
         dedupe_key=run_date,
     )
+
+
+@dataclass(frozen=True, slots=True)
+class JevRequeueReport:
+    """Counts printed by ``billzebub jev requeue-failed`` and the nightly catch-up."""
+
+    failed_before: int
+    active_before: int
+    would_requeue: int
+    failed_after: int
+    active_after: int
+    requeued: int
+    applied: bool
+
+
+def format_jev_requeue(report: JevRequeueReport) -> str:
+    lines = [f"before failed={report.failed_before} active={report.active_before}"]
+    if not report.applied:
+        lines.append(f"would_requeue={report.would_requeue}")
+    lines.append(
+        f"after failed={report.failed_after} active={report.active_after} "
+        f"requeued={report.requeued}"
+    )
+    return "\n".join(lines)
+
+
+@dataclass(frozen=True, slots=True)
+class _FailedSubject:
+    kind: str
+    dedupe_key: str
+    payload: dict[str, Any]
+
+
+def requeue_failed_categorizations(
+    database: Database,
+    queue: JobEnqueuer,
+    *,
+    apply: bool,
+) -> JevRequeueReport:
+    """Requeue failed categorize jobs whose last error is ``jev_unavailable``.
+
+    Dry-run counts only. Apply enqueues a new job with the same dedupe key, so
+    a subject that is already queued or running is left alone.
+    """
+    with database.transaction() as session:
+        failed_rows = _failed_unavailable_jobs(session)
+        subjects = _failed_subjects(failed_rows)
+        active = _active_subject_keys(session, subjects)
+        failed_before = len(failed_rows)
+        active_before = len(active)
+        pending = [
+            subject for subject in subjects if (subject.kind, subject.dedupe_key) not in active
+        ]
+    requeued = 0
+    if apply:
+        for subject in pending:
+            enqueued = queue.enqueue(
+                subject.kind,
+                subject.payload,
+                dedupe_key=subject.dedupe_key,
+                max_attempts=CATEGORIZE_MAX_ATTEMPTS,
+            )
+            if not getattr(enqueued, "duplicate", False):
+                requeued += 1
+        with database.transaction() as session:
+            failed_after_rows = _failed_unavailable_jobs(session)
+            failed_after = len(failed_after_rows)
+            active_after = len(_active_subject_keys(session, _failed_subjects(failed_after_rows)))
+    else:
+        failed_after = failed_before
+        active_after = active_before
+    return JevRequeueReport(
+        failed_before=failed_before,
+        active_before=active_before,
+        would_requeue=len(pending),
+        failed_after=failed_after,
+        active_after=active_after,
+        requeued=requeued,
+        applied=apply,
+    )
+
+
+def _failed_unavailable_jobs(session: Any) -> list[DurableJob]:
+    return list(
+        session.scalars(
+            select(DurableJob).where(
+                DurableJob.kind.in_(_CATEGORIZE_KINDS),
+                DurableJob.status == JobStatus.FAILED,
+                DurableJob.last_error_code == _JEV_UNAVAILABLE,
+            )
+        ).all()
+    )
+
+
+def _failed_subjects(rows: list[DurableJob]) -> list[_FailedSubject]:
+    subjects: list[_FailedSubject] = []
+    seen: set[tuple[str, str]] = set()
+    for row in rows:
+        dedupe_key = _categorize_dedupe_key(row)
+        if dedupe_key is None:
+            continue
+        identity = (row.kind, dedupe_key)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        subjects.append(
+            _FailedSubject(kind=row.kind, dedupe_key=dedupe_key, payload=dict(row.payload))
+        )
+    return subjects
+
+
+def _categorize_dedupe_key(row: DurableJob) -> str | None:
+    if row.dedupe_key:
+        return row.dedupe_key
+    payload_key = "transaction_id" if row.kind == CATEGORIZE_TRANSACTION_JOB else "claim_id"
+    value = row.payload.get(payload_key)
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _active_subject_keys(session: Any, subjects: list[_FailedSubject]) -> set[tuple[str, str]]:
+    if not subjects:
+        return set()
+    wanted = {(subject.kind, subject.dedupe_key) for subject in subjects}
+    rows = session.scalars(
+        select(DurableJob).where(
+            DurableJob.kind.in_({kind for kind, _dedupe in wanted}),
+            DurableJob.dedupe_key.in_({dedupe for _kind, dedupe in wanted}),
+            DurableJob.status.in_((JobStatus.QUEUED, JobStatus.RUNNING)),
+        )
+    ).all()
+    return {
+        (row.kind, row.dedupe_key)
+        for row in rows
+        if row.dedupe_key is not None and (row.kind, row.dedupe_key) in wanted
+    }
 
 
 def subject_from_snapshot(snapshot: TransactionSnapshot) -> JevSubject:
@@ -205,7 +383,8 @@ class JevCategorizer:
             enqueue_transaction_categorization(queue, transaction_id)
         for claim_id in claim_ids:
             enqueue_claim_categorization(queue, claim_id)
-        return len(transaction_ids) + len(claim_ids)
+        requeued = requeue_failed_categorizations(self._database, queue, apply=True).requeued
+        return len(transaction_ids) + len(claim_ids) + requeued
 
     def categorize_transaction(self, transaction_id: UUID) -> TransactionSnapshot | None:
         retry: JevError | None = None
@@ -303,6 +482,7 @@ class JevCategorizer:
                 category_name=None,
                 confidence=Decimal("0"),
                 model=self._proposer_model(),
+                skip_reason=SKIP_EMPTY_CATALOG,
             )
         return self._proposer.propose(subject, categories)
 
@@ -455,16 +635,33 @@ class JevCategorizer:
 
     @staticmethod
     def _active_categories(session: Session) -> tuple[JevCategory, ...]:
-        categories = session.scalars(
-            select(Category).where(
-                Category.active.is_(True),
-                or_(Category.parent_id.is_not(None), Category.name != _UNCATEGORIZED),
-            )
-        ).all()
-        return tuple(
-            JevCategory(id=category.id, name=category.name, parent_id=category.parent_id)
+        categories = session.scalars(select(Category).where(Category.active.is_(True))).all()
+        by_id = {category.id: category for category in categories}
+        missing_parent_ids = [
+            category.parent_id
             for category in categories
-        )
+            if category.parent_id is not None and category.parent_id not in by_id
+        ]
+        if missing_parent_ids:
+            parents = session.scalars(
+                select(Category).where(Category.id.in_(missing_parent_ids))
+            ).all()
+            for missing_parent in parents:
+                by_id[missing_parent.id] = missing_parent
+        loaded: list[JevCategory] = []
+        for category in categories:
+            if category.parent_id is None and category.name == _UNCATEGORIZED:
+                continue
+            parent = by_id.get(category.parent_id) if category.parent_id is not None else None
+            loaded.append(
+                JevCategory(
+                    id=category.id,
+                    name=category.name,
+                    parent_id=category.parent_id,
+                    parent_name=parent.name if parent is not None else None,
+                )
+            )
+        return tuple(loaded)
 
     @staticmethod
     def _system_actor_id(session: Session) -> UUID:

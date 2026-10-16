@@ -151,3 +151,25 @@ def test_normalize_counterparty_keeps_merchant_words_that_contain_digits() -> No
     assert normalize_counterparty("G4S SECURITY") == "g4s security"
     assert normalize_counterparty("MP3PLAYER") == "mp3player"
     assert normalize_counterparty("24HOURFITNESS") == "24hourfitness"
+
+
+def test_amznprimes_descriptors_share_the_amazon_prime_key() -> None:
+    canonical = normalize_counterparty("AMZNPRIME* AMZNPRIME")
+    assert canonical == "amznprime amznprime"
+    for label in (
+        "AMZNPRIMES* AMZNPRIMES",
+        "AMZNPRIMES*AMZNPRIMES",
+        "amznprimes* amznprimes",
+    ):
+        assert normalize_counterparty(label) == canonical
+
+    charges = [
+        _observation("AMZNPRIME* AMZNPRIME", "12.34", date(2026, 4, 3)),
+        _observation("AMZNPRIME* AMZNPRIME", "12.34", date(2026, 5, 3)),
+        _observation("AMZNPRIMES* AMZNPRIMES", "12.34", date(2026, 6, 3)),
+    ]
+    clusters = build_clusters(charges)
+
+    assert len(clusters) == 1
+    assert clusters[0].normalized_counterparty == canonical
+    assert len(clusters[0].observations) == 3
