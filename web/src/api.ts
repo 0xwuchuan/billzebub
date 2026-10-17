@@ -178,6 +178,7 @@ export type AmbiguousMatchCandidate = {
   amount_delta: string | null;
   day_delta: number | null;
   match_reasons: AmbiguousMatchReason[];
+  matched_to?: string | null;
 };
 
 export type AmbiguousMatchContext = {

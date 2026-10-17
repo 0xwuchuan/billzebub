@@ -19,7 +19,15 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from billzebub.persistence.models import Claim, Extraction, FinancialAccount, FinancialAccountAlias
+from billzebub.persistence.models import (
+    Claim,
+    Extraction,
+    FinancialAccount,
+    FinancialAccountAlias,
+    FinancialTransaction,
+    TransactionClaim,
+    TransactionVersion,
+)
 from billzebub.recurrings import normalize_counterparty
 
 _AMBIGUOUS_CONDITION = "reconciliation_ambiguous"
@@ -203,6 +211,14 @@ def enrich_ambiguous_match_contexts(
         ).all()
         for alias in alias_rows:
             aliases_by_account.setdefault(alias.financial_account_id, []).append(alias.value)
+    matched_to = _statement_counterparties(
+        session,
+        tuple(
+            dict.fromkeys(
+                claim_id for review in ambiguous for claim_id in _candidate_ids(review.context)
+            )
+        ),
+    )
 
     enriched: dict[UUID, dict[str, Any]] = {}
     for review in ambiguous:
@@ -227,6 +243,7 @@ def enrich_ambiguous_match_contexts(
                     extractions,
                     aliases_by_account,
                     reporting_timezone,
+                    matched_to,
                 )
                 if isinstance(raw, dict)
                 else raw
@@ -306,6 +323,26 @@ def _provisional_payload(
     }
 
 
+def _statement_counterparties(session: Session, claim_ids: Sequence[UUID]) -> dict[UUID, str]:
+    """Counterparty of a transaction that already took this statement claim."""
+    if not claim_ids:
+        return {}
+    rows = session.execute(
+        select(TransactionClaim.claim_id, TransactionVersion.counterparty)
+        .join(FinancialTransaction, FinancialTransaction.id == TransactionClaim.transaction_id)
+        .join(
+            TransactionVersion,
+            (TransactionVersion.transaction_id == FinancialTransaction.id)
+            & (TransactionVersion.version == FinancialTransaction.current_version),
+        )
+        .where(
+            TransactionClaim.role == "statement",
+            TransactionClaim.claim_id.in_(claim_ids),
+        )
+    ).all()
+    return {claim_id: counterparty for claim_id, counterparty in rows if counterparty.strip()}
+
+
 def _candidate_payload(
     raw: Mapping[str, Any],
     provisional: Claim | None,
@@ -314,6 +351,7 @@ def _candidate_payload(
     extractions: Mapping[UUID, Extraction],
     aliases_by_account: Mapping[UUID, Sequence[str]],
     reporting_timezone: ZoneInfo,
+    matched_to: Mapping[UUID, str],
 ) -> dict[str, Any]:
     item = dict(raw)
     claim_id = _uuid_or_none(raw.get("statement_claim_id"))
@@ -339,6 +377,9 @@ def _candidate_payload(
         item.setdefault("period_end", None)
         item.setdefault("amount_delta", None)
         item.setdefault("day_delta", None)
+        linked = None if claim_id is None else matched_to.get(claim_id)
+        if linked is not None:
+            item["matched_to"] = linked
         return item
 
     account = accounts.get(claim.financial_account_id)
@@ -388,6 +429,9 @@ def _candidate_payload(
             ),
         }
     )
+    linked = None if claim_id is None else matched_to.get(claim_id)
+    if linked is not None:
+        item["matched_to"] = linked
     return item
 
 

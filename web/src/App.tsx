@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-import type { Transaction } from "./api";
+import type { Review, Transaction } from "./api";
 import { AppShell } from "./components/AppShell";
 import { TransactionDrawer } from "./components/TransactionDrawer";
 import { DemoDataChrome } from "./dev/DemoDataChrome";
@@ -61,7 +61,7 @@ export function App() {
   const [categoryFamily, setCategoryFamily] = useState<string[]>([]);
   const [categoryDirect, setCategoryDirect] = useState(false);
   const [listAccount, setListAccount] = useState("");
-  const [reviewSelection, setReviewSelection] = useState("");
+  const [reviewSelection, setReviewSelection] = useState(fixtureMatchSelection);
   const [toast, setToast] = useState("");
   const today = useMemo(() => new Date(), []);
 
@@ -376,8 +376,9 @@ export function App() {
             }
             onDecide={(review, choice) =>
               workspace.resolveReview(review, choice).then((ok) => {
-                if (ok) {
-                  setToast(decisionToast(choice));
+                const notice = decisionToast(review, choice);
+                if (ok && notice !== null) {
+                  setToast(notice);
                 }
                 return ok;
               })
@@ -569,8 +570,30 @@ export function App() {
   );
 }
 
-function decisionToast(choice: string): string {
+function decisionToast(review: Review, choice: string): string | null {
+  if (
+    choice.startsWith("match:") ||
+    (review.condition_code === "reconciliation_ambiguous" &&
+      choice === "reject_all")
+  ) {
+    return null;
+  }
   return choice
     .replaceAll("_", " ")
     .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function fixtureMatchSelection(): string {
+  if (!import.meta.env.DEV || typeof window === "undefined") {
+    return "";
+  }
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("data") !== "worst") {
+    return "";
+  }
+  const match = params.get("match");
+  if (match === null || !/^[a-z0-9-]{1,32}$/.test(match)) {
+    return "";
+  }
+  return `example-review-match-${match}`;
 }

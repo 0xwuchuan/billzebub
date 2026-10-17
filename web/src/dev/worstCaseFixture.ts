@@ -663,6 +663,7 @@ function worstReviews(
     120,
   );
   return [
+    ...matchReviews(today),
     ...merchantReviews(transactions),
     review({
       id: "example-review-blocking",
@@ -1121,6 +1122,374 @@ function merchantReviews(transactions: Transaction[]): Review[] {
         },
       }),
     );
+}
+
+function matchReviews(today: Date): Review[] {
+  const created = iso(today);
+  const longMerchant = atLimit(
+    "Aleksandra Wiśniewska-Kowalczyk Consulting and the Northwind Industries Holdings café counter",
+    180,
+  );
+  const longDescriptor = atLimit(
+    "APPLE PAY *SQ BLUEBOTTLE 8842 NORTHWIND INDUSTRIES HOLDINGS EXAMPLE DESCRIPTOR",
+    240,
+  );
+  const longStatement = atLimit(
+    "DBS Woman's World Mastercard example statement name",
+    120,
+  );
+  const longAlias = atLimit(
+    "Everyday Visa Infinite example card alias for the narrow phone dock",
+    80,
+  );
+  return [
+    walletMatch({
+      slug: "worst",
+      created,
+      merchant: longMerchant,
+      raw: longMerchant,
+      amount: "1234567.89",
+      last4: "4242",
+      alias: longAlias,
+      candidates: [
+        line({
+          id: "example-claim-worst-a",
+          score: 90,
+          raw: longDescriptor,
+          normalized: "apple pay sq bluebottle northwind",
+          amount: "1234568.29",
+          posted: "2026-10-12",
+          txn: "2026-10-11",
+          last4: "4242",
+          label: longStatement,
+          amountDelta: "0.40",
+          dayDelta: 2,
+        }),
+        line({
+          id: "example-claim-worst-b",
+          score: 40,
+          raw: longDescriptor,
+          normalized: "apple pay sq bluebottle northwind",
+          amount: "1400.00",
+          currency: "USD",
+          posted: "2026-10-08",
+          last4: "1881",
+          label: longStatement,
+          amountDelta: null,
+          dayDelta: -2,
+        }),
+      ],
+    }),
+    walletMatch({
+      slug: "date",
+      created,
+      merchant: "Blue Bottle",
+      raw: "Blue Bottle",
+      amount: "8.40",
+      last4: "4242",
+      alias: "DBS Altitude",
+      candidates: [
+        line({
+          id: "example-claim-date-a",
+          score: 80,
+          raw: "BLUE BOTTLE COFFEE",
+          normalized: "blue bottle",
+          amount: "8.40",
+          posted: "2026-10-11",
+          last4: "4242",
+          label: "DBS WW",
+          amountDelta: "0.00",
+          dayDelta: 1,
+        }),
+        line({
+          id: "example-claim-date-b",
+          score: 60,
+          raw: "BLUE BOTTLE COFFEE",
+          normalized: "blue bottle",
+          amount: "8.40",
+          posted: "2026-10-12",
+          last4: "4242",
+          label: "DBS WW",
+          amountDelta: "0.00",
+          dayDelta: 2,
+        }),
+      ],
+    }),
+    walletMatch({
+      slug: "cards",
+      created,
+      merchant: "Cold Storage",
+      raw: "Cold Storage",
+      amount: "42.15",
+      last4: "4242",
+      alias: "DBS Altitude",
+      candidates: ["DBS WW", "Citi Prestige", "UOB One"].map((label, index) =>
+        line({
+          id: `example-claim-cards-${index + 1}`,
+          score: 70 - index,
+          raw: "COLD STORAGE",
+          normalized: "cold storage",
+          amount: "42.15",
+          posted: "2026-10-10",
+          last4: ["1881", "5522", "9001"][index] ?? "1881",
+          label,
+          amountDelta: "0.00",
+          dayDelta: 0,
+        }),
+      ),
+    }),
+    walletMatch({
+      slug: "amount",
+      created,
+      merchant: "Blue Bottle",
+      raw: "Blue Bottle",
+      amount: "8.00",
+      last4: "4242",
+      alias: "DBS Altitude",
+      candidates: [
+        line({
+          id: "example-claim-amount-tip",
+          score: 70,
+          raw: "BLUE BOTTLE COFFEE",
+          normalized: "blue bottle",
+          amount: "8.40",
+          posted: "2026-10-10",
+          last4: "4242",
+          label: "DBS WW",
+          amountDelta: "0.40",
+          dayDelta: 0,
+        }),
+        line({
+          id: "example-claim-amount-fx",
+          score: 50,
+          raw: "BLUE BOTTLE COFFEE",
+          normalized: "blue bottle",
+          amount: "6.20",
+          currency: "USD",
+          posted: "2026-10-10",
+          last4: "4242",
+          label: "DBS WW",
+          amountDelta: null,
+          dayDelta: 0,
+        }),
+      ],
+    }),
+    walletMatch({
+      slug: "merchant",
+      created,
+      merchant: "Blue Bottle",
+      raw: "Blue Bottle",
+      amount: "6.50",
+      last4: "4242",
+      alias: "DBS Altitude",
+      candidates: [
+        line({
+          id: "example-claim-merchant-a",
+          score: 55,
+          raw: "APPLE PAY *SQ BLUEBOTTLE 8842",
+          normalized: "apple pay sq bluebottle",
+          amount: "6.50",
+          posted: "2026-10-10",
+          last4: "4242",
+          label: "DBS WW",
+          amountDelta: "0.00",
+          dayDelta: 0,
+        }),
+        line({
+          id: "example-claim-merchant-b",
+          score: 30,
+          raw: "APPLE PAY *SQ BLUEBOTTLE 8842",
+          normalized: "apple pay sq bluebottle",
+          amount: "6.50",
+          posted: "2026-10-09",
+          last4: "4242",
+          label: "DBS WW",
+          amountDelta: "0.00",
+          dayDelta: -1,
+        }),
+      ],
+    }),
+    walletMatch({
+      slug: "taken",
+      created,
+      merchant: "Blue Bottle",
+      raw: "Blue Bottle",
+      amount: "6.50",
+      last4: "4242",
+      alias: "DBS Altitude",
+      candidates: [
+        line({
+          id: "example-claim-taken-open",
+          score: 80,
+          raw: "BLUE BOTTLE COFFEE",
+          normalized: "blue bottle",
+          amount: "6.50",
+          posted: "2026-10-10",
+          last4: "4242",
+          label: "DBS WW",
+          amountDelta: "0.00",
+          dayDelta: 0,
+        }),
+        line({
+          id: "example-claim-taken-used",
+          score: 75,
+          raw: "BLUE BOTTLE COFFEE",
+          normalized: "blue bottle",
+          amount: "6.50",
+          posted: "2026-10-11",
+          last4: "4242",
+          label: "DBS WW",
+          amountDelta: "0.00",
+          dayDelta: 1,
+          matchedTo: "Blue Bottle Raffles",
+        }),
+      ],
+    }),
+    walletMatch({
+      slug: "zero",
+      created,
+      merchant: "Blue Bottle",
+      raw: "Blue Bottle",
+      amount: "6.50",
+      last4: "4242",
+      alias: "DBS Altitude",
+      candidates: [],
+    }),
+    walletMatch({
+      slug: "one",
+      created,
+      merchant: "Blue Bottle",
+      raw: "Blue Bottle",
+      amount: "6.50",
+      last4: "4242",
+      alias: "DBS Altitude",
+      candidates: [
+        line({
+          id: "example-claim-one-a",
+          score: 88,
+          raw: "BLUE BOTTLE COFFEE",
+          normalized: "blue bottle",
+          amount: "6.50",
+          posted: "2026-10-10",
+          txn: "2026-10-09",
+          last4: "4242",
+          label: "DBS WW",
+          amountDelta: "0.00",
+          dayDelta: 0,
+        }),
+      ],
+    }),
+    walletMatch({
+      slug: "more",
+      created,
+      merchant: "Cold Storage",
+      raw: "Cold Storage",
+      amount: "19.20",
+      last4: "4242",
+      alias: "DBS Altitude",
+      candidates: [1, 2, 3, 4, 5, 6, 7].map((rank) =>
+        line({
+          id: `example-claim-more-${rank}`,
+          score: 100 - rank,
+          raw: "COLD STORAGE",
+          normalized: "cold storage",
+          amount: "19.20",
+          posted: `2026-10-${String(10 + (rank % 3)).padStart(2, "0")}`,
+          last4: rank % 2 === 0 ? "4242" : "1881",
+          label: rank % 2 === 0 ? "DBS WW" : "Citi Prestige",
+          amountDelta: "0.00",
+          dayDelta: rank % 3 === 0 ? 0 : rank % 3,
+        }),
+      ),
+    }),
+  ];
+}
+
+function walletMatch(input: {
+  slug: string;
+  created: string;
+  merchant: string;
+  raw: string;
+  amount: string;
+  last4: string;
+  alias: string;
+  candidates: Record<string, unknown>[];
+}): Review {
+  return review({
+    id: `example-review-match-${input.slug}`,
+    severity: "attention",
+    condition: "reconciliation_ambiguous",
+    decisions: [
+      ...input.candidates.map(
+        (candidate) => `match:${String(candidate.statement_claim_id)}`,
+      ),
+      "reject_all",
+    ],
+    created: input.created,
+    subjectType: "claim",
+    subjectId: `example-claim-${input.slug}`,
+    context: {
+      candidate_count: input.candidates.length,
+      provisional: {
+        claim_id: `example-claim-${input.slug}`,
+        counterparty: {
+          raw: input.raw,
+          normalized: input.merchant.toLowerCase(),
+        },
+        amount: input.amount,
+        currency: "SGD",
+        occurred_at: {
+          date: "2026-10-10",
+          time: "09:41:00",
+          timezone: "Asia/Singapore",
+        },
+        last4: input.last4,
+        source: "wallet",
+        card_alias: input.alias,
+      },
+      candidates: input.candidates,
+    },
+  });
+}
+
+function line(input: {
+  id: string;
+  score: number;
+  raw: string;
+  normalized: string;
+  amount: string;
+  currency?: string;
+  posted: string;
+  txn?: string;
+  last4: string;
+  label: string;
+  amountDelta: string | null;
+  dayDelta: number | null;
+  matchedTo?: string;
+}): Record<string, unknown> {
+  return {
+    statement_claim_id: input.id,
+    claim_id: input.id,
+    score: input.score,
+    reasons: [],
+    raw_description: input.raw,
+    normalized_counterparty: input.normalized,
+    amount: input.amount,
+    currency: input.currency ?? "SGD",
+    posted_date: input.posted,
+    transaction_date: input.txn ?? input.posted,
+    last4: input.last4,
+    statement_id: `example-statement-${input.id}`,
+    statement_identity: `dbs:2026-10-31:${input.id}`,
+    statement_label: input.label,
+    issuer: "dbs",
+    period_start: "2026-10-01",
+    period_end: "2026-10-31",
+    amount_delta: input.amountDelta,
+    day_delta: input.dayDelta,
+    match_reasons: [],
+    ...(input.matchedTo === undefined ? {} : { matched_to: input.matchedTo }),
+  };
 }
 
 function review(input: {

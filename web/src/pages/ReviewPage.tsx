@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 
 import type { Category, ImportRecord, Review, Transaction } from "../api";
+import { AmbiguousMatchReview } from "../components/AmbiguousMatchReview";
 import { CategoryPicker } from "../components/CategoryPicker";
 import {
   MerchantGroupList,
@@ -52,6 +53,7 @@ import {
   openedLabel,
   reviewTitle,
 } from "../lib/labels";
+import { MATCH_UNDO_MS, matchReviewView } from "../lib/ambiguousMatch";
 import { UNKNOWN_COUNTERPARTY, formatAccountLabel } from "../lib/identity";
 import { formatUnsigned } from "../lib/money";
 import type { ReviewFilter } from "../lib/route";
@@ -137,6 +139,10 @@ export function ReviewPage({
   const cardRef = useRef<HTMLElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const keyboardRef = useRef<KeyboardSnapshot | null>(null);
+  const pendingMatch = useRef<PendingMatch | null>(null);
+  const [matchToast, setMatchToast] = useState(false);
+  const onDecideRef = useRef(onDecide);
+  onDecideRef.current = onDecide;
 
   function advancePast(reviewId: string) {
     onSelect(nextPendingReviewId(items, reviewId));
@@ -196,6 +202,62 @@ export function ReviewPage({
     setPicker(closedPicker);
     cardRef.current?.focus();
   }
+
+  function commitPendingMatch() {
+    const pending = pendingMatch.current;
+    if (pending === null) {
+      return;
+    }
+    window.clearTimeout(pending.timer);
+    pendingMatch.current = null;
+    setMatchToast(false);
+    if ((selected?.id ?? "") === pending.review.id) {
+      decideAndAdvance(pending.review, pending.choice);
+      return;
+    }
+    const reviewId = pending.review.id;
+    setHiddenIds((current) =>
+      current.includes(reviewId) ? current : [...current, reviewId],
+    );
+    void Promise.resolve(
+      onDecideRef.current(pending.review, pending.choice),
+    ).then((result) => {
+      finishAdvance(reviewId, result);
+    });
+  }
+
+  function undoMatch() {
+    const pending = pendingMatch.current;
+    if (pending === null) {
+      return;
+    }
+    window.clearTimeout(pending.timer);
+    pendingMatch.current = null;
+    setMatchToast(false);
+  }
+
+  function armMatch(review: Review, choice: string) {
+    if (pendingMatch.current !== null) {
+      commitPendingMatch();
+    }
+    const timer = window.setTimeout(() => {
+      commitPendingMatch();
+    }, MATCH_UNDO_MS);
+    pendingMatch.current = { review, choice, timer };
+    setMatchToast(true);
+  }
+
+  useEffect(() => {
+    return () => {
+      const pending = pendingMatch.current;
+      if (pending === null) {
+        return;
+      }
+      window.clearTimeout(pending.timer);
+      pendingMatch.current = null;
+      void Promise.resolve(onDecideRef.current(pending.review, pending.choice));
+    };
+  }, []);
 
   function moveQueue(delta: number) {
     const index = items.findIndex((item) => item.id === selected?.id);
@@ -344,6 +406,8 @@ export function ReviewPage({
       },
       fallbackChildIds: fallback?.children.map((child) => child.id) ?? [],
       categorization: selected?.condition_code === "categorization_needed",
+      matchToast,
+      undoMatch,
     };
   });
 
@@ -359,6 +423,16 @@ export function ReviewPage({
         return;
       }
       if (event.isComposing || isTextEntry(event.target)) {
+        return;
+      }
+      if (
+        (event.key === "z" || event.key === "Z") &&
+        snapshot.matchToast &&
+        !event.altKey
+      ) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        snapshot.undoMatch();
         return;
       }
       const searchFocused = isCategorySearch(event.target);
@@ -585,10 +659,22 @@ export function ReviewPage({
               onOpenImport={onOpenImport}
               onOpenSettings={onOpenSettings}
               quietPrimary={merchantPaper}
+              matchPending={matchToast}
+              onArmMatch={armMatch}
+              onUndoMatch={undoMatch}
             />
           )}
         </section>
       </div>
+      {matchToast ? (
+        <div className="toast merchant-undo-toast match-toast" role="status">
+          Matched
+          {" · "}
+          <button className="toast-undo" type="button" onClick={undoMatch}>
+            Undo
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -609,11 +695,17 @@ function QueueItem({
   onSelect: (id: string) => void;
 }) {
   const blocking = review.severity === "blocking";
+  const match = matchReviewView(review.context);
   const amountMoney =
     transaction === undefined
       ? categorizationAmount(review.context)
       : activityAmount(transaction);
-  const amount = amountMoney === null ? null : formatUnsigned(amountMoney);
+  const amount =
+    match !== null
+      ? match.anchor.amount
+      : amountMoney === null
+        ? null
+        : formatUnsigned(amountMoney);
   const title = queueTitle(review, transaction, importRecord);
   return (
     <button
@@ -671,6 +763,9 @@ function Evidence({
   onOpenImport,
   onOpenSettings,
   quietPrimary = false,
+  matchPending = false,
+  onArmMatch,
+  onUndoMatch,
 }: {
   review: Review;
   transaction: Transaction | undefined;
@@ -697,8 +792,35 @@ function Evidence({
   onOpenImport: (id: string) => void;
   onOpenSettings: () => void;
   quietPrimary?: boolean;
+  matchPending?: boolean;
+  onArmMatch: (review: Review, choice: string) => void;
+  onUndoMatch: () => void;
 }) {
   const fresh = useEntrance(`review:${review.id}`);
+  const match = matchReviewView(review.context);
+  if (match !== null) {
+    const categoryName = reviewCategoryName(transaction);
+    return (
+      <AmbiguousMatchReview
+        key={review.id}
+        context={review.context}
+        categoryName={categoryName}
+        pending={matchPending}
+        onMatch={(choice) => {
+          onArmMatch(review, choice);
+        }}
+        onReject={() => {
+          onUndoMatch();
+          onDecide(review, "reject_all");
+        }}
+        onOpenTransaction={() => {
+          onOpenTransaction(
+            transaction?.id ?? reviewTransactionId(review) ?? review.subject_id,
+          );
+        }}
+      />
+    );
+  }
   const blocking = review.severity === "blocking";
   const claims = contextStrings(review.context, "claims");
   const assignable = transaction ?? transactionFromReviewContext(review);
@@ -1013,6 +1135,18 @@ function queueTitle(
   return decisionSubject(review, transaction, importRecord);
 }
 
+function reviewCategoryName(
+  transaction: Transaction | undefined,
+): string | null {
+  if (transaction === undefined || transaction.category_splits.length === 0) {
+    return null;
+  }
+  const names = transaction.category_splits
+    .map((split) => split.name.trim())
+    .filter((name) => name !== "" && name !== "Uncategorized");
+  return names.length === 0 ? null : names.join(", ");
+}
+
 function queueFallbackAmount(review: Review): string {
   const money = categorizationAmount(review.context);
   if (money !== null) {
@@ -1032,6 +1166,10 @@ function decisionSubject(
   transaction: Transaction | undefined,
   importRecord: ImportRecord | undefined,
 ): string {
+  const match = matchReviewView(review.context);
+  if (match !== null) {
+    return match.anchor.merchant;
+  }
   if (transaction !== undefined) {
     return transaction.counterparty.trim() === ""
       ? UNKNOWN_COUNTERPARTY
@@ -1094,6 +1232,14 @@ type KeyboardSnapshot = {
   applyPickerResult: (next: ReturnType<typeof reducePickerKey>) => void;
   keepParent: (parentId: string) => void;
   applyChild: (categoryId: string) => void;
+  matchToast: boolean;
+  undoMatch: () => void;
+};
+
+type PendingMatch = {
+  review: Review;
+  choice: string;
+  timer: number;
 };
 
 function parentFallback(
