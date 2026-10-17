@@ -6,7 +6,7 @@ import re
 import unicodedata
 from collections import defaultdict
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
@@ -31,6 +31,7 @@ from billzebub.persistence.models import (
     RejectedClaimPair,
     TransactionClaim,
 )
+from billzebub.reconciliation_review import enrich_ambiguous_match_contexts
 from billzebub.reviews import (
     PendingReviewRecord,
     ReviewCondition,
@@ -171,6 +172,13 @@ class Reconciliation:
 
             resolved = ReviewInbox.decide_in_session(session, command)
             follow_up = self._reconcile_account_in_session(session, account, now)
+            enriched = enrich_ambiguous_match_contexts(
+                session,
+                (review,),
+                reporting_timezone=self._reporting_timezone,
+            ).get(review.id)
+            if enriched is not None:
+                resolved = replace(resolved, context=enriched)
             return ReconciliationDecisionOutcome(
                 review=resolved,
                 confirmation=confirmation,
