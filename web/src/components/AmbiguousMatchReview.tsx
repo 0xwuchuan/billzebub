@@ -340,7 +340,11 @@ function CandidateCard({
             <span className="match-txn">{candidate.txn}</span>
           )}
         </Field>
-        <Field matches={candidate.cardMatches} delta={candidate.cardDelta}>
+        <Field
+          className="is-card"
+          matches={candidate.cardMatches}
+          delta={candidate.cardDelta}
+        >
           <span>{candidate.card}</span>
         </Field>
         <div className="match-field is-note" title={candidate.statementTitle}>
@@ -410,16 +414,18 @@ function Field({
   matches,
   delta,
   title,
+  className = "",
   children,
 }: {
   matches: boolean;
   delta: string | null;
   title?: string;
+  className?: string;
   children: ReactNode;
 }) {
   return (
     <div
-      className={`match-field${matches ? " is-same" : " is-diff"}`}
+      className={`match-field${matches ? " is-same" : " is-diff"}${className === "" ? "" : ` ${className}`}`}
       title={title}
     >
       <span className="match-field-value">

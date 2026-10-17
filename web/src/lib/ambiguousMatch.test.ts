@@ -123,6 +123,18 @@ describe("matchReviewView", () => {
     expect(model?.candidates[1]?.amountDelta).toBe("different currency");
   });
 
+  it("shortens a different-card delta to other card", () => {
+    const model = view([
+      candidate({
+        last4: "1881",
+        day_delta: 0,
+        posted_date: "2026-10-10",
+      }),
+    ]);
+    expect(model?.candidates[0]?.cardDelta).toBe("other card");
+    expect(model?.candidates[0]?.why).toContain("Different card");
+  });
+
   it("keeps the raw statement descriptor when the merchant differs", () => {
     const model = view([
       candidate({

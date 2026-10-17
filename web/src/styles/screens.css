@@ -4082,11 +4082,11 @@ button.coverage-chip {
 .match-fields {
   display: grid;
   grid-template-columns:
-    minmax(0, 1.6fr)
-    minmax(6.5rem, 0.9fr)
-    minmax(0, 1fr)
-    minmax(4.75rem, 0.7fr)
-    minmax(0, 1.15fr);
+    minmax(0, 1.35fr)
+    minmax(4.75rem, 0.75fr)
+    minmax(0, 0.7fr)
+    minmax(8.5rem, 1.15fr)
+    minmax(0, 1fr);
   gap: 0.35rem 0.75rem;
   align-items: start;
 }
@@ -4141,12 +4141,15 @@ button.coverage-chip {
 
 .match-delta {
   display: inline;
-  margin-left: 0.35rem;
   color: var(--bz-muted);
   font-weight: 400;
   text-decoration: underline;
   text-decoration-color: var(--bz-provisional);
   text-underline-offset: 0.18em;
+}
+
+.match-field.is-card .match-field-value {
+  flex-wrap: nowrap;
 }
 
 .match-raw,
@@ -4179,8 +4182,7 @@ button.coverage-chip {
   font-weight: 500;
 }
 
-.match-place,
-.match-taken {
+.match-place {
   color: var(--bz-muted);
   font-size: var(--bz-text-xs);
   font-weight: 400;
@@ -4191,7 +4193,7 @@ button.coverage-chip {
 }
 
 .match-card.is-disabled {
-  opacity: 0.72;
+  opacity: 0.6;
 }
 
 .match-card .btn {

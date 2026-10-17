@@ -187,7 +187,7 @@ function candidateModel(
   const card = cardLabel(null, candidate.last4);
   const cardMatches = cardsMatch(provisional.last4, candidate.last4);
   const cardDelta = cardsDiffer(provisional.last4, candidate.last4)
-    ? "different card"
+    ? "other card"
     : null;
   const statement = statementLabel(candidate);
   const postedShort = candidate.posted_date
