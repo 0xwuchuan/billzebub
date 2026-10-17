@@ -504,6 +504,58 @@ describe("ReviewPage", () => {
         remember: false,
       }),
     );
+    const groups = screen.getByRole("region", { name: "Merchant groups" });
+    const group = within(groups).getByRole("article");
+    expect(group.querySelector(".merchant-group-total")).toHaveTextContent(
+      "SGD 24.68",
+    );
+    expect(group.querySelector(".merchant-meta-total")).toBeNull();
+    expect(group.querySelector(".merchant-group-meta")).not.toHaveTextContent(
+      "SGD 24.68",
+    );
+  });
+
+  it("moves a phone merchant total onto the meta line", () => {
+    const original = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: query.includes("max-width: 52rem"),
+      media: query,
+      onchange: null,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      addListener: () => undefined,
+      removeListener: () => undefined,
+      dispatchEvent: () => false,
+    })) as typeof window.matchMedia;
+    try {
+      const second = {
+        ...coffee,
+        id: "00000000-0000-0000-0000-000000000030",
+        counterparty: "Synthetic Coffee SG",
+      };
+      const secondReview = {
+        ...coffeeReview,
+        id: "00000000-0000-0000-0000-000000000031",
+        subject_id: second.id,
+      };
+      renderPage({
+        reviews: [coffeeReview, secondReview],
+        transactions: [coffee, second],
+      });
+      const groups = screen.getByRole("region", { name: "Merchant groups" });
+      const group = within(groups).getByRole("article");
+      expect(group.querySelector(".merchant-group-total")).toBeNull();
+      expect(group.querySelector(".merchant-group-meta")).toHaveTextContent(
+        /2 pending\s*·\s*10 Jan\s*·\s*SGD\s*24\.68/,
+      );
+      expect(
+        screen
+          .getByRole("button", { name: "Apply to all 2" })
+          .closest(".merchant-save-dock"),
+      ).not.toBeNull();
+    } finally {
+      window.matchMedia = original;
+    }
   });
 
   it("skips a merchant group without categorizing it", () => {

@@ -6,6 +6,8 @@ const shell = readFileSync("src/styles/shell.css", "utf8");
 const base = readFileSync("src/styles/base.css", "utf8");
 const screens = readFileSync("src/styles/screens.css", "utf8");
 const html = readFileSync("index.html", "utf8");
+const main = readFileSync("src/main.tsx", "utf8");
+const app = readFileSync("src/App.tsx", "utf8");
 
 function withoutHoverMedia(source: string): string {
   const needle = "@media (hover: hover) and (pointer: fine)";
@@ -235,6 +237,37 @@ describe("phone layout contracts", () => {
     expect(screens).toMatch(
       /\.settings-dialog-body\s*\{[^}]*overscroll-behavior:\s*contain/,
     );
+  });
+
+  it("clamps a phone merchant title to two lines across the row", () => {
+    const phone = blockAfter(screens, ".merchant-group-head {");
+    const head = phone.slice(
+      phone.lastIndexOf(".merchant-group-head {"),
+      phone.indexOf(".merchant-group-title,"),
+    );
+    expect(head).toMatch(/grid-template-columns:\s*auto minmax\(0,\s*1fr\)/);
+    const title = phone.slice(phone.lastIndexOf(".merchant-group-title,"));
+    expect(title).toMatch(/\.merchant-group h2\s*\{[^}]*min-width:\s*0/);
+    expect(title).toMatch(/-webkit-line-clamp:\s*2/);
+    expect(title).toMatch(/-webkit-box-orient:\s*vertical/);
+  });
+
+  it("lifts dev chrome above the phone merchant save dock", () => {
+    const phone = blockAfter(screens, "--merchant-save-dock-height");
+    expect(phone).toMatch(
+      /--merchant-save-dock-height:\s*calc\(\s*1px \+ var\(--bz-space-3\) \+ 2\.75rem \+ var\(--bz-space-3\)\s*\)/,
+    );
+    const lift = phone.slice(
+      phone.indexOf("body:has(.merchant-save-dock)"),
+      phone.indexOf(".merchant-save-dock .btn"),
+    );
+    expect(lift).toMatch(/\[data-agentation-toolbar\]/);
+    expect(lift).toMatch(/\.dev-fixture-switch/);
+    expect(lift).toMatch(
+      /bottom:\s*calc\(\s*var\(--merchant-save-dock-height\)\s*\+\s*12px\s*\+\s*env\(safe-area-inset-bottom,\s*0px\)\s*\)/,
+    );
+    expect(main).toMatch(/import\.meta\.env\.DEV \? \([\s\S]*<Agentation/);
+    expect(app).toMatch(/import\.meta\.env\.DEV \? <DemoDataChrome \/> : null/);
   });
 
   it("clears the transactions bulk bar, including the safe area", () => {

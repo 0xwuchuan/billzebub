@@ -3195,6 +3195,12 @@ button.coverage-chip {
     overflow: auto;
   }
 
+  :root {
+    --merchant-save-dock-height: calc(
+      1px + var(--bz-space-3) + 2.75rem + var(--bz-space-3)
+    );
+  }
+
   .merchant-save-dock {
     display: flex;
     position: fixed;
@@ -3206,6 +3212,14 @@ button.coverage-chip {
       calc(var(--bz-space-3) + env(safe-area-inset-bottom, 0px));
     border-top: 1px solid var(--bz-border);
     background: var(--bz-bg-card);
+  }
+
+  /* Dock height excludes the safe area; the inset is added once below. */
+  body:has(.merchant-save-dock) [data-agentation-toolbar],
+  body:has(.merchant-save-dock) .dev-fixture-switch {
+    bottom: calc(
+      var(--merchant-save-dock-height) + 12px + env(safe-area-inset-bottom, 0px)
+    );
   }
 
   .merchant-save-dock .btn {
@@ -3702,8 +3716,28 @@ button.coverage-chip {
     max-width: none;
   }
 
+  .merchant-group-head {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .merchant-group-title,
   .merchant-group h2 {
+    min-width: 0;
+  }
+
+  .merchant-group h2 {
+    display: -webkit-box;
+    overflow: hidden;
     overflow-wrap: anywhere;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+
+  .merchant-meta-total {
+    margin-left: 0.35rem;
   }
 }
 
