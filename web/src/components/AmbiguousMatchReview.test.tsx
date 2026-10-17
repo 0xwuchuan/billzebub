@@ -99,6 +99,9 @@ describe("AmbiguousMatchReview", () => {
       }),
     ]);
     const shown = visibleText(container);
+    expect(shown).not.toContain("✓");
+    expect(shown).not.toContain("same amount");
+    expect(shown).toContain("10 Oct · 09:41 · DBS Altitude ·· 4242 · Wallet");
     expect(shown).not.toContain("line-a-digest");
     expect(shown).not.toContain("wallet-claim");
     expect(shown).toContain("Exact amount");
@@ -134,10 +137,12 @@ describe("AmbiguousMatchReview", () => {
   it("offers to keep a Wallet charge when nothing is left", () => {
     const { onReject, onOpenTransaction } = renderMatch([]);
     expect(
-      screen.getByText(
-        "No statement lines left to match. Keep as Wallet-only?",
-      ),
+      screen.queryByText(/matched 0 statement lines/),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText("No statement lines left to match."),
     ).toBeInTheDocument();
+    expect(screen.getByText("Keep it as a Wallet charge?")).toBeInTheDocument();
     fireEvent.click(
       screen.getByRole("button", { name: "Keep as Wallet charge" }),
     );
@@ -209,6 +214,8 @@ describe("AmbiguousMatchReview", () => {
     expect(
       screen.queryByRole("button", { name: "This one" }),
     ).not.toBeInTheDocument();
+    expect(screen.queryByText(/same amount/)).not.toBeInTheDocument();
+    expect(screen.getAllByText(/Exact amount/).length).toBeGreaterThan(0);
     fireEvent.click(
       screen.getByRole("button", { name: "Match to Blue Bottle · 11 Oct" }),
     );

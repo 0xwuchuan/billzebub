@@ -75,6 +75,9 @@ describe("matchReviewView", () => {
     expect(model?.anchor.merchant).toBe("Blue Bottle");
     expect(model?.anchor.when).toBe("10 Oct · 09:41");
     expect(model?.anchor.card).toBe("DBS Altitude · 4242");
+    expect(model?.anchor.meta).toBe(
+      "10 Oct · 09:41 · DBS Altitude ·· 4242 · Wallet",
+    );
     expect(model?.anchor.source).toBe("Wallet");
     expect(model?.candidates.map((item) => item.rankLabel)).toEqual([
       "1st",
@@ -178,9 +181,7 @@ describe("matchReviewView", () => {
   it("describes an empty candidate list", () => {
     const model = view([]);
     expect(model?.empty).toBe(true);
-    expect(model?.subline).toBe(
-      "Apple Wallet charge matched 0 statement lines",
-    );
+    expect(model?.subline).toBe("");
     expect(model?.primaryId).toBeNull();
   });
 });

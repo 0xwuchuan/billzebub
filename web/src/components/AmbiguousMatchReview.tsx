@@ -153,43 +153,32 @@ export function AmbiguousMatchReview({
     <div className={`match-review${phone ? " is-phone" : ""}`}>
       <header className="match-head">
         <h2>Which statement line is this?</h2>
-        <p className="muted">{model.subline}</p>
+        {model.subline === "" ? null : <p className="muted">{model.subline}</p>}
       </header>
       <article className="match-anchor">
-        <div className="match-fields">
-          <div className="match-field">
-            <span
-              className="match-field-value"
-              title={model.anchor.merchantTitle}
-            >
-              <UserLabel value={model.anchor.merchant} />
-              {categoryName === null ? null : (
-                <CategoryChip name={categoryName} />
-              )}
-            </span>
+        <div className="match-anchor-row">
+          <div
+            className="match-anchor-merchant"
+            title={model.anchor.merchantTitle}
+          >
+            <UserLabel value={model.anchor.merchant} />
+            {categoryName === null ? null : (
+              <CategoryChip name={categoryName} />
+            )}
           </div>
-          <div className="match-field">
-            <p className="match-amount amount">
-              <i className="provisional-dot" aria-hidden="true" />
-              <MoneyText hero text={model.anchor.amount} />
-            </p>
-          </div>
-          <div className="match-field">
-            <span>{model.anchor.when}</span>
-          </div>
-          <div className="match-field">
-            <span>{model.anchor.card}</span>
-          </div>
-          <div className="match-field match-source">
-            <span>{model.anchor.source}</span>
-          </div>
+          <p className="match-amount amount">
+            <i className="provisional-dot" aria-hidden="true" />
+            <MoneyText glue hero text={model.anchor.amount} />
+          </p>
         </div>
+        <p className="match-anchor-meta">{model.anchor.meta}</p>
         <DetailList rows={model.anchor.details} />
       </article>
       {model.empty ? (
-        <p className="match-empty">
-          No statement lines left to match. Keep as Wallet-only?
-        </p>
+        <div className="match-empty">
+          <p>No statement lines left to match.</p>
+          <p>Keep it as a Wallet charge?</p>
+        </div>
       ) : (
         <div
           className="match-list"
@@ -358,9 +347,6 @@ function CandidateCard({
           <span className="match-field-value">{candidate.statement}</span>
         </div>
       </div>
-      {candidate.sameLine === "" ? null : (
-        <p className="match-same">{candidate.sameLine}</p>
-      )}
       {candidate.why === "" ? null : (
         <p className="match-why">{candidate.why}</p>
       )}
@@ -436,13 +422,10 @@ function Field({
       className={`match-field${matches ? " is-same" : " is-diff"}`}
       title={title}
     >
-      <span className="match-field-value">{children}</span>
-      {matches ? (
-        <span className="match-check" aria-hidden="true">
-          ✓
-        </span>
-      ) : null}
-      {delta === null ? null : <span className="match-delta">{delta}</span>}
+      <span className="match-field-value">
+        {children}
+        {delta === null ? null : <span className="match-delta">{delta}</span>}
+      </span>
     </div>
   );
 }

@@ -35,7 +35,6 @@ export type MatchCandidateModel = {
   disabled: boolean;
   matchedTo: string | null;
   why: string;
-  sameLine: string;
   merchant: string;
   merchantTitle: string;
   raw: string | null;
@@ -64,6 +63,7 @@ export type MatchAnchorModel = {
   when: string;
   card: string;
   source: string;
+  meta: string;
   details: MatchDetail[];
 };
 
@@ -98,6 +98,10 @@ export function matchReviewView(
     provisional.counterparty.raw,
   );
   const anchorCard = cardLabel(provisional.cardAlias, provisional.last4);
+  const anchorWhen = whenLabel(
+    provisional.occurred_at.date,
+    provisional.occurred_at.time,
+  );
   const models = ranked.map((candidate, index) =>
     candidateModel(candidate, index, provisional),
   );
@@ -114,12 +118,15 @@ export function matchReviewView(
       merchant: anchorMerchant,
       merchantTitle: provisional.counterparty.raw?.trim() || anchorMerchant,
       amount: moneyLabel(provisional.amount, provisional.currency),
-      when: whenLabel(
-        provisional.occurred_at.date,
-        provisional.occurred_at.time,
-      ),
+      when: anchorWhen,
       card: anchorCard,
       source: sourceLabel(provisional.source),
+      meta: anchorMeta(
+        anchorWhen,
+        provisional.cardAlias,
+        provisional.last4,
+        sourceLabel(provisional.source),
+      ),
       details: detailsFor([
         ["Claim", provisional.claim_id],
         ["Raw descriptor", provisional.counterparty.raw],
@@ -199,12 +206,6 @@ function candidateModel(
     disabled: matchedTo !== null,
     matchedTo,
     why: whyLine(candidate, provisional, cardMatches, cardDelta, statement),
-    sameLine: sameLine(
-      merchantMatches,
-      amountMatches,
-      dateMatches,
-      cardMatches,
-    ),
     merchant,
     merchantTitle: candidate.raw_description?.trim() || merchant,
     raw,
@@ -311,36 +312,27 @@ function whyDay(days: number | null): string | null {
   return `${Math.abs(days)} days earlier`;
 }
 
-function sameLine(
-  merchant: boolean,
-  amount: boolean,
-  date: boolean,
-  card: boolean,
-): string {
-  const parts: string[] = [];
-  if (card) {
-    parts.push("same card");
-  }
-  if (amount) {
-    parts.push("same amount");
-  }
-  if (date) {
-    parts.push("same day");
-  }
-  if (merchant) {
-    parts.push("same merchant");
-  }
-  if (parts.length === 0) {
+function subline(count: number, source: string | null): string {
+  if (count === 0) {
     return "";
   }
-  const [first, ...rest] = parts;
-  return [`Same ${first?.replace(/^same /, "") ?? ""}`, ...rest].join(" · ");
-}
-
-function subline(count: number, source: string | null): string {
   const kind = source === "paylah" ? "PayLah charge" : "Apple Wallet charge";
   const noun = count === 1 ? "statement line" : "statement lines";
   return `${kind} matched ${count} ${noun}`;
+}
+
+function anchorMeta(
+  when: string,
+  alias: string | null,
+  last4: string | null,
+  source: string,
+): string {
+  const named = alias?.trim() ?? "";
+  const card =
+    named !== "" && last4 !== null
+      ? `${named} ·· ${last4}`
+      : cardLabel(alias, last4);
+  return [when, card, source].filter((part) => part !== "").join(" · ");
 }
 
 function sourceLabel(source: string | null): string {
