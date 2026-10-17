@@ -250,6 +250,9 @@ describe("phone layout contracts", () => {
     expect(title).toMatch(/\.merchant-group h2\s*\{[^}]*min-width:\s*0/);
     expect(title).toMatch(/-webkit-line-clamp:\s*2/);
     expect(title).toMatch(/-webkit-box-orient:\s*vertical/);
+    expect(title).toMatch(
+      /\.merchant-meta-total\s*\{[^}]*white-space:\s*nowrap/,
+    );
   });
 
   it("lifts dev chrome above the phone merchant save dock", () => {

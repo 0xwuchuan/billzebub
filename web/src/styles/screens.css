@@ -3738,6 +3738,7 @@ button.coverage-chip {
 
   .merchant-meta-total {
     margin-left: 0.35rem;
+    white-space: nowrap;
   }
 }
 
