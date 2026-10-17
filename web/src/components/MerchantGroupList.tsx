@@ -282,7 +282,7 @@ export function MerchantGroupList({
                   </button>
                   <div className="merchant-group-title">
                     <h2>{group.label}</h2>
-                    <p className="muted">
+                    <p className="muted merchant-group-meta">
                       {group.members.length} pending
                       {dates === "" ? null : (
                         <span className="merchant-dates">
@@ -290,9 +290,15 @@ export function MerchantGroupList({
                           {dates}
                         </span>
                       )}
+                      {phone && total !== null ? (
+                        <span className="amount merchant-meta-total">
+                          {" · "}
+                          <MoneyText text={total} />
+                        </span>
+                      ) : null}
                     </p>
                   </div>
-                  {total === null ? null : (
+                  {phone || total === null ? null : (
                     <p className="amount merchant-group-total">
                       <MoneyText text={total} />
                     </p>
