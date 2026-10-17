@@ -125,6 +125,68 @@ export type TransactionPage = {
   next_cursor: string | null;
 };
 
+export type AmbiguousMatchCounterparty = {
+  raw: string | null;
+  normalized: string | null;
+};
+
+export type AmbiguousMatchOccurredAt = {
+  date: string | null;
+  time: string | null;
+  timezone: string;
+};
+
+export type AmbiguousMatchSource = "wallet" | "paylah";
+
+export type AmbiguousMatchProvisional = {
+  claim_id: string;
+  counterparty: AmbiguousMatchCounterparty;
+  amount: string | null;
+  currency: string | null;
+  occurred_at: AmbiguousMatchOccurredAt;
+  last4: string | null;
+  source: AmbiguousMatchSource | null;
+};
+
+export type AmbiguousMatchCriterionName =
+  "financial_account" | "amount" | "date" | "counterparty" | "other";
+
+export type AmbiguousMatchReason = {
+  criterion: AmbiguousMatchCriterionName;
+  passed: boolean;
+  code: string;
+};
+
+export type AmbiguousMatchCandidate = {
+  statement_claim_id: string;
+  claim_id: string;
+  score: number;
+  reasons: string[];
+  raw_description: string | null;
+  normalized_counterparty: string | null;
+  amount: string | null;
+  currency: string | null;
+  posted_date: string | null;
+  transaction_date: string | null;
+  last4: string | null;
+  statement_id: string | null;
+  statement_identity: string | null;
+  statement_label: string | null;
+  issuer: string | null;
+  period_start: string | null;
+  period_end: string | null;
+  amount_delta: string | null;
+  day_delta: number | null;
+  match_reasons: AmbiguousMatchReason[];
+  matched_to?: string | null;
+};
+
+export type AmbiguousMatchContext = {
+  candidate_count: number;
+  provisional: AmbiguousMatchProvisional;
+  candidates: AmbiguousMatchCandidate[];
+};
+
 export type Review = {
   id: string;
   subject_type: string;

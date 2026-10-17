@@ -33,6 +33,7 @@ from billzebub.persistence.models import (
     TransactionClaim,
     TransactionVersion,
 )
+from billzebub.reconciliation_review import enrich_ambiguous_match_contexts
 from billzebub.reviews import (
     PendingReviewStatus,
     ReviewSeverity,
@@ -490,8 +491,8 @@ class OwnerWorkspace:
             for transaction, version, account in rows
         )
 
-    @staticmethod
     def _reviews_from_models(
+        self,
         session: Session,
         reviews: Sequence[PendingReview],
     ) -> tuple[OwnerReview, ...]:
@@ -503,6 +504,11 @@ class OwnerWorkspace:
         ]
         attempts = latest_jev_attempts(session, categorization_ids)
         display = OwnerWorkspace._categorization_display(session, categorization_ids)
+        ambiguous = enrich_ambiguous_match_contexts(
+            session,
+            reviews,
+            reporting_timezone=self._reporting_timezone,
+        )
         return tuple(
             OwnerWorkspace._review(
                 review,
@@ -514,6 +520,7 @@ class OwnerWorkspace:
                 if review.subject_type == "transaction"
                 and review.condition_code == "categorization_needed"
                 else None,
+                ambiguous.get(review.id),
             )
             for review in reviews
         )
@@ -569,6 +576,7 @@ class OwnerWorkspace:
         review: PendingReview,
         jev_attempt: JevCategorizationAttempt | None = None,
         display: dict[str, Any] | None = None,
+        ambiguous_context: dict[str, Any] | None = None,
     ) -> OwnerReview:
         return OwnerReview(
             id=review.id,
@@ -580,7 +588,10 @@ class OwnerWorkspace:
             version=review.version,
             allowed_decisions=tuple(review.allowed_decisions),
             context=merge_categorization_context(
-                merge_jev_attempt_context(review.context, jev_attempt),
+                merge_jev_attempt_context(
+                    review.context if ambiguous_context is None else ambiguous_context,
+                    jev_attempt,
+                ),
                 display,
             ),
             created_at=review.created_at,

@@ -1,7 +1,8 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { Category, Review, Transaction } from "../api";
+import { MATCH_UNDO_MS } from "../lib/ambiguousMatch";
 import { ReviewPage } from "./ReviewPage";
 
 const coffee: Transaction = {
@@ -649,7 +650,136 @@ describe("ReviewPage", () => {
     ).toBeInTheDocument();
     expect(screen.queryByText("Review details")).not.toBeInTheDocument();
   });
+
+  it("defers an ambiguous match so Z can undo it before the decision is sent", () => {
+    vi.useFakeTimers();
+    const onDecide = vi.fn();
+    const onSelect = vi.fn();
+    renderPage({
+      reviews: [ambiguousReview(), grocerReview],
+      transactions: [grocer],
+      onDecide,
+      onSelect,
+    });
+
+    expect(
+      screen.getByRole("heading", { name: "Which statement line is this?" }),
+    ).toBeInTheDocument();
+    const details = screen.getAllByText("Details")[0]?.closest("details");
+    expect(details).not.toHaveAttribute("open");
+    const queue = screen.getByRole("region", { name: "Pending Review queue" });
+    expect(
+      within(queue).getByRole("button", { name: /Blue Bottle/ }),
+    ).toBeInTheDocument();
+    expect(within(queue).queryByText(/example-claim/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Match to this" }));
+    expect(onDecide).not.toHaveBeenCalled();
+    expect(screen.getByRole("status")).toHaveTextContent("Matched");
+    expect(screen.getByRole("status")).toHaveTextContent("Undo");
+
+    fireEvent.keyDown(document.body, { key: "z" });
+    act(() => {
+      vi.advanceTimersByTime(MATCH_UNDO_MS);
+    });
+    expect(onDecide).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it("sends the match choice after the undo window", () => {
+    vi.useFakeTimers();
+    const onDecide = vi.fn(() => true);
+    renderPage({
+      reviews: [ambiguousReview()],
+      transactions: [],
+      onDecide,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Match to this" }));
+    act(() => {
+      vi.advanceTimersByTime(MATCH_UNDO_MS);
+    });
+    expect(onDecide).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "review-ambiguous" }),
+      "match:sooner",
+    );
+    vi.useRealTimers();
+  });
 });
+
+function ambiguousReview(): Review {
+  return {
+    ...coffeeReview,
+    id: "review-ambiguous",
+    subject_type: "claim",
+    subject_id: "example-claim-wallet",
+    condition_code: "reconciliation_ambiguous",
+    allowed_decisions: ["match:sooner", "match:later", "reject_all"],
+    context: {
+      candidate_count: 2,
+      provisional: {
+        claim_id: "example-claim-wallet",
+        counterparty: { raw: "Blue Bottle", normalized: "blue bottle" },
+        amount: "8.00",
+        currency: "SGD",
+        occurred_at: {
+          date: "2026-10-10",
+          time: "09:41:00",
+          timezone: "Asia/Singapore",
+        },
+        last4: "4242",
+        source: "wallet",
+        card_alias: "DBS Altitude",
+      },
+      candidates: [
+        {
+          statement_claim_id: "sooner",
+          claim_id: "example-claim-line",
+          score: 90,
+          reasons: [],
+          raw_description: "BLUE BOTTLE COFFEE",
+          normalized_counterparty: "blue bottle",
+          amount: "8.00",
+          currency: "SGD",
+          posted_date: "2026-10-11",
+          transaction_date: "2026-10-11",
+          last4: "4242",
+          statement_id: "example-statement-line",
+          statement_identity: "dbs:2026-10-31:exampledigest",
+          statement_label: "DBS WW",
+          issuer: "dbs",
+          period_start: "2026-10-01",
+          period_end: "2026-10-31",
+          amount_delta: "0.00",
+          day_delta: 1,
+          match_reasons: [],
+        },
+        {
+          statement_claim_id: "later",
+          claim_id: "example-claim-later",
+          score: 40,
+          reasons: [],
+          raw_description: "BLUE BOTTLE COFFEE",
+          normalized_counterparty: "blue bottle",
+          amount: "8.00",
+          currency: "SGD",
+          posted_date: "2026-10-12",
+          transaction_date: "2026-10-12",
+          last4: "4242",
+          statement_id: "example-statement-later",
+          statement_identity: "dbs:2026-10-31:exampledigest",
+          statement_label: "DBS WW",
+          issuer: "dbs",
+          period_start: "2026-10-01",
+          period_end: "2026-10-31",
+          amount_delta: "0.00",
+          day_delta: 2,
+          match_reasons: [],
+        },
+      ],
+    },
+  };
+}
 
 function renderPage(props: PageProps) {
   return render(pageElement(props));
