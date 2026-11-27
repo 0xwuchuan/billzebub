@@ -1,9 +1,11 @@
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import event, func, select
 from uuid6 import uuid7
 
 from billzebub.artifact_capture import ArtifactCapture
@@ -17,7 +19,7 @@ from billzebub.persistence.models import (
     InboxFileObservation,
     SourceArtifact,
 )
-from billzebub.statement_inbox import StatementInbox
+from billzebub.statement_inbox import InboxPollResult, StatementInbox
 
 
 def _count(database: Database, model: type[Any]) -> int:
@@ -141,3 +143,83 @@ def test_inbox_resets_stability_when_file_changes(
 
     assert changed.captured == 0
     assert source.exists()
+
+
+def _account(database: Database, slug: str) -> None:
+    with database.transaction() as session:
+        session.add(
+            FinancialAccount(
+                id=uuid7(),
+                slug=slug,
+                institution="synthetic-bank",
+                kind="credit_card",
+                display_name="Synthetic Inbox Card",
+                default_currency="SGD",
+                statement_adapter_key="synthetic-credit",
+                statement_account_identifier="SYNTHETIC-003",
+            )
+        )
+
+
+@contextmanager
+def _db_activity(database: Database) -> Iterator[dict[str, int]]:
+    stats = {"writes": 0, "commits": 0}
+
+    def before_execute(
+        conn: object,
+        cursor: object,
+        statement: str,
+        parameters: object,
+        context: object,
+        executemany: bool,
+    ) -> None:
+        del conn, cursor, parameters, context, executemany
+        verb = statement.lstrip().split(None, 1)[0].upper()
+        if verb in {"INSERT", "UPDATE", "DELETE"}:
+            stats["writes"] += 1
+
+    def on_commit(conn: object) -> None:
+        del conn
+        stats["commits"] += 1
+
+    event.listen(database.engine, "before_cursor_execute", before_execute)
+    event.listen(database.engine, "commit", on_commit)
+    try:
+        yield stats
+    finally:
+        event.remove(database.engine, "before_cursor_execute", before_execute)
+        event.remove(database.engine, "commit", on_commit)
+
+
+@pytest.mark.integration
+def test_observation_updates_share_one_transaction_per_poll(
+    database: Database,
+    tmp_path: Path,
+) -> None:
+    _account(database, "synthetic-batch-card")
+    inbox_root = tmp_path / "inbox"
+    folder = inbox_root / "synthetic-batch-card"
+    folder.mkdir(parents=True)
+    for name in ("one.pdf", "two.pdf", "three.pdf"):
+        (folder / name).write_bytes(b"%PDF-1.7\nsynthetic\n%%EOF\n")
+    inbox = StatementInbox(
+        database,
+        ArtifactCapture(ContentAddressedStore(tmp_path / "artifacts"), database),
+        JobQueue(database),
+        inbox_root=inbox_root,
+        stable_for=timedelta(seconds=30),
+    )
+    seen = datetime(2026, 4, 2, 8, 0, tzinfo=UTC)
+
+    with _db_activity(database) as first_poll:
+        assert inbox.poll(seen).observed == 3
+    assert first_poll["commits"] == 1
+    assert first_poll["writes"] == 3
+
+    with _db_activity(database) as second_poll:
+        assert inbox.poll(seen + timedelta(seconds=1)) == InboxPollResult()
+    assert second_poll["commits"] == 1
+    assert second_poll["writes"] == 3
+    with database.transaction() as session:
+        observed_at = set(session.scalars(select(InboxFileObservation.last_observed_at)).all())
+    assert observed_at == {seen + timedelta(seconds=1)}

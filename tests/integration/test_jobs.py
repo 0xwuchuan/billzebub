@@ -1,7 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import select, update
+from sqlalchemy import event, select, update
 
 from billzebub.jobs import JobQueue, JobStateError
 from billzebub.persistence.database import Database
@@ -92,3 +92,19 @@ def test_expired_lease_is_recovered_until_attempts_are_exhausted(database: Datab
     with database.transaction() as session:
         status = session.scalar(select(DurableJob.status).where(DurableJob.id == queued.id))
     assert status is JobStatus.FAILED
+
+
+@pytest.mark.integration
+def test_empty_queue_lease_does_not_commit(database: Database) -> None:
+    commits = {"n": 0}
+
+    def on_commit(conn: object) -> None:
+        del conn
+        commits["n"] += 1
+
+    event.listen(database.engine, "commit", on_commit)
+    try:
+        assert JobQueue(database).lease("idle-worker", lease_for=timedelta(minutes=1)) is None
+    finally:
+        event.remove(database.engine, "commit", on_commit)
+    assert commits["n"] == 0

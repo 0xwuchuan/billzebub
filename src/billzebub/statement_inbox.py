@@ -37,6 +37,43 @@ class InboxPollResult:
     errors: int = 0
 
 
+@dataclass(frozen=True, slots=True)
+class _Account:
+    id: UUID
+    slug: str
+
+
+@dataclass(frozen=True, slots=True)
+class _InboxFile:
+    account_id: UUID
+    path: Path
+    size: int
+    modified_ns: int
+
+    @property
+    def key(self) -> tuple[UUID, str, int, int]:
+        return (self.account_id, self.path.name, self.size, self.modified_ns)
+
+
+@dataclass(frozen=True, slots=True)
+class _ExistingObservation:
+    id: UUID
+    status: str
+    first_observed_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class _SeenFile:
+    id: UUID
+    created: bool
+    status: str
+    first_observed_at: datetime
+    account_id: UUID
+    path: Path
+    size: int
+    modified_ns: int
+
+
 class StatementInbox:
     """Poll configured folders and leave captured PDFs in the account inbox."""
 
@@ -62,17 +99,8 @@ class StatementInbox:
             raise ValueError("statement inbox poll time must include a timezone")
         observed = captured = enqueued = errors = 0
         self._inbox_root.mkdir(mode=0o700, parents=True, exist_ok=True)
-        with self._database.transaction() as session:
-            accounts = session.scalars(
-                select(FinancialAccount)
-                .where(
-                    FinancialAccount.active.is_(True),
-                    FinancialAccount.statement_adapter_key.is_not(None),
-                )
-                .order_by(FinancialAccount.slug)
-            ).all()
-
-        for account in accounts:
+        files: list[_InboxFile] = []
+        for account in self._active_accounts():
             folder = (self._inbox_root / account.slug).resolve()
             if folder.parent != self._inbox_root:
                 errors += 1
@@ -82,14 +110,35 @@ class StatementInbox:
                 if path.is_symlink() or not path.is_file() or path.suffix.casefold() != ".pdf":
                     continue
                 try:
-                    result = self._poll_file(account.id, path, now)
+                    stat = path.stat()
                 except OSError:
                     errors += 1
                     continue
-                observed += result.observed
-                captured += result.captured
-                enqueued += result.enqueued
-                errors += result.errors
+                files.append(
+                    _InboxFile(
+                        account_id=account.id,
+                        path=path,
+                        size=stat.st_size,
+                        modified_ns=stat.st_mtime_ns,
+                    )
+                )
+
+        for seen in self._observe_all(files, now):
+            if seen.created:
+                observed += 1
+                continue
+            if seen.status == "captured":
+                continue
+            if now - seen.first_observed_at < self._stable_for:
+                continue
+            try:
+                result = self._capture_stable(seen, now)
+            except OSError:
+                errors += 1
+                continue
+            captured += result.captured
+            enqueued += result.enqueued
+            errors += result.errors
 
         return InboxPollResult(
             observed=observed,
@@ -98,86 +147,142 @@ class StatementInbox:
             errors=errors,
         )
 
-    def _poll_file(
-        self,
-        account_id: UUID,
-        path: Path,
-        now: datetime,
-    ) -> InboxPollResult:
-        before = path.stat()
-        observation, created = self._observe(
-            account_id,
-            path.name,
-            before.st_size,
-            before.st_mtime_ns,
-            now,
-        )
-        if created:
-            return InboxPollResult(observed=1)
-        if observation.status == "captured":
-            return InboxPollResult()
-        if now - observation.first_observed_at < self._stable_for:
-            return InboxPollResult()
+    def _active_accounts(self) -> list[_Account]:
+        with self._database.read() as session:
+            rows = session.execute(
+                select(FinancialAccount.id, FinancialAccount.slug)
+                .where(
+                    FinancialAccount.active.is_(True),
+                    FinancialAccount.statement_adapter_key.is_not(None),
+                )
+                .order_by(FinancialAccount.slug)
+            ).all()
+        return [_Account(id=row.id, slug=row.slug) for row in rows]
 
+    def _observe_all(self, files: list[_InboxFile], now: datetime) -> list[_SeenFile]:
+        """Record new files and refresh uncaptured ones in one transaction per poll.
+
+        Captured fingerprints are read and left unchanged, so an idle inbox
+        does not write.
+        """
+        if not files:
+            return []
+        existing = self._existing_observations(files)
+        captured_only = True
+        for file in files:
+            row = existing.get(file.key)
+            if row is None or row.status != "captured":
+                captured_only = False
+                break
+        if captured_only:
+            return [
+                _SeenFile(
+                    id=existing[file.key].id,
+                    created=False,
+                    status="captured",
+                    first_observed_at=existing[file.key].first_observed_at,
+                    account_id=file.account_id,
+                    path=file.path,
+                    size=file.size,
+                    modified_ns=file.modified_ns,
+                )
+                for file in files
+            ]
+
+        with self._database.transaction() as session:
+            seen: list[_SeenFile] = []
+            for file in files:
+                observation = session.scalar(
+                    select(InboxFileObservation).where(
+                        InboxFileObservation.financial_account_id == file.account_id,
+                        InboxFileObservation.file_name == file.path.name,
+                        InboxFileObservation.size == file.size,
+                        InboxFileObservation.modified_ns == file.modified_ns,
+                    )
+                )
+                created = False
+                if observation is None:
+                    observation = InboxFileObservation(
+                        id=uuid7(),
+                        financial_account_id=file.account_id,
+                        file_name=file.path.name,
+                        size=file.size,
+                        modified_ns=file.modified_ns,
+                        first_observed_at=now,
+                        last_observed_at=now,
+                        status="observed",
+                    )
+                    session.add(observation)
+                    created = True
+                elif observation.status != "captured":
+                    observation.last_observed_at = now
+                seen.append(
+                    _SeenFile(
+                        id=observation.id,
+                        created=created,
+                        status=observation.status,
+                        first_observed_at=observation.first_observed_at,
+                        account_id=file.account_id,
+                        path=file.path,
+                        size=file.size,
+                        modified_ns=file.modified_ns,
+                    )
+                )
+            return seen
+
+    def _existing_observations(
+        self,
+        files: list[_InboxFile],
+    ) -> dict[tuple[UUID, str, int, int], _ExistingObservation]:
+        account_ids = {file.account_id for file in files}
+        with self._database.read() as session:
+            rows = session.execute(
+                select(
+                    InboxFileObservation.id,
+                    InboxFileObservation.financial_account_id,
+                    InboxFileObservation.file_name,
+                    InboxFileObservation.size,
+                    InboxFileObservation.modified_ns,
+                    InboxFileObservation.status,
+                    InboxFileObservation.first_observed_at,
+                ).where(InboxFileObservation.financial_account_id.in_(account_ids))
+            ).all()
+        return {
+            (row.financial_account_id, row.file_name, row.size, row.modified_ns): (
+                _ExistingObservation(
+                    id=row.id,
+                    status=row.status,
+                    first_observed_at=row.first_observed_at,
+                )
+            )
+            for row in rows
+        }
+
+    def _capture_stable(self, seen: _SeenFile, now: datetime) -> InboxPollResult:
         artifact = self._artifact_capture.capture_file(
-            path,
+            seen.path,
             ArtifactArrivalInput(
                 source_type="statement_inbox",
                 media_type="application/pdf",
                 received_at=now,
-                original_name=path.name,
-                metadata={"financial_account_id": str(account_id)},
+                original_name=seen.path.name,
+                metadata={"financial_account_id": str(seen.account_id)},
             ),
         )
-        after = path.stat()
-        if after.st_size != before.st_size or after.st_mtime_ns != before.st_mtime_ns:
+        after = seen.path.stat()
+        if after.st_size != seen.size or after.st_mtime_ns != seen.modified_ns:
             return InboxPollResult(errors=1)
 
         job = self._queue.enqueue(
             "extract_statement",
             {
                 "artifact_id": str(artifact.id),
-                "financial_account_id": str(account_id),
+                "financial_account_id": str(seen.account_id),
             },
-            dedupe_key=f"{artifact.id}:{account_id}",
+            dedupe_key=f"{artifact.id}:{seen.account_id}",
         )
-        self._mark_captured(observation.id, artifact.id, now)
+        self._mark_captured(seen.id, artifact.id, now)
         return InboxPollResult(captured=1, enqueued=0 if job.duplicate else 1)
-
-    def _observe(
-        self,
-        account_id: UUID,
-        file_name: str,
-        size: int,
-        modified_ns: int,
-        now: datetime,
-    ) -> tuple[InboxFileObservation, bool]:
-        with self._database.transaction() as session:
-            observation = session.scalar(
-                select(InboxFileObservation).where(
-                    InboxFileObservation.financial_account_id == account_id,
-                    InboxFileObservation.file_name == file_name,
-                    InboxFileObservation.size == size,
-                    InboxFileObservation.modified_ns == modified_ns,
-                )
-            )
-            if observation is not None:
-                observation.last_observed_at = now
-                session.flush()
-                return observation, False
-            observation = InboxFileObservation(
-                id=uuid7(),
-                financial_account_id=account_id,
-                file_name=file_name,
-                size=size,
-                modified_ns=modified_ns,
-                first_observed_at=now,
-                last_observed_at=now,
-                status="observed",
-            )
-            session.add(observation)
-            session.flush()
-            return observation, True
 
     def _mark_captured(
         self,

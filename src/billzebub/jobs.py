@@ -100,8 +100,17 @@ class JobQueue:
             raise ValueError("lease_for must be positive")
 
         now = datetime.now(UTC)
+        if not self._has_leased_or_due_work(now):
+            return None
         with self._database.transaction() as session:
-            self._recover_expired(session, now)
+            running = (
+                session.scalar(
+                    select(DurableJob.id).where(DurableJob.status == JobStatus.RUNNING).limit(1)
+                )
+                is not None
+            )
+            if running:
+                self._recover_expired(session, now)
             job = session.execute(
                 select(DurableJob)
                 .where(
@@ -114,6 +123,8 @@ class JobQueue:
                 .limit(1)
             ).scalar_one_or_none()
             if job is None:
+                if not running:
+                    session.rollback()
                 return None
 
             lease_expires_at = now + lease_for
@@ -212,6 +223,25 @@ class JobQueue:
             job.updated_at = now
             job.completed_at = None if should_retry else now
             return job.status
+
+    def _has_leased_or_due_work(self, now: datetime) -> bool:
+        """True when a recover or lease would write. An idle queue stays uncommitted."""
+        with self._database.read() as session:
+            running = session.scalar(
+                select(DurableJob.id).where(DurableJob.status == JobStatus.RUNNING).limit(1)
+            )
+            if running is not None:
+                return True
+            due = session.scalar(
+                select(DurableJob.id)
+                .where(
+                    DurableJob.status == JobStatus.QUEUED,
+                    DurableJob.available_at <= now,
+                    DurableJob.attempts < DurableJob.max_attempts,
+                )
+                .limit(1)
+            )
+            return due is not None
 
     @staticmethod
     def _recover_expired(session: Any, now: datetime) -> None:
