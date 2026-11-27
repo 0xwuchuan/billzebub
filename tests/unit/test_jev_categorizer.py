@@ -12,6 +12,7 @@ from billzebub.jev_categorizer import (
     CATEGORIZE_MAX_ATTEMPTS,
     JevCatchupScheduler,
     _log_attempt,
+    catchup_should_enqueue,
     enqueue_claim_categorization,
     enqueue_transaction_categorization,
     jev_retry_delay,
@@ -107,6 +108,16 @@ def test_enqueue_claim_categorization_uses_the_claim_job() -> None:
     queue = FakeQueue()
     enqueue_claim_categorization(queue, TXN_ID)
     assert queue.enqueued == [("categorize_claim", {"claim_id": str(TXN_ID)}, str(TXN_ID))]
+
+
+def test_settled_skip_stays_out_of_catchup_until_the_subject_changes() -> None:
+    assert catchup_should_enqueue("skip", "low_confidence", changed=False) is False
+    assert catchup_should_enqueue("skip", "ambiguous_category", changed=False) is False
+    assert catchup_should_enqueue("skip", "low_confidence", changed=True) is True
+    assert catchup_should_enqueue("skip", "jev_unavailable", changed=False) is True
+    assert catchup_should_enqueue("skip", "empty_catalog", changed=False) is True
+    assert catchup_should_enqueue("apply", None, changed=False) is True
+    assert catchup_should_enqueue(None, None, changed=False) is True
 
 
 def test_catchup_cron_defaults_match_singapore_evening() -> None:

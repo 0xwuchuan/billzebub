@@ -28,6 +28,16 @@ class Database:
         with self._sessions.begin() as session:
             yield session
 
+    @contextmanager
+    def read(self) -> Iterator[Session]:
+        """Run queries and roll them back so a read does not commit."""
+        session = self._sessions()
+        try:
+            yield session
+        finally:
+            session.rollback()
+            session.close()
+
     def ping(self) -> None:
         with self.engine.connect() as connection:
             connection.execute(text("SELECT 1"))

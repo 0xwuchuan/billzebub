@@ -1,7 +1,8 @@
 from collections.abc import Sequence
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 import pytest
 from sqlalchemy import inspect, select, text
@@ -10,10 +11,16 @@ from uuid6 import uuid7
 
 from billzebub.categories import CategoryCatalog
 from billzebub.claims import ClaimBook, ClaimDraft, ClaimType
-from billzebub.financial_history import Confirmation, FinancialHistory, TransactionKind
+from billzebub.financial_history import (
+    CategoryAllocation,
+    Confirmation,
+    Correction,
+    FinancialHistory,
+    TransactionKind,
+)
 from billzebub.identity import OwnerIdentity
 from billzebub.jev import JevCategory, JevError, JevSubject, Proposal, parse_jev_proposal
-from billzebub.jev_categorizer import JevCategorizer
+from billzebub.jev_categorizer import JevCatchupScheduler, JevCategorizer
 from billzebub.money import Money
 from billzebub.owner_actors import OwnerActors
 from billzebub.owner_transaction_actions import OwnerCategorizationCommand, OwnerTransactionActions
@@ -646,8 +653,27 @@ def test_worker_jev_categorizes_claim_only_wallet_rows_and_reconcile_carries_it(
     assert remaining == []
 
 
+class _CatchupQueue:
+    def __init__(self) -> None:
+        self.subjects: list[tuple[str, str]] = []
+
+    def enqueue(
+        self,
+        kind: str,
+        payload: dict[str, object],
+        *,
+        dedupe_key: str | None = None,
+        max_attempts: int = 5,
+        available_at: object = None,
+    ) -> object:
+        del dedupe_key, max_attempts, available_at
+        subject_id = payload.get("transaction_id", payload.get("claim_id"))
+        self.subjects.append((kind, str(subject_id)))
+        return object()
+
+
 @pytest.mark.integration
-def test_claim_jev_below_threshold_stays_uncategorized_for_catch_up(
+def test_claim_jev_below_threshold_stays_pending_without_a_catchup_requeue(
     database: Database,
     evidence: tuple[UUID, UUID, UUID],
 ) -> None:
@@ -679,26 +705,10 @@ def test_claim_jev_below_threshold_stays_uncategorized_for_catch_up(
     assert attempt.category_id is None
     assert JevCategorizer(database, proposer).pending_claim_ids() == (claim_id,)
 
-    class _Queue:
-        def __init__(self) -> None:
-            self.kinds: list[str] = []
-
-        def enqueue(
-            self,
-            kind: str,
-            payload: dict[str, object],
-            *,
-            dedupe_key: str | None = None,
-            max_attempts: int = 5,
-            available_at: object = None,
-        ) -> object:
-            del payload, dedupe_key, max_attempts, available_at
-            self.kinds.append(kind)
-            return object()
-
-    queue = _Queue()
-    assert JevCategorizer(database, proposer).enqueue_pending(queue) == 1
-    assert queue.kinds == ["categorize_claim"]
+    queue = _CatchupQueue()
+    assert JevCategorizer(database, proposer).enqueue_pending(queue) == 0
+    assert queue.subjects == []
+    assert JevCategorizer(database, proposer).pending_claim_ids() == (claim_id,)
 
 
 @pytest.mark.integration
@@ -872,3 +882,156 @@ def test_high_confidence_path_and_ambiguous_leaf_record_raw_choice_and_skip_reas
     assert skipped.choice == "Fees"
     assert skipped.skip_reason == "ambiguous_category"
     assert skipped.category_id is None
+
+
+def _skip_low_confidence() -> Proposal:
+    return Proposal(
+        action="skip",
+        category_id=None,
+        category_name=None,
+        confidence=Decimal("0.49"),
+        model="jev-1.13.0",
+        choice="Gifts",
+        skip_reason="low_confidence",
+    )
+
+
+def _uncategorized_id(database: Database) -> UUID:
+    with database.transaction() as session:
+        category_id = session.scalar(
+            select(Category.id).where(
+                Category.parent_id.is_(None),
+                Category.name == "Uncategorized",
+            )
+        )
+    assert category_id is not None
+    return category_id
+
+
+@pytest.mark.integration
+def test_skipped_subject_is_not_requeued_the_next_night_unless_it_changes(
+    database: Database,
+    evidence: tuple[UUID, UUID, UUID],
+) -> None:
+    CategoryCatalog(database).create("Gifts")
+    amount_id = _confirm_expense(database, evidence, counterparty="Synthetic Amount Shop")
+    category_id = _confirm_expense(
+        database,
+        evidence,
+        counterparty="Synthetic Category Shop",
+        amount="-20.00",
+        day=date(2026, 3, 8),
+    )
+    merchant_id = _confirm_expense(
+        database,
+        evidence,
+        counterparty="Synthetic Merchant Shop",
+        amount="-8.00",
+        day=date(2026, 3, 9),
+    )
+    unavailable_id = _confirm_expense(
+        database,
+        evidence,
+        counterparty="Synthetic Unavailable Shop",
+        amount="-3.00",
+        day=date(2026, 3, 10),
+    )
+    extraction_id = _wallet_extraction(database, evidence)
+    claim_id = _wallet_claim(
+        database,
+        evidence,
+        extraction_id,
+        description="SYNTHETIC COFFEE",
+    )
+    categorizer = JevCategorizer(database, _FixedProposer(_skip_low_confidence()))
+    assert categorizer.categorize_transaction(amount_id) is None
+    assert categorizer.categorize_transaction(category_id) is None
+    assert categorizer.categorize_transaction(merchant_id) is None
+    assert categorizer.categorize_claim(claim_id) is None
+    with pytest.raises(JevError, match="systemone failed"):
+        JevCategorizer(database, _BoomProposer()).categorize_transaction(unavailable_id)
+
+    scheduler = JevCatchupScheduler(hour=21, timezone=ZoneInfo("Asia/Singapore"))
+    first_night = datetime(2026, 11, 26, 13, 5, tzinfo=UTC)
+    next_night = datetime(2026, 11, 27, 13, 5, tzinfo=UTC)
+    queue = _CatchupQueue()
+
+    assert scheduler.catchup_date(first_night) == "2026-11-26"
+    assert categorizer.enqueue_pending(queue) == 1
+    assert queue.subjects == [("categorize_transaction", str(unavailable_id))]
+    assert scheduler.catchup_date(first_night + timedelta(hours=1)) is None
+
+    queue.subjects.clear()
+    assert scheduler.catchup_date(next_night) == "2026-11-27"
+    assert categorizer.enqueue_pending(queue) == 1
+    assert queue.subjects == [("categorize_transaction", str(unavailable_id))]
+    for transaction_id in (amount_id, category_id, merchant_id):
+        review = _pending_categorization(database, transaction_id)
+        assert review is not None
+        assert review.status == PendingReviewStatus.PENDING.value
+    assert claim_id in categorizer.pending_claim_ids()
+    with database.transaction() as session:
+        assert (
+            session.scalar(select(ClaimCategory).where(ClaimCategory.claim_id == claim_id)) is None
+        )
+
+    uncategorized_id = _uncategorized_id(database)
+    FinancialHistory(database).correct(
+        Correction(
+            transaction_id=amount_id,
+            reason="amount edited",
+            posted_amount=Money.parse("-15.00", "SGD"),
+            category_splits=(CategoryAllocation(uncategorized_id, Money.parse("15.00", "SGD")),),
+        )
+    )
+    gifts = CategoryCatalog(database).create("Gifts Extra")
+    FinancialHistory(database).correct(
+        Correction(
+            transaction_id=category_id,
+            reason="category edited",
+            category_splits=(
+                CategoryAllocation(uncategorized_id, Money.parse("5.00", "SGD")),
+                CategoryAllocation(gifts.id, Money.parse("15.00", "SGD")),
+            ),
+        )
+    )
+    FinancialHistory(database).correct(
+        Correction(
+            transaction_id=merchant_id,
+            reason="merchant edited",
+            counterparty="Synthetic Merchant Shop Renamed",
+        )
+    )
+    account_id, artifact_id, statement_extraction_id = evidence
+    ClaimBook(database).record(
+        ClaimDraft(
+            claim_type=ClaimType.STATEMENT,
+            financial_account_id=account_id,
+            source_artifact_id=artifact_id,
+            extraction_id=statement_extraction_id,
+            raw_description="SYNTHETIC COFFEE POSTED",
+            posted_amount=Money.parse("-12.34", "SGD"),
+            provider_transaction_date=date(2026, 3, 7),
+            posting_date=date(2026, 3, 7),
+            transaction_kind_hint=TransactionKind.EXPENSE.value,
+        )
+    )
+    matched = Reconciliation(database).reconcile_account(account_id)
+    assert len(matched.confirmations) == 1
+    assert matched.confirmations[0].real_time_claim_id == claim_id
+    matched_id = matched.confirmations[0].transaction_id
+
+    queue.subjects.clear()
+    queued = categorizer.enqueue_pending(queue)
+    assert queued == 5
+    assert set(queue.subjects) == {
+        ("categorize_transaction", str(unavailable_id)),
+        ("categorize_transaction", str(amount_id)),
+        ("categorize_transaction", str(category_id)),
+        ("categorize_transaction", str(merchant_id)),
+        ("categorize_transaction", str(matched_id)),
+    }
+    assert _pending_categorization(database, amount_id) is not None
+    assert _pending_categorization(database, category_id) is not None
+    assert _pending_categorization(database, merchant_id) is not None
+    assert claim_id not in categorizer.pending_claim_ids()

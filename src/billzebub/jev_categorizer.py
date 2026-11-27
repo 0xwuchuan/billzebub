@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 from uuid6 import uuid7
@@ -33,13 +33,19 @@ from billzebub.financial_history import (
 from billzebub.jev import (
     DEFAULT_MODEL,
     SKIP_EMPTY_CATALOG,
+    SKIP_JEV_UNAVAILABLE,
     JevCategory,
     JevError,
     JevSubject,
     Proposal,
     Proposer,
 )
-from billzebub.jev_attempts import proposal_from_jev_error, record_jev_attempt
+from billzebub.jev_attempts import (
+    latest_claim_jev_attempts,
+    latest_jev_attempts,
+    proposal_from_jev_error,
+    record_jev_attempt,
+)
 from billzebub.jev_context import similar_confirmed
 from billzebub.merchant_memory import (
     MEMORY_REASON,
@@ -61,9 +67,12 @@ from billzebub.persistence.models import (
     ClaimDispositionEvent,
     DurableJob,
     Extraction,
+    FinancialTransaction,
+    JevCategorizationAttempt,
     JobStatus,
     PendingReview,
     TransactionClaim,
+    TransactionVersion,
 )
 from billzebub.reviews import (
     PendingReviewStatus,
@@ -112,9 +121,37 @@ class CategorizerError(ValueError):
     """Categorizer policy rejected a requested operation."""
 
 
+_CATCHUP_RETRY_SKIPS = frozenset({SKIP_JEV_UNAVAILABLE, SKIP_EMPTY_CATALOG})
+
+
+def catchup_should_enqueue(
+    action: str | None,
+    skip_reason: str | None,
+    *,
+    changed: bool,
+) -> bool:
+    """Queue a catch-up subject unless Jev already settled a skip on the same row.
+
+    A skip, including low confidence, stays in Review until the amount,
+    counterparty, category, or statement match changes. ``jev_unavailable``
+    and an empty catalog still retry.
+    """
+    if changed or action != "skip":
+        return True
+    return skip_reason in _CATCHUP_RETRY_SKIPS
+
+
+def _same_counterparty(left: str, right: str) -> bool:
+    return " ".join(left.split())[:300] == " ".join(right.split())[:300]
+
+
 @dataclass
 class JevCatchupScheduler:
-    """Due once per local calendar day at or after the configured hour."""
+    """Due once per local calendar day at or after the configured hour.
+
+    The job it queues calls ``JevCategorizer.enqueue_pending``, which leaves a
+    settled skip in Review instead of re-queuing it unchanged.
+    """
 
     hour: int = DEFAULT_CATCHUP_HOUR
     timezone: ZoneInfo = field(default_factory=lambda: ZoneInfo(DEFAULT_CATCHUP_TIMEZONE))
@@ -384,14 +421,140 @@ class JevCategorizer:
             return self._pending_claim_ids_in_session(session)
 
     def enqueue_pending(self, queue: JobEnqueuer) -> int:
-        transaction_ids = self.pending_transaction_ids()
-        claim_ids = self.pending_claim_ids()
+        with self._database.read() as session:
+            transaction_ids = self._catchup_transaction_ids(session)
+            claim_ids = self._catchup_claim_ids(session)
         for transaction_id in transaction_ids:
             enqueue_transaction_categorization(queue, transaction_id)
         for claim_id in claim_ids:
             enqueue_claim_categorization(queue, claim_id)
         requeued = requeue_failed_categorizations(self._database, queue, apply=True).requeued
         return len(transaction_ids) + len(claim_ids) + requeued
+
+    def _catchup_transaction_ids(self, session: Session) -> tuple[UUID, ...]:
+        pending = self._pending_transaction_ids_in_session(session)
+        attempts = latest_jev_attempts(session, pending)
+        return tuple(
+            transaction_id
+            for transaction_id in pending
+            if self._catchup_accepts(session, attempts.get(transaction_id), transaction_id, None)
+        )
+
+    def _catchup_claim_ids(self, session: Session) -> tuple[UUID, ...]:
+        pending = self._pending_claim_ids_in_session(session)
+        attempts = latest_claim_jev_attempts(session, pending)
+        return tuple(
+            claim_id
+            for claim_id in pending
+            if self._catchup_accepts(session, attempts.get(claim_id), None, claim_id)
+        )
+
+    def _catchup_accepts(
+        self,
+        session: Session,
+        attempt: JevCategorizationAttempt | None,
+        transaction_id: UUID | None,
+        claim_id: UUID | None,
+    ) -> bool:
+        changed = False
+        if attempt is not None and attempt.action == "skip":
+            if transaction_id is not None:
+                changed = self._transaction_changed_since(session, transaction_id, attempt)
+            elif claim_id is not None:
+                changed = self._claim_changed_since(session, claim_id, attempt)
+        return catchup_should_enqueue(
+            None if attempt is None else attempt.action,
+            None if attempt is None else attempt.skip_reason,
+            changed=changed,
+        )
+
+    def _transaction_changed_since(
+        self,
+        session: Session,
+        transaction_id: UUID,
+        attempt: JevCategorizationAttempt,
+    ) -> bool:
+        row = session.execute(
+            select(
+                TransactionVersion.created_at,
+                TransactionVersion.posted_amount,
+                TransactionVersion.posted_currency,
+                TransactionVersion.counterparty,
+            )
+            .join(
+                FinancialTransaction,
+                and_(
+                    FinancialTransaction.id == TransactionVersion.transaction_id,
+                    FinancialTransaction.current_version == TransactionVersion.version,
+                ),
+            )
+            .where(FinancialTransaction.id == transaction_id)
+        ).one_or_none()
+        if row is None:
+            return True
+        created_at, posted_amount, posted_currency, counterparty = row
+        if created_at > attempt.attempted_at:
+            return True
+        if posted_amount != attempt.amount or posted_currency != attempt.currency:
+            return True
+        if not _same_counterparty(counterparty, attempt.counterparty):
+            return True
+        linked = session.scalar(
+            select(TransactionClaim.id)
+            .where(
+                TransactionClaim.transaction_id == transaction_id,
+                TransactionClaim.role == "statement",
+                TransactionClaim.created_at > attempt.attempted_at,
+            )
+            .limit(1)
+        )
+        return linked is not None
+
+    def _claim_changed_since(
+        self,
+        session: Session,
+        claim_id: UUID,
+        attempt: JevCategorizationAttempt,
+    ) -> bool:
+        claim = session.get(Claim, claim_id)
+        if (
+            claim is None
+            or claim.authorized_amount is None
+            or claim.authorized_currency is None
+            or claim.occurrence_at is None
+        ):
+            return True
+        kind = claim.transaction_kind_hint or TransactionKind.EXPENSE.value
+        effective = claim.occurrence_at.astimezone(self._reporting_timezone).date()
+        merchant = " ".join(claim.raw_description.split())[:300]
+        if (
+            claim.authorized_amount != attempt.amount
+            or claim.authorized_currency.upper() != attempt.currency
+            or merchant != attempt.counterparty
+            or effective != attempt.effective_date
+            or kind != attempt.kind
+        ):
+            return True
+        categorized = session.scalar(
+            select(ClaimCategory.id)
+            .where(
+                ClaimCategory.claim_id == claim_id,
+                ClaimCategory.created_at > attempt.attempted_at,
+            )
+            .limit(1)
+        )
+        if categorized is not None:
+            return True
+        linked = session.scalar(
+            select(TransactionClaim.id)
+            .where(
+                TransactionClaim.claim_id == claim_id,
+                TransactionClaim.role == "statement",
+                TransactionClaim.created_at > attempt.attempted_at,
+            )
+            .limit(1)
+        )
+        return linked is not None
 
     def categorize_transaction(self, transaction_id: UUID) -> TransactionSnapshot | None:
         retry: JevError | None = None
