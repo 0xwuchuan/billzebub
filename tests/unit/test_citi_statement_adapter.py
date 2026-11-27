@@ -61,7 +61,7 @@ def test_citi_adapter_satisfies_credit_card_statement_contract(tmp_path: Path) -
 
 
 def test_citi_adapter_version_includes_monopoly_and_billzebub_versions() -> None:
-    assert citi_credit_card_adapter().version == "monopoly-0.21.6+citi-credit-4"
+    assert citi_credit_card_adapter().version == "monopoly-0.21.6+citi-credit-5"
 
 
 def _write_lines(path: Path, lines: list[str]) -> None:

@@ -158,7 +158,7 @@ def citi_credit_card_adapter(*, bank: type[Any] = _CitiCreditBank) -> MonopolySt
     """Build the versioned Citi adapter used by the worker registry."""
     return MonopolyStatementAdapter(
         key="citi-credit-card",
-        adapter_version="citi-credit-4",
+        adapter_version="citi-credit-5",
         institution="citi",
         definition=MonopolyAdapterDefinition(
             bank=bank,
