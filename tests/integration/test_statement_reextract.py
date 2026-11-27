@@ -14,6 +14,7 @@ from billzebub.jobs import JobQueue
 from billzebub.persistence.database import Database
 from billzebub.persistence.models import (
     DurableJob,
+    Extraction,
     FinancialAccount,
     PendingReview,
     ReviewEvent,
@@ -23,10 +24,12 @@ from billzebub.reviews import (
     ReviewDecision,
     ReviewInbox,
 )
+from billzebub.statement_adapters.citi import citi_credit_card_adapter
 from billzebub.statement_extraction import (
     ExtractionOutcome,
     ExtractionStatus,
     SourceLocator,
+    StatementAdapter,
     StatementAdapterRegistry,
     StatementCandidate,
     StatementExtraction,
@@ -93,7 +96,13 @@ def _candidate(*, row_count: int | None = None) -> StatementCandidate:
 
 
 def _source(
-    database: Database, tmp_path: Path, *, slug: str
+    database: Database,
+    tmp_path: Path,
+    *,
+    slug: str,
+    adapter_key: str = "synthetic-credit",
+    institution: str = "synthetic-bank",
+    content: bytes = b"%PDF-1.7\nsynthetic review statement\n%%EOF\n",
 ) -> tuple[UUID, UUID, ContentAddressedStore]:
     account_id = uuid7()
     with database.transaction() as session:
@@ -101,17 +110,17 @@ def _source(
             FinancialAccount(
                 id=account_id,
                 slug=slug,
-                institution="synthetic-bank",
+                institution=institution,
                 kind="credit_card",
                 display_name="Synthetic Review Card",
                 default_currency="SGD",
-                statement_adapter_key="synthetic-credit",
+                statement_adapter_key=adapter_key,
                 statement_account_identifier="SYNTHETIC-001",
             )
         )
     store = ContentAddressedStore(tmp_path / slug)
     artifact = ArtifactCapture(store, database).capture_bytes(
-        b"%PDF-1.7\nsynthetic review statement\n%%EOF\n",
+        content,
         ArtifactArrivalInput(
             source_type="statement_inbox",
             media_type="application/pdf",
@@ -126,7 +135,7 @@ def _service(
     database: Database,
     store: ContentAddressedStore,
     tmp_path: Path,
-    adapter: SyntheticStatementAdapter,
+    adapter: StatementAdapter,
 ) -> StatementReextractor:
     extraction = StatementExtraction(
         database,
@@ -169,11 +178,13 @@ def _fail(
     tmp_path: Path,
     account_id: UUID,
     artifact_id: UUID,
+    adapter: StatementAdapter | None = None,
 ) -> ExtractionOutcome:
+    chosen = adapter or SyntheticStatementAdapter(_candidate(row_count=3))
     outcome = StatementExtraction(
         database,
         store,
-        StatementAdapterRegistry([SyntheticStatementAdapter(_candidate(row_count=3))]),
+        StatementAdapterRegistry([chosen]),
         password_root=tmp_path / "passwords",
     ).extract(artifact_id=artifact_id, financial_account_id=account_id)
     assert outcome.status is ExtractionStatus.FAILED
@@ -323,3 +334,95 @@ def test_non_excluded_and_accepted_artifacts_are_refused(
 
     assert len(ClaimBook(database).for_extraction(accepted.extraction_id)) == 2
     assert _reconcile_count(database, accepted_account) == 0
+
+
+def _citi_version_adapter(version: str, *, failing: bool) -> SyntheticStatementAdapter:
+    live = citi_credit_card_adapter()
+    adapter = SyntheticStatementAdapter(_candidate(row_count=3 if failing else None))
+    adapter.key = live.key
+    adapter.version = version
+    adapter.institution = live.institution
+    return adapter
+
+
+def _stored_parser_version(database: Database, extraction_id: UUID) -> str:
+    with database.transaction() as session:
+        extraction = session.get(Extraction, extraction_id)
+    assert extraction is not None
+    return extraction.parser_version
+
+
+@pytest.mark.integration
+def test_citi_credit_4_reextracts_and_citi_credit_5_stays_version_unchanged(
+    database: Database,
+    tmp_path: Path,
+) -> None:
+    live = citi_credit_card_adapter()
+    previous_version = "monopoly-0.21.6+citi-credit-4"
+    assert live.version == "monopoly-0.21.6+citi-credit-5"
+    assert live.key == "citi-credit-card"
+
+    previous_account, previous_artifact, previous_store = _source(
+        database,
+        tmp_path,
+        slug="citi-credit-4-stored",
+        adapter_key=live.key,
+        institution=live.institution,
+        content=b"%PDF-1.7\nsynthetic citi credit previous\n%%EOF\n",
+    )
+    current_account, current_artifact, current_store = _source(
+        database,
+        tmp_path,
+        slug="citi-credit-5-stored",
+        adapter_key=live.key,
+        institution=live.institution,
+        content=b"%PDF-1.7\nsynthetic citi credit current\n%%EOF\n",
+    )
+    previous_failed = _fail(
+        database,
+        previous_store,
+        tmp_path,
+        previous_account,
+        previous_artifact,
+        _citi_version_adapter(previous_version, failing=True),
+    )
+    current_failed = _fail(
+        database,
+        current_store,
+        tmp_path,
+        current_account,
+        current_artifact,
+        _citi_version_adapter(live.version, failing=True),
+    )
+    assert previous_failed.review_id is not None
+    assert current_failed.review_id is not None
+    assert _stored_parser_version(database, previous_failed.extraction_id) == previous_version
+    assert _stored_parser_version(database, current_failed.extraction_id) == live.version
+    _exclude(database, previous_failed.review_id)
+    _exclude(database, current_failed.review_id)
+
+    current_adapter = _citi_version_adapter(live.version, failing=False)
+    previous_report = _service(
+        database,
+        previous_store,
+        tmp_path,
+        current_adapter,
+    ).reextract((previous_artifact,))[0]
+    current_report = _service(
+        database,
+        current_store,
+        tmp_path,
+        current_adapter,
+    ).reextract((current_artifact,))[0]
+
+    assert previous_report.action is StatementReextractAction.EXTRACTED
+    assert previous_report.status == "accepted"
+    assert previous_report.extraction_id != previous_failed.extraction_id
+    assert previous_report.extraction_id is not None
+    assert _stored_parser_version(database, previous_report.extraction_id) == live.version
+    assert current_report.action is StatementReextractAction.VERSION_UNCHANGED
+    assert current_report.extraction_id == current_failed.extraction_id
+    assert current_report.status == "failed"
+    assert format_statement_reextract(current_report).endswith("parser version bump required")
+    assert _request_count(database, current_failed.review_id) == 0
+    assert _request_count(database, previous_failed.review_id) == 1
